@@ -706,7 +706,7 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
       {/* ─── Tab: 引用公共文档 ─── */}
       {activeUploadTab === 'ref' && (
         <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-          <p className="text-sm text-gray-600 mb-2">从公共文档库中选择文件引用到当前案件，引用不会复制文件。</p>
+          <p className="text-sm text-gray-600 mb-2">从公共文档库中选择文件引用到当前项目，引用不会复制文件。</p>
 
           <div className="flex flex-wrap gap-3 items-center">
             {refLibraries.length === 0 && !refLoading && (
@@ -803,13 +803,13 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
               {recLoading && (
                 <div className="flex flex-col items-center justify-center py-8 text-purple-600/70">
                   <Loader2 className="w-6 h-6 animate-spin mb-2" />
-                  <span className="text-xs">智能模型正在通读分析已上传卷宗，请稍候...</span>
+                  <span className="text-xs">智能模型正在通读分析已上传文档，请稍候...</span>
                 </div>
               )}
 
               {!recLoading && recommendedFiles.length === 0 && (
                 <div className="text-center py-6 text-gray-400 text-xs">
-                  暂未提取到足够案件案情特征，或公共库暂无文件。
+                  暂未提取到足够项目特征，或公共库暂无文件。
                 </div>
               )}
 

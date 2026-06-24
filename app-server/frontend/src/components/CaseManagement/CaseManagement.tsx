@@ -95,7 +95,7 @@ export default function CaseManagement({ projectId, canWrite = true }: { project
         body: JSON.stringify(docData)
       });
       if (res.ok) {
-        alert('🎉 文书已成功归档到本案素材库中！');
+        alert('🎉 文档已成功归档到本项目素材库中！');
         triggerRefresh();
       } else {
         alert('归档失败，请重试');
@@ -113,10 +113,10 @@ export default function CaseManagement({ projectId, canWrite = true }: { project
     <div className="flex h-full w-full bg-stone-50 text-gray-800 text-xs overflow-hidden">
       {/* 左栏 */}
       <div className="w-[320px] shrink-0 border-r border-[#E0DCD5] flex flex-col bg-white overflow-y-auto p-4 gap-4">
-        {/* 案件概览 */}
+        {/* 项目概览 */}
         <div className="bg-[#F9F8F6] rounded-xl p-3 border border-[#EBE8E2] flex flex-col gap-2 relative">
           <div className="flex items-center justify-between">
-            <span className="font-semibold text-[13px] text-gray-700 flex items-center gap-1">📋 案件基本概览</span>
+            <span className="font-semibold text-[13px] text-gray-700 flex items-center gap-1">📋 项目基本概览</span>
             {canWrite && (
               <button
                 onClick={() => {
@@ -134,7 +134,7 @@ export default function CaseManagement({ projectId, canWrite = true }: { project
               value={overview}
               onChange={e => setOverview(e.target.value)}
               className="w-full bg-white border border-[#E0DCD5] rounded p-2 focus:outline-none focus:ring-1 focus:ring-[#8B7355] h-36 text-xs resize-none"
-              placeholder="请输入案件概述或点击下方AI生成..."
+              placeholder="请输入项目概述或点击下方AI生成..."
             />
           ) : (
             <div className="text-gray-600 leading-relaxed text-[11px] whitespace-pre-wrap min-h-[60px] max-h-56 overflow-y-auto">
@@ -155,7 +155,7 @@ export default function CaseManagement({ projectId, canWrite = true }: { project
 
         {/* 阶段进度列表 */}
         <div className="flex flex-col gap-2">
-          <div className="font-semibold text-[13px] text-gray-700 mb-1 flex items-center gap-1">🚀 办案流程推进</div>
+          <div className="font-semibold text-[13px] text-gray-700 mb-1 flex items-center gap-1">🚀 项目流程推进</div>
           <div className="space-y-2">
             {CASE_STAGES.map((stage, idx) => {
               const isActive = stage.id === activeStageId;
@@ -204,7 +204,7 @@ export default function CaseManagement({ projectId, canWrite = true }: { project
         <div className="bg-white border border-[#E0DCD5] rounded-2xl p-4 shadow-sm shrink-0 flex flex-col gap-1.5">
           <h2 className="text-[14px] font-bold text-gray-800 flex items-center gap-1.5">
             <ClipboardList className="w-4 h-4 text-[#8B7355]" />
-            一审办案阶段：{activeStage.name}
+            项目推进阶段：{activeStage.name}
           </h2>
           <p className="text-gray-600 leading-relaxed text-[11px]">{activeStage.target}</p>
         </div>
@@ -239,7 +239,7 @@ export default function CaseManagement({ projectId, canWrite = true }: { project
           <div className="flex-1 bg-white border border-[#E0DCD5] rounded-2xl shadow-sm flex flex-col overflow-hidden relative">
             <div className="px-4 py-3 border-b border-[#E0DCD5] flex justify-between items-center bg-[#F9F8F6]">
               <span className="font-bold text-gray-800 flex items-center gap-1">
-                📝 AI 文书生成画布
+                📝 AI 文档生成画布
                 {selectedTool && <span className="text-[11px] font-normal text-stone-500">（{selectedTool.name}）</span>}
               </span>
               <div className="flex gap-2">
@@ -260,7 +260,7 @@ export default function CaseManagement({ projectId, canWrite = true }: { project
                   className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-1 font-semibold cursor-pointer transition-colors disabled:opacity-40"
                 >
                   {isSavingDoc ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                  <span>保存为案件文档</span>
+                  <span>保存为项目文档</span>
                 </button>
               </div>
             </div>
@@ -279,7 +279,7 @@ export default function CaseManagement({ projectId, canWrite = true }: { project
                 value={editorContent}
                 onChange={e => setEditorContent(e.target.value)}
                 className="w-full h-full bg-transparent border-none outline-none resize-none prose prose-sm text-gray-700 font-sans leading-relaxed whitespace-pre-wrap"
-                placeholder="点击左侧「智能运行」启动文案助理，自动基于卷宗素材和自定义策略撰写符合审判实践要求的证据清单、分析意见或文书大纲..."
+                placeholder="点击左侧「智能运行」启动文案助理，自动基于项目素材和自定义策略撰写符合行业实践要求的管理规范、分析报告或文档大纲..."
               />
             </div>
           </div>

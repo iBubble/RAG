@@ -886,7 +886,7 @@ function StudioLayout() {
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
         <div className="bg-white rounded-2xl shadow-2xl w-[700px] max-h-[80vh] overflow-hidden flex flex-col">
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
-            <h2 className="font-semibold text-gray-800 text-base">📂 上传案件卷宗</h2>
+            <h2 className="font-semibold text-gray-800 text-base">📂 上传项目文档</h2>
             <button
               onClick={() => { setUploadModalOpen(false); triggerRefresh(); }}
               className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-gray-600"

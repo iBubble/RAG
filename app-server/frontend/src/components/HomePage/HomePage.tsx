@@ -218,12 +218,13 @@ export default function HomePage() {
   const avatarUrl = user?.avatar ? `${API_BASE}${user.avatar}` : '';
 
   // 渲染项目卡片
-  const renderProjectCard = (proj: Project) => {
+  const renderProjectCard = (proj: Project, section: string) => {
     const isLibrary = proj.project_type === 'library';
     const canEdit = proj.owner_id === user?.id || user?.role === 'admin';
     const isPrivate = proj.visibility === 'private';
     const isAdmin = user?.role === 'admin';
     const isDragged = draggedProject?.id === proj.id;
+    const menuKey = `${section}-${proj.id}`;
     return (
     <div
       key={proj.id}
@@ -262,18 +263,18 @@ export default function HomePage() {
       {/* 三点菜单 */}
       <div 
         className="absolute bottom-3 right-3 z-20" 
-        ref={activeMenu === proj.id ? menuRef : null}
+        ref={activeMenu === menuKey ? menuRef : null}
         onClick={(e) => e.stopPropagation()}
       >
         <button
-          onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === proj.id ? null : proj.id); }}
+          onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === menuKey ? null : menuKey); }}
           className="w-7 h-10 bg-white dark:bg-panel-bg border border-[#E0DCD5] dark:border-border-soft shadow-sm rounded-full flex flex-col items-center justify-center gap-0.5 hover:bg-gray-50 dark:hover:bg-outline-bg active:scale-95 transition-all opacity-0 group-hover:opacity-100 cursor-pointer z-10"
         >
           <div className="w-1 h-1 bg-gray-600 dark:bg-gray-400 rounded-full pointer-events-none"></div>
           <div className="w-1 h-1 bg-gray-600 dark:bg-gray-400 rounded-full pointer-events-none"></div>
           <div className="w-1 h-1 bg-gray-600 dark:bg-gray-400 rounded-full pointer-events-none"></div>
         </button>
-        {activeMenu === proj.id && (
+        {activeMenu === menuKey && (
           <div className="absolute right-0 bottom-full mb-1.5 w-44 bg-white dark:bg-panel-bg border border-[#E0DCD5] dark:border-border-soft rounded-xl shadow-lg py-1 z-50">
             <button onClick={(e) => { e.stopPropagation(); navigate(`/project/${proj.id}`); }} className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-text-main hover:bg-gray-50 dark:hover:bg-outline-bg flex items-center gap-2.5 cursor-pointer">
               <LogIn className="w-4 h-4 text-[#8B7355]" /> 进入
@@ -367,12 +368,12 @@ export default function HomePage() {
         <main className="max-w-7xl mx-auto px-6 py-8">
           {pageLoading && <LogoSpinner size={72} overlay={false} />}
           <div className="flex items-center justify-between mb-8">
-            <div className="text-xl font-bold tracking-tight text-gray-800">案件空间</div>
+            <div className="text-xl font-bold tracking-tight text-gray-800">项目空间</div>
             <div className="relative flex items-center">
               <Search className="w-4 h-4 text-gray-400 absolute left-3.5 pointer-events-none" />
               <input
                 type="text"
-                placeholder="搜索案件或公共文档库名称..."
+                placeholder="搜索项目或公共文档库名称..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 pr-8 py-2 w-64 bg-white border border-[#E0DCD5] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition-all placeholder:text-gray-400 shadow-sm"
@@ -388,10 +389,10 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* 我的案件 */}
+          {/* 我的项目 */}
           <section className="mb-10">
             <h2 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
-              📋 我的案件 <span className="text-sm font-normal text-gray-400">({caseProjects.length})</span>
+              📋 我的项目 <span className="text-sm font-normal text-gray-400">({caseProjects.length})</span>
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {!searchQuery && (
@@ -402,33 +403,33 @@ export default function HomePage() {
                   <div className="w-14 h-14 bg-[#F0EDE8] rounded-full flex items-center justify-center mb-4 group-hover:bg-[#E0DCD5] transition-colors">
                     <Plus className="w-6 h-6 text-[#8B7355]" />
                   </div>
-                  <span className="font-medium text-[#8B7355]">新建案件空间</span>
+                  <span className="font-medium text-[#8B7355]">新建项目空间</span>
                 </div>
               )}
-              {caseProjects.map(renderProjectCard)}
+              {caseProjects.map(p => renderProjectCard(p, 'case'))}
             </div>
           </section>
 
-          {/* 公开案件 */}
+          {/* 公开项目 */}
           {publicProjects.length > 0 && (
             <section className="mb-10">
               <h2 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
-                🌐 公开案件 <span className="text-sm font-normal text-gray-400">({publicProjects.length})</span>
+                🌐 公开项目 <span className="text-sm font-normal text-gray-400">({publicProjects.length})</span>
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {publicProjects.map(renderProjectCard)}
+                {publicProjects.map(p => renderProjectCard(p, 'public'))}
               </div>
             </section>
           )}
 
-          {/* 私有案件 */}
+          {/* 私有项目 */}
           {user?.role === 'admin' && privateProjects.length > 0 && (
             <section className="mb-10">
               <h2 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
-                🔒 私有案件 <span className="text-sm font-normal text-gray-400">({privateProjects.length})</span>
+                🔒 私有项目 <span className="text-sm font-normal text-gray-400">({privateProjects.length})</span>
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {privateProjects.map(renderProjectCard)}
+                {privateProjects.map(p => renderProjectCard(p, 'private'))}
               </div>
             </section>
           )}
@@ -453,19 +454,19 @@ export default function HomePage() {
               {libraryProjects.length === 0 && user?.role !== 'admin' && (
                 <div className="col-span-full text-center text-gray-400 text-sm py-8">暂无公共文档库</div>
               )}
-              {libraryProjects.map(renderProjectCard)}
+              {libraryProjects.map(p => renderProjectCard(p, 'library'))}
             </div>
           </section>
         </main>
       </div>
 
-      {/* 新建案件弹窗 */}
+      {/* 新建项目弹窗 */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-2xl w-[480px] p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-gray-900">
-                {newProjectType === 'library' ? '📚 创建公共文档库' : '✨ 创建新案件空间'}
+                {newProjectType === 'library' ? '📚 创建公共文档库' : '✨ 创建新项目空间'}
               </h2>
               <button onClick={() => setIsModalOpen(false)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
@@ -473,20 +474,20 @@ export default function HomePage() {
             </div>
             <p className="text-sm text-gray-500 mb-6">
               {newProjectType === 'library'
-                ? '公共文档库用于存放公共法律法规等资料，可被各案件引用。'
-                : '案件的知识库和文档将被独立隔离存放。'
+                ? '公共文档库用于存放公共法律法规等资料，可被各项目引用。'
+                : '项目的知识库 and 文档将被独立隔离存放。'
               }
             </p>
 
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">案件名称</label>
+                <label className="text-sm font-medium text-gray-700 block mb-1">项目名称</label>
                 <input 
                   type="text" autoFocus
                   value={newProjectName}
                   onChange={(e) => { setNewProjectName(e.target.value); if (createError) setCreateError(''); }}
                   onKeyDown={(e) => e.key === 'Enter' && handleCreateProject()}
-                  placeholder={newProjectType === 'library' ? '例如：中国法律法规库' : '例如：张三诉李四伤害赔偿案'}
+                  placeholder={newProjectType === 'library' ? '例如：中国法律法规库' : '例如：力诺管理制度规范'}
                   className={`w-full px-4 py-2.5 bg-gray-50 border rounded-xl outline-none transition-all placeholder:text-gray-400 ${
                     createError ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200'
                   }`}
@@ -501,7 +502,7 @@ export default function HomePage() {
 
               {/* 可见性选择 */}
               <div>
-                <label className="text-sm font-medium text-gray-700 block mb-2">案件可见性</label>
+                <label className="text-sm font-medium text-gray-700 block mb-2">项目可见性</label>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setNewProjectVisibility('public')}
@@ -576,10 +577,10 @@ export default function HomePage() {
               </div>
               <div className="flex flex-col gap-1 min-w-0">
                 <h3 className="text-sm font-bold text-stone-900 dark:text-stone-100">
-                  🗑️ 彻底删除案件空间
+                  🗑️ 彻底删除项目空间
                 </h3>
                 <p className="text-xs text-stone-500 dark:text-stone-400 leading-normal mt-3 whitespace-pre-wrap font-sans">
-                  确定要彻底删除案件「{projectToDelete.name}」吗？此操作将永久删除该案件的所有文件、归档文档和范文模板，不可恢复。
+                  确定要彻底删除项目「{projectToDelete.name}」吗？此操作将永久删除该项目的所有文件、归档文档和范文模板，不可恢复。
                 </p>
               </div>
             </div>

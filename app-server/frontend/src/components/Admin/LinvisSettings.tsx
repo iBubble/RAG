@@ -3,7 +3,7 @@ import { useAuthStore } from '../../store/authStore';
 import { Save, Loader2, CheckSquare, Square } from 'lucide-react';
 
 const ALL_WB_ITEMS = [
-  { id: 'total_projects', label: '进行中案件数' },
+  { id: 'total_projects', label: '进行中项目数' },
   { id: 'completed_percent', label: '总文件向量化率' },
   { id: 'total_chunks', label: '向量切片总数' },
   { id: 'total_entities', label: '图谱实体总数' },
@@ -12,8 +12,8 @@ const ALL_WB_ITEMS = [
 
 const ALL_AGENTS = [
   { id: 'chat', label: '智能前台接待' },
-  { id: 'service', label: '法律服务专家' },
-  { id: 'legal', label: '法律事务专家' },
+  { id: 'service', label: '企业管理顾问' },
+  { id: 'legal', label: '行业知识专家' },
   { id: 'precompute', label: '智能学习预计算' },
   { id: 'vectorizer', label: '后端向量化入库' },
   { id: 'graph', label: '知识图谱提炼' },
