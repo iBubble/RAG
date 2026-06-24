@@ -12,52 +12,31 @@ import KnowledgeBasePanel from './components/KnowledgeBasePanel/KnowledgeBasePan
 import ProjectPresence from './components/ProjectPresence/ProjectPresence';
 import { useProjectStore, type PreviewFile } from './store/projectStore';
 import { useAuthStore } from './store/authStore';
-// @ts-ignore
-import PleadingFlow from './components/LegalWorkbench/PleadingFlow';
-// @ts-ignore
-import ContractReview from './components/LegalWorkbench/ContractReview';
-import CorporateServices from './components/LegalWorkbench/CorporateServices';
 import LoginPage from './components/Auth/LoginPage';
 import RegisterPage from './components/Auth/RegisterPage';
-import CaseManagement from './components/CaseManagement/CaseManagement';
 import AdminLayout from './components/Admin/AdminLayout';
 import ProfilePage from './components/Profile/ProfilePage';
 import Linvis from './components/Linvis/Linvis';
+import AITablePanel from './components/AITable/AITablePanel';
 import { 
   X, 
   LayoutDashboard, 
   Sparkles, 
-  Scale, 
-  ClipboardList, 
-  Search, 
-  HeartHandshake, 
-  FileCheck, 
   Wand2,
   Loader2,
   Sun,
   Moon,
   SunMoon,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Table
 } from 'lucide-react';
 import { useThemeStore } from './store/themeStore';
 
 const TAB_ITEMS = [
   { id: '智能助手', label: '智能助手', icon: Sparkles },
-  { id: '法律事务专家', label: '知识工作台', icon: Scale },
-  { id: '案件管理', label: '项目管理', icon: ClipboardList },
-  { id: '常法服务', label: '顾问服务', icon: HeartHandshake },
-  { id: '合同审查', label: '文档审查', icon: FileCheck },
+  { id: 'AI表格', label: 'AI表格', icon: Table },
   { id: '定制文档', label: '定制文档', icon: Wand2 }
-] as const;
-
-// WHY: 知识工作台的二级子 Tab，整合原有 5 个独立的通用知识与文档 Tab
-const LEGAL_SUB_TABS = [
-  { id: '民事起诉状', label: '起草文书', icon: Wand2, skillType: 'complaint_drafting' },
-  { id: '民事答辩状', label: '审阅文书', icon: FileCheck, skillType: 'pleading_drafting' },
-  { id: '法律意见书', label: '可行性方案', icon: Scale, skillType: 'project_opinion' },
-  { id: '委托前案件分析', label: '项目评估', icon: ClipboardList, skillType: 'pre_case_analysis' },
-  { id: '案例检索分析', label: '知识检索', icon: Search, skillType: 'case_search' },
 ] as const;
 
 export function ThemeSwitcher() {
@@ -500,9 +479,6 @@ function StudioLayout() {
   const [previewWidth, setPreviewWidth] = useState(500);
   const [isPreviewResizing, setIsPreviewResizing] = useState(false);
 
-  // WHY: 法律事务专家内部的二级 Tab 选中状态，独立于一级 Tab
-  const [activeLegalSubTab, setActiveLegalSubTab] = useState('民事起诉状');
-
   useEffect(() => {
     if (!isPreviewResizing) return;
     const handleMouseMove = (e: MouseEvent) => {
@@ -669,16 +645,16 @@ function StudioLayout() {
            ) : (
              <span
                className="flex-1 font-semibold text-gray-800 truncate cursor-pointer hover:text-indigo-600 transition-colors text-sm"
-               title="点击修改案件名称"
+               title="点击修改项目名称"
                onClick={() => { setEditName(projectName); setIsEditingName(true); }}
-             >{projectName || '未命名案件'}</span>
+             >{projectName || '未命名项目'}</span>
            )}
            <button onClick={() => navigate('/')} className="text-blue-600 text-xs hover:underline shrink-0">返回</button>
         </div>
         <div className="flex-1 p-4 text-xs text-gray-500 overflow-y-auto">
            {canWrite && (
              <button onClick={() => setUploadModalOpen(true)} className="w-full py-2 mb-4 border border-dashed border-gray-300 rounded hover:border-blue-400 hover:text-blue-600 transition-colors">
-               + 上传案件文件/卷宗
+               + 上传项目文件/资料
              </button>
            )}
            <div className="space-y-2">
@@ -744,7 +720,6 @@ function StudioLayout() {
               <ProjectPresence 
                 projectId={projectId || 'default'} 
                 activeTab={activeTab}
-                activeLegalSubTab={activeLegalSubTab}
                 isGenerating={isGenerating}
               />
               <ThemeSwitcher />
@@ -758,8 +733,8 @@ function StudioLayout() {
               <DocumentStudio canWrite={canWrite} projectName={projectName} />
             </div>
 
-            <div className="h-full" style={{ display: activeTab === '案件管理' ? 'block' : 'none' }}>
-              <CaseManagement projectId={projectId || 'default'} canWrite={canWrite} />
+            <div className="h-full" style={{ display: activeTab === 'AI表格' ? 'block' : 'none' }}>
+              <AITablePanel canWrite={canWrite} />
             </div>
 
             <div className="h-full" style={{ display: activeTab === '智能助手' ? 'block' : 'none' }}>
@@ -791,65 +766,6 @@ function StudioLayout() {
 
             <div className="h-full" style={{ display: activeTab === '数据看板' ? 'block' : 'none' }}>
                <KnowledgeBasePanel />
-            </div>
-
-            <div className="h-full flex flex-col overflow-hidden" style={{ display: activeTab === '法律事务专家' ? 'flex' : 'none' }}>
-             <div className="h-full overflow-hidden flex flex-col">
-                {/* 二级 Tab 导航条 — 暖色渐变背景区分视觉层级 */}
-                <div className="flex items-center gap-1 px-5 py-2 bg-[#F3F1EC] dark:bg-[#282A31] border-b border-[#E2DFD7] dark:border-[#2E313A] shrink-0">
-                  {LEGAL_SUB_TABS.map(sub => {
-                    const SubIcon = sub.icon;
-                    const isActive = activeLegalSubTab === sub.id;
-                    const subTabColorMap: Record<string, string> = {
-                      '民事起诉状': 'card-pink font-semibold shadow-sm',
-                      '民事答辩状': 'card-blue font-semibold shadow-sm',
-                      '法律意见书': 'card-purple font-semibold shadow-sm',
-                      '委托前案件分析': 'card-yellow font-semibold shadow-sm',
-                      '案例检索分析': 'card-green font-semibold shadow-sm',
-                    };
-                    const colorClass = isActive 
-                      ? (subTabColorMap[sub.id] || 'bg-white dark:bg-outline-bg text-gray-800 dark:text-text-main border-border-soft')
-                      : 'text-stone-500 dark:text-text-muted hover:text-stone-800 hover:bg-stone-100/60 dark:hover:text-text-main dark:hover:bg-outline-bg border border-transparent';
-                    
-                    return (
-                      <button
-                        key={sub.id}
-                        onClick={() => setActiveLegalSubTab(sub.id)}
-                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 cursor-pointer ${colorClass}`}
-                      >
-                        <SubIcon className="w-3.5 h-3.5" />
-                        <span>{sub.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                {/* 内容区域 — 使用 display 控制多实例常驻，防止切换二级 Tab 导致组件销毁、生成中断或内容丢失 */}
-                <div className="flex-1 overflow-hidden relative h-full">
-                  {LEGAL_SUB_TABS.map(sub => (
-                    <div
-                      key={`${projectId || 'default'}_${sub.skillType}`}
-                      className="h-full w-full"
-                      style={{ display: activeLegalSubTab === sub.id ? 'block' : 'none' }}
-                    >
-                      <PleadingFlow
-                        projectId={projectId || 'default'}
-                        canWrite={canWrite}
-                        skillType={sub.skillType}
-                      />
-                    </div>
-                  ))}
-                </div>
-             </div>
-            </div>
-
-            <div className="h-full" style={{ display: activeTab === '常法服务' ? 'block' : 'none' }}>
-               <CorporateServices projectId={projectId || 'default'} canWrite={canWrite} />
-            </div>
-
-            <div className="h-full" style={{ display: activeTab === '合同审查' ? 'block' : 'none' }}>
-              <div className="h-full overflow-hidden">
-                <ContractReview projectId={projectId || 'default'} canWrite={canWrite} />
-              </div>
             </div>
           </div>
       </main>

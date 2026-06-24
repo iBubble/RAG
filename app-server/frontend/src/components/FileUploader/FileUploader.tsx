@@ -540,7 +540,7 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 cursor-default">
               <UploadCloud className="w-8 h-8 text-gray-400" />
             </div>
-            <p className="text-base text-gray-700 font-medium mb-4">拖拽 <span className="text-indigo-600">任意卷宗目录</span> 或各类文档至此区域</p>
+            <p className="text-base text-gray-700 font-medium mb-4">拖拽 <span className="text-indigo-600">任意项目目录</span> 或各类文档至此区域</p>
             
             <div className="flex gap-4 mb-4">
               <button 
@@ -560,7 +560,7 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
                  }}
                  className="px-4 py-2 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-100 flex items-center gap-2 transition"
               >
-                📁 按目录层级上传卷宗目录
+                📁 按目录层级上传项目目录
               </button>
             </div>
 

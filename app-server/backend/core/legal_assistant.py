@@ -207,7 +207,7 @@ async def generate_legal_stage(
         context = retrieval_res.vector_context or ""
     except Exception as ex:
         logger.error(f"RAG 检索失败: {ex}")
-        context = "暂无参考法规/卷宗文本"
+        context = "暂无参考法规/项目文本"
 
     # 如果有先前步骤的分析，追加作为大模型的参考背景
     if context_history:
@@ -279,9 +279,9 @@ async def generate_legal_stage(
     yield f"🧠 *[{name_supervisor}] 正在分流并编排当前起草任务...*\n\n"
     await asyncio.sleep(0.8)  # 模拟分配思考
 
-    # Step 2: 法律分析专家起草首稿
-    set_agent_active("legal", f"⚖️ 正在撰写: {stage_id} ({name_legal})", project_name, duration=35)
-    yield f"⚖️ *[{name_legal}] 正在结合卷宗事实进行起草与推理...*\n\n"
+    # Step 2: 行业分析专家起草首稿
+    set_agent_active("legal", f"📝 正在撰写: {stage_id} ({name_legal})", project_name, duration=35)
+    yield f"📝 *[{name_legal}] 正在结合项目事实进行起草与推理...*\n\n"
 
     first_draft_chunks = []
     async for token in stream_ollama(

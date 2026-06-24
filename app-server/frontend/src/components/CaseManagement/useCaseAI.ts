@@ -69,7 +69,7 @@ export default function useCaseAI(projectId: string) {
   };
 
   const generateOverview = async (onComplete: (text: string) => void) => {
-    const prompt = `你是一个资深诉讼律师，请仔细阅读我已勾选的本案全部卷宗和证据材料。请提炼并自动生成一份精炼且切中要害的“案件概览”，涵盖：当事人基本情况、案由核心、主要事实争议及涉案金额。字数控制在 250 字左右，输出必须是纯文本，不要带有 Markdown 标记，符合专业起诉状或卷宗摘要的语言规范。`;
+    const prompt = `你是一个资深分析专家，请仔细阅读我已勾选的项目全部材料和文档。请提炼并自动生成一份精炼且切中要害的“项目概览”，涵盖：项目参与方、项目核心内容、主要推进障碍及关键财务数据。字数控制在 250 字左右，输出必须是纯文本，不要带有 Markdown 标记，符合专业项目摘要的语言规范。`;
     let overviewText = '';
     await runTool(prompt, (current) => {
       // 剥离 markdown

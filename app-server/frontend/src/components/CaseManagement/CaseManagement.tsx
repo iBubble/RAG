@@ -68,7 +68,7 @@ export default function CaseManagement({ projectId, canWrite = true }: { project
 
   const handleRunTool = (tool: AITool) => {
     if (checkedFileIds.length === 0) {
-      alert('请先在左侧树状卷宗中勾选供 AI 参考的文件！');
+      alert('请先在左侧树状目录中勾选供 AI 参考的文件！');
       return;
     }
     setSelectedTool(tool);
