@@ -1,5 +1,12 @@
 # 工作状态记录
 
+## 📅 2026-06-25 03:38
+### ✅ Done
+- **Logo及Favicon更新**：使用指定的 `RAGlogo.png` 图片物理替换了项目中所有的 `logo.png` 和 `favicon.png`，并完成了前端生产环境构建，保证登录页、主页等全部成功生效。
+- **Git仓库初始化与首次推送**：在项目根目录成功初始化 Git，进行了首次提交，并顺利推送到远程仓库 `https://github.com/iBubble/RAG.git` (main 分支)。
+### ⏳ To-Do
+- 后续在容器中运行并联合调试，验证基于新 Logo 部署后的页面表现。
+
 ## 📅 2026-06-25 03:33
 ### ✅ Done
 - **静态HTML标题去法律化**：将 `index.html` 及 `dist/index.html` 中的网页 `<title>` 由“貔貅法律知识库”更新为“力诺通用知识库RAG”。
@@ -14,11 +21,3 @@
 - **Walkthrough文档更新**：更新了 `walkthrough.md` 里的 Logo 图片路径与说明文案。
 ### ⏳ To-Do
 - 联调并测试各业务页面，在浏览器中最终检查徽标外观、登录页排版对齐效果。
-
-## 📅 2026-06-25 03:26
-### ✅ Done
-- **系统全面去法律化与通用 RAG 重构**：修改 `eino_graph.go`, `admin.py`, `projects.py`, `legal_prompts.py` 和 `legal_assistant.py`，将特化司法提示词与技能流变更为通用的企业管理与可行性评估流，更新系统及 Agent 默认命名（如“小诺 Linuo”）。
-- **前端工作台文案与子 Tab 重塑**：更新 `App.tsx`, `projectStore.ts`, `AgentChat.tsx`, `FileUploader.tsx`, `Linvis.tsx` 中的展示文案与图标，从“案件/法律”转换为“项目/知识库”。
-- **LOGO与视觉品牌资产更新**：通过 AI 生成符合科技美学的玻璃态 Logo，物理覆盖替换了 `logo.png` 与 `favicon.png`，更新 `README.md` 与 `CHANGELOG.md` 信息。
-### ⏳ To-Do
-- 联调并测试多 Agent 协同流程在通用咨询任务下的输出稳定性。
