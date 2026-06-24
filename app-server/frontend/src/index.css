@@ -1,0 +1,1023 @@
+@import "tailwindcss";
+@variant dark (&:where(.dark, [data-mode="dark"], [data-mode="dark"] *));
+@plugin "@tailwindcss/typography";
+
+/* ═══════════════════════════════════════════════════════════════
+   全站多主题与深浅色色彩变量声明 (NotebookLM 风格)
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  /* ── 浅色色彩方案 (类似于图一) ── */
+  --canvas-bg: #FAF9F6;
+  --panel-bg: #FFFFFF;
+  --outline-bg: #F3F1EC;
+  --border-soft: #E2DFD7;
+  --text-main: #1C1A18;
+  --text-muted: #73706A;
+  
+  /* 品牌前景色与强调色 (采用 NotebookLM 经典的深墨黑按钮/强调色) */
+  --primary-brand: #1E1F24;
+  --primary-brand-hover: #37383F;
+  --primary-brand-soft: #E5E7EB;
+  --primary-brand-border: #D1D5DB;
+
+  /* 各种淡彩模块/卡片背景色 */
+  --card-pink-bg: #FFF1F2;
+  --card-pink-text: #9F1239;
+  --card-pink-border: #FECDD3;
+
+  --card-yellow-bg: #FFFBEB;
+  --card-yellow-text: #92400E;
+  --card-yellow-border: #FEF3C7;
+
+  --card-blue-bg: #F0F9FF;
+  --card-blue-text: #075985;
+  --card-blue-border: #BAE6FD;
+
+  --card-purple-bg: #FAF5FF;
+  --card-purple-text: #6B21A8;
+  --card-purple-border: #E9D5FF;
+
+  --card-green-bg: #F0FDF4;
+  --card-green-text: #166534;
+  --card-green-border: #BBF7D0;
+}
+
+[data-mode="dark"] {
+  /* ── 深色色彩方案 (类似于图二) ── */
+  --canvas-bg: #121316;
+  --panel-bg: #1E2025;
+  --outline-bg: #282A31;
+  --border-soft: #2E313A;
+  --text-main: #F3F4F6;
+  --text-muted: #9CA3AF;
+  
+  /* 品牌前景色与强调色 (在深色下用干净亮白色/灰) */
+  --primary-brand: #F3F4F6;
+  --primary-brand-hover: #E5E7EB;
+  --primary-brand-soft: #374151;
+  --primary-brand-border: #4B5563;
+
+  /* 各种深彩模块/卡片背景色 (图二暗色糖果色) */
+  --card-pink-bg: #351C1F;
+  --card-pink-text: #FCA5A5;
+  --card-pink-border: #7F1D1D;
+
+  --card-yellow-bg: #352814;
+  --card-yellow-text: #FDE047;
+  --card-yellow-border: #78350F;
+
+  --card-blue-bg: #112338;
+  --card-blue-text: #93C5FD;
+  --card-blue-border: #1E3A8A;
+
+  --card-purple-bg: #231633;
+  --card-purple-text: #D8B4FE;
+  --card-purple-border: #581C87;
+
+  --card-green-bg: #12281A;
+  --card-green-text: #86EFAC;
+  --card-green-border: #14532D;
+}
+
+@theme {
+  --color-canvas-bg: var(--canvas-bg);
+  --color-panel-bg: var(--panel-bg);
+  --color-outline-bg: var(--outline-bg);
+  --color-border-soft: var(--border-soft);
+  --color-text-main: var(--text-main);
+  --color-text-muted: var(--text-muted);
+  --color-primary-brand: var(--primary-brand);
+  --color-primary-brand-hover: var(--primary-brand-hover);
+  --color-primary-brand-soft: var(--primary-brand-soft);
+  --color-primary-brand-border: var(--primary-brand-border);
+
+  /* 声明多彩卡片工具色 */
+  --color-card-pink-bg: var(--card-pink-bg);
+  --color-card-pink-text: var(--card-pink-text);
+  --color-card-pink-border: var(--card-pink-border);
+
+  --color-card-yellow-bg: var(--card-yellow-bg);
+  --color-card-yellow-text: var(--card-yellow-text);
+  --color-card-yellow-border: var(--card-yellow-border);
+
+  --color-card-blue-bg: var(--card-blue-bg);
+  --color-card-blue-text: var(--card-blue-text);
+  --color-card-blue-border: var(--card-blue-border);
+
+  --color-card-purple-bg: var(--card-purple-bg);
+  --color-card-purple-text: var(--card-purple-text);
+  --color-card-purple-border: var(--card-purple-border);
+
+  --color-card-green-bg: var(--card-green-bg);
+  --color-card-green-text: var(--card-green-text);
+  --color-card-green-border: var(--card-green-border);
+}
+
+body {
+  @apply bg-canvas-bg min-h-screen font-sans antialiased text-text-main text-sm;
+  font-family: "Google Sans", "Noto Sans SC", Inter, system-ui, -apple-system, sans-serif;
+  color: var(--text-main);
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Tiptap Placeholder specific styles */
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: #adb5bd;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* WHY: Toast 通知弹出动画 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* WHY: 导出确认弹窗背景淡入 */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* WHY: 导出确认弹窗内容缩放弹入 */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Tiptap 表格全局样式覆写
+   WHY: Tiptap Table 扩展默认无任何视觉样式，
+        需要通过 CSS 注入实现专业级表格渲染效果。
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 表格外层容器 */
+.ProseMirror table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  margin: 16px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+  border: 1px solid #E5E7EB;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 表头行 */
+.ProseMirror table th {
+  background: linear-gradient(135deg, #4B5563 0%, #374151 100%);
+  color: #FFFFFF;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  padding: 10px 14px;
+  border: none;
+  border-bottom: 2px solid #6B7280;
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* 表头首列左上圆角 */
+.ProseMirror table th:first-child {
+  border-top-left-radius: 7px;
+}
+
+/* 表头末列右上圆角 */
+.ProseMirror table th:last-child {
+  border-top-right-radius: 7px;
+}
+
+/* 数据单元格 */
+.ProseMirror table td {
+  padding: 9px 14px;
+  border: none;
+  border-bottom: 1px solid #F3F4F6;
+  border-right: 1px solid #F3F4F6;
+  color: #374151;
+  font-size: 13px;
+  transition: background-color 0.15s ease;
+}
+
+/* 去掉最右列的右边框 */
+.ProseMirror table td:last-child {
+  border-right: none;
+}
+
+/* 去掉最后一行的底边框 */
+.ProseMirror table tr:last-child td {
+  border-bottom: none;
+}
+
+/* 斑马纹：奇数行微灰 */
+.ProseMirror table tbody tr:nth-child(odd) td {
+  background-color: #F9FAFB;
+}
+
+/* 斑马纹：偶数行纯白 */
+.ProseMirror table tbody tr:nth-child(even) td {
+  background-color: #FFFFFF;
+}
+
+/* 行悬停高亮 */
+.ProseMirror table tbody tr:hover td {
+  background-color: #EEF2FF;
+}
+
+/* 选中单元格（Tiptap 选中态） */
+.ProseMirror table .selectedCell {
+  background-color: #DBEAFE !important;
+  border-color: #93C5FD !important;
+}
+
+/* 表格 resize 手柄美化 */
+.ProseMirror .column-resize-handle {
+  background-color: #818CF8;
+  width: 2px;
+  pointer-events: none;
+}
+
+/* 表格外的 resize 光标 */
+.ProseMirror.resize-cursor {
+  cursor: col-resize;
+}
+
+/* 最后一行左下/右下圆角 */
+.ProseMirror table tr:last-child td:first-child {
+  border-bottom-left-radius: 7px;
+}
+.ProseMirror table tr:last-child td:last-child {
+  border-bottom-right-radius: 7px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   图件占位标记高亮样式
+   WHY: [插入图件：...] 标记需要醒目的视觉区分，
+        提示用户此处需要手工插入图件。
+   ═══════════════════════════════════════════════════════════════ */
+.ProseMirror p {
+  /* 不影响默认段落，仅用作选择器锚点 */
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   KaTeX 数学公式渲染样式
+   WHY: LLM 输出的 LaTeX 公式需要在编辑器中有清晰的视觉呈现。
+        块级公式居中显示带浅色背景，行内公式自然嵌入文本流。
+   ═══════════════════════════════════════════════════════════════ */
+
+.katex-block {
+  display: block;
+  text-align: center;
+  padding: 12px 16px;
+  margin: 12px 0;
+  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.katex-inline {
+  display: inline;
+  padding: 0 2px;
+}
+
+.katex-error {
+  color: #DC2626;
+  background: #FEF2F2;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+/* WHY: KaTeX 默认字体大小偏大，微调到与正文匹配 */
+.katex-block .katex {
+  font-size: 1.1em;
+}
+
+.katex-inline .katex {
+  font-size: 1em;
+}
+/* ═══════════════════════════════════════════════════════════════
+   Mermaid 图表编辑器样式
+   WHY: 为流程图提供专业的可视化编辑体验——
+        包括预览渲染、代码编辑和可视化节点编辑三种模式。
+   ═══════════════════════════════════════════════════════════════ */
+
+.mermaid-node-wrapper {
+  margin: 12px 0;
+}
+
+.mermaid-block {
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #FAFBFC;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+/* ── 工具栏 ── */
+.mermaid-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
+  gap: 8px;
+}
+
+.mermaid-toolbar-left,
+.mermaid-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mermaid-badge {
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  margin-right: 4px;
+}
+
+.mermaid-mode-btn {
+  padding: 3px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mermaid-mode-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+}
+
+.mermaid-mode-btn.active {
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.5);
+  font-weight: 600;
+}
+
+.mermaid-action-btn {
+  padding: 3px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mermaid-action-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.mermaid-action-btn.add {
+  background: rgba(72, 187, 120, 0.3);
+  border-color: rgba(72, 187, 120, 0.6);
+}
+
+.mermaid-direction-select {
+  padding: 3px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mermaid-direction-select option {
+  color: #333;
+  background: white;
+}
+
+/* ── SVG 渲染区 ── */
+.mermaid-svg-container {
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+  min-height: 120px;
+}
+
+.mermaid-svg-container svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-svg-container.preview-only {
+  cursor: pointer;
+}
+
+/* ── 可视化编辑器 ── */
+.mermaid-visual-editor {
+  display: flex;
+  gap: 0;
+}
+
+.mermaid-visual-editor .mermaid-svg-container {
+  flex: 1;
+  min-width: 0;
+  border-right: 1px solid #E2E8F0;
+}
+
+/* ── 节点编辑面板 ── */
+.mermaid-node-panel {
+  width: 220px;
+  flex-shrink: 0;
+  padding: 8px;
+  background: #F8FAFC;
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.mermaid-node-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748B;
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mermaid-node-item {
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  background: white;
+  transition: all 0.15s;
+}
+
+.mermaid-node-item:hover {
+  border-color: #667EEA;
+  box-shadow: 0 1px 3px rgba(102, 126, 234, 0.15);
+}
+
+.mermaid-node-item.editing {
+  border-color: #667EEA;
+  background: #F0F4FF;
+}
+
+.mermaid-node-display-row {
+  display: flex;
+  align-items: center;
+  padding: 5px 8px;
+  gap: 6px;
+}
+
+.mermaid-node-id {
+  font-size: 10px;
+  font-weight: 700;
+  color: #667EEA;
+  background: #EEF2FF;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.mermaid-node-label {
+  flex: 1;
+  font-size: 12px;
+  color: #334155;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mermaid-node-label:hover {
+  background: #EEF2FF;
+}
+
+.mermaid-node-delete {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: #CBD5E1;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.mermaid-node-delete:hover {
+  color: #EF4444;
+  background: #FEE2E2;
+}
+
+.mermaid-node-edit-row {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px;
+  gap: 4px;
+}
+
+.mermaid-node-edit-row input {
+  flex: 1;
+  border: 1px solid #667EEA;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 12px;
+  outline: none;
+  background: white;
+}
+
+.mermaid-node-save {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: #667EEA;
+  color: white;
+  font-size: 13px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mermaid-node-save:hover {
+  background: #5A67D8;
+}
+
+/* ── 代码编辑器 ── */
+.mermaid-code-editor {
+  padding: 8px;
+}
+
+.mermaid-code-editor textarea {
+  width: 100%;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  padding: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #334155;
+  background: #F8FAFC;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.mermaid-code-editor textarea:focus {
+  border-color: #667EEA;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.12);
+}
+
+/* ── 错误提示 ── */
+.mermaid-error {
+  padding: 12px 16px;
+  background: #FEF2F2;
+  color: #DC2626;
+  font-size: 12px;
+}
+
+.mermaid-error pre {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #991B1B;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   AgentChat 对话 Markdown 渲染样式
+   WHY: LLM 输出的 Markdown（标题、粗体、列表等）通过 marked
+        解析为 HTML 后，需要完整的排版样式。
+        使用纯 CSS 而非 Tailwind prose 插件，确保 100% 可靠。
+   ═══════════════════════════════════════════════════════════════ */
+
+.markdown-rendered {
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.markdown-rendered h1,
+.markdown-rendered h2,
+.markdown-rendered h3,
+.markdown-rendered h4 {
+  font-weight: 700;
+  color: #1F2937;
+  margin-top: 16px;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.markdown-rendered h1 { font-size: 18px; }
+.markdown-rendered h2 { font-size: 16px; border-bottom: 1px solid #E5E7EB; padding-bottom: 4px; }
+.markdown-rendered h3 { font-size: 14px; color: #374151; }
+.markdown-rendered h4 { font-size: 13px; color: #4B5563; }
+
+.markdown-rendered p {
+  margin: 8px 0;
+  color: #374151;
+  line-height: 1.8;
+}
+
+.markdown-rendered strong {
+  font-weight: 700;
+  color: #111827;
+}
+
+.markdown-rendered em {
+  font-style: italic;
+  color: #4B5563;
+}
+
+.markdown-rendered ul {
+  list-style-type: disc;
+  padding-left: 24px;
+  margin: 8px 0;
+}
+
+.markdown-rendered ol {
+  list-style-type: decimal;
+  padding-left: 24px;
+  margin: 8px 0;
+}
+
+.markdown-rendered li {
+  margin: 4px 0;
+  color: #374151;
+  line-height: 1.7;
+}
+
+.markdown-rendered li > ul,
+.markdown-rendered li > ol {
+  margin: 2px 0;
+}
+
+.markdown-rendered blockquote {
+  border-left: 3px solid #818CF8;
+  background: #F0F4FF;
+  padding: 8px 14px;
+  margin: 10px 0;
+  border-radius: 0 6px 6px 0;
+  color: #4B5563;
+}
+
+.markdown-rendered code {
+  background: #EEF2FF;
+  color: #4338CA;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.9em;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+}
+
+.markdown-rendered pre {
+  background: #1F2937;
+  color: #E5E7EB;
+  padding: 12px 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.markdown-rendered pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+.markdown-rendered hr {
+  border: none;
+  border-top: 1px solid #E5E7EB;
+  margin: 14px 0;
+}
+
+.markdown-rendered a {
+  color: #4F46E5;
+  text-decoration: none;
+}
+
+.markdown-rendered a:hover {
+  text-decoration: underline;
+}
+
+.markdown-rendered table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.markdown-rendered th,
+.markdown-rendered td {
+  border: 1px solid #E5E7EB;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.markdown-rendered th {
+  background: #F3F4F6;
+  font-weight: 600;
+  color: #374151;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   全站多主题非侵入式老类名代理与深色适配
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 品牌主题色全局代理 ── */
+.text-\[\#8B7355\], .text-blue-600 {
+  color: var(--primary-brand) !important;
+}
+.bg-\[\#8B7355\], .bg-blue-600 {
+  background-color: var(--primary-brand) !important;
+}
+.border-\[\#8B7355\], .border-blue-600 {
+  border-color: var(--primary-brand) !important;
+}
+.hover\:bg-blue-700:hover {
+  background-color: var(--primary-brand-hover) !important;
+}
+.hover\:text-blue-600:hover {
+  color: var(--primary-brand-hover) !important;
+}
+
+/* ── 深色模式下的非侵入式样式重写机制 ── */
+[data-mode="dark"] {
+  /* 基础面板与侧边栏 */
+  .bg-white, 
+  aside, 
+  main,
+  header {
+    background-color: var(--panel-bg) !important;
+    color: var(--text-main);
+  }
+  
+  /* 主品牌背景按钮在深色模式下文字与图标变为深色 */
+  button.bg-\[\#8B7355\],
+  button.bg-blue-600 {
+    color: var(--canvas-bg) !important;
+  }
+  
+  /* 页面画布大背景 */
+  .bg-\[\#F0EDE8\], .bg-slate-50, .bg-gray-50 {
+    background-color: var(--canvas-bg) !important;
+  }
+  
+  /* 二级/辅色背景 */
+  .bg-gray-100,
+  .bg-gradient-to-b.from-\[\#FAF8F5\].to-\[\#F5F1EC\],
+  .bg-gradient-to-r.from-blue-50.to-white,
+  .bg-white\/80,
+  .bg-gray-50\/50,
+  .bg-gray-50\/80 {
+    background-color: var(--outline-bg) !important;
+    background-image: none !important;
+  }
+
+  /* 激活状态侧边栏/高亮适配 */
+  .bg-indigo-50,
+  .bg-indigo-50\/40,
+  .bg-blue-50,
+  .bg-blue-100 {
+    background-color: var(--primary-brand-soft) !important;
+    color: var(--text-main) !important;
+  }
+  .text-indigo-700,
+  .text-indigo-600,
+  .text-blue-700,
+  .text-blue-800 {
+    color: var(--text-main) !important;
+  }
+
+  /* 弹出对话框的遮罩与内容 */
+  .bg-black\/40 {
+    background-color: rgba(0, 0, 0, 0.6) !important;
+  }
+
+  /* 基础边框适配 */
+  .border-gray-200,
+  .border-stone-200,
+  .border-gray-300,
+  .border-\[\#E0DCD5\],
+  .border-\#E0DCD5,
+  .border-\[\#E8E2D9\],
+  .border-b-2.border-\[\#8B7355\],
+  .border-\[\#E0DCD5\]\/60 {
+    border-color: var(--border-soft) !important;
+  }
+
+  /* 基础文本颜色适配 */
+  .text-gray-700,
+  .text-gray-800,
+  .text-gray-900,
+  .text-stone-800,
+  .text-slate-800,
+  .text-slate-900 {
+    color: var(--text-main) !important;
+  }
+
+  .text-gray-500,
+  .text-gray-600,
+  .text-gray-400,
+  .text-stone-500,
+  .text-slate-500 {
+    color: var(--text-muted) !important;
+  }
+
+  /* 气泡、高亮等专属适配 */
+  .text-\[\#6B5A3E\] { color: var(--text-main) !important; }
+  .text-\[\#9C8E7C\] { color: var(--text-muted) !important; }
+  .bg-\[\#8B7355\]\/10 { background-color: var(--primary-brand-soft) !important; }
+  .border-\[\#8B7355\]\/30 { border-color: var(--primary-brand-border) !important; }
+  .bg-\[\#D6CCF9\] { background-color: var(--card-purple-bg) !important; color: var(--card-purple-text) !important; }
+
+  /* 按钮与卡片悬停态 */
+  .hover\:bg-gray-50:hover,
+  .hover\:bg-stone-50:hover {
+    background-color: var(--outline-bg) !important;
+  }
+  .hover\:bg-white\/50:hover {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+  }
+  
+  /* 输入框与表单 */
+  input, textarea, select {
+    background-color: var(--outline-bg) !important;
+    border-color: var(--border-soft) !important;
+    color: var(--text-main) !important;
+  }
+  
+  /* Markdown 渲染样式覆盖 */
+  .markdown-rendered p,
+  .markdown-rendered li,
+  .markdown-rendered h1,
+  .markdown-rendered h2,
+  .markdown-rendered h3,
+  .markdown-rendered h4 {
+    color: var(--text-main) !important;
+  }
+  .markdown-rendered code {
+    background-color: var(--outline-bg) !important;
+    color: var(--primary-brand) !important;
+  }
+  .markdown-rendered pre {
+    background-color: #0d1117 !important;
+    border: 1px solid var(--border-soft);
+  }
+
+  /* 强制在深色模式下将内联设置了深色（黑、深蓝、深灰、中蓝）的元素漂白 */
+  [style*="color: #002060"],
+  [style*="color:#002060"],
+  [style*="color: rgb(0, 32, 96)"],
+  [style*="color:rgb(0, 32, 96)"],
+  [style*="color: rgb(0,32,96)"],
+  [style*="color: #1f497d"],
+  [style*="color:#1f497d"],
+  [style*="color: #1F497D"],
+  [style*="color:#1F497D"],
+  [style*="color: rgb(31, 73, 125)"],
+  [style*="color:rgb(31, 73, 125)"],
+  [style*="color: rgb(31,73,125)"],
+  [style*="color: #000080"],
+  [style*="color:#000080"],
+  [style*="color: rgb(0, 0, 128)"],
+  [style*="color:rgb(0,0,128)"],
+  [style*="color: rgb(0, 0, 128)"],
+  [style*="color: #0000ff"],
+  [style*="color:#0000ff"],
+  [style*="color: #0000FF"],
+  [style*="color:#0000FF"],
+  [style*="color: rgb(0, 0, 255)"],
+  [style*="color:rgb(0,0,255)"],
+  [style*="color: rgb(0, 0, 255)"],
+  [style*="color: #2e74b5"],
+  [style*="color:#2e74b5"],
+  [style*="color: #2E74B5"],
+  [style*="color:#2E74B5"],
+  [style*="color: rgb(46, 116, 181)"],
+  [style*="color:rgb(46,116,181)"],
+  [style*="color: rgb(46, 116, 181)"],
+  [style*="color: #0000c0"],
+  [style*="color:#0000c0"],
+  [style*="color: rgb(0, 0, 192)"],
+  [style*="color:rgb(0,0,192)"],
+  [style*="color: #000000"],
+  [style*="color:#000000"],
+  [style*="color: rgb(0, 0, 0)"],
+  [style*="color:rgb(0,0,0)"],
+  [style*="color: #333333"],
+  [style*="color:#333333"],
+  [style*="color: #666666"],
+  [style*="color:#666666"],
+  [style*="color: #666"],
+  [style*="color:#666"],
+  [style*="color: #7f7f7f"],
+  [style*="color:#7f7f7f"],
+  [style*="color: #7F7F7F"],
+  [style*="color:#7F7F7F"],
+  [style*="color: rgb(102, 102, 102)"],
+  [style*="color:rgb(102, 102, 102)"],
+  [style*="color: rgb(102,102,102)"],
+  [style*="color: rgb(127, 127, 127)"],
+  [style*="color:rgb(127,127,127)"],
+  [style*="color: rgb(127,127,127)"],
+  [style*="color: rgb(128, 128, 128)"],
+  [style*="color:rgb(128,128,128)"],
+  [style*="color: rgb(128,128,128)"] {
+    color: var(--text-main) !important;
+  }
+
+  /* 适配大纲画布中的 Tailwind prose 样式，避免粗体、标题等元素在深色模式下由于继承默认深色而看不清 */
+  .prose strong,
+  .prose-sm strong,
+  .prose-base strong {
+    color: var(--text-main) !important;
+  }
+  .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6,
+  .prose-sm h1, .prose-sm h2, .prose-sm h3, .prose-sm h4,
+  .prose-base h1, .prose-base h2, .prose-base h3, .prose-base h4 {
+    color: var(--text-main) !important;
+  }
+  .prose p, .prose li,
+  .prose-sm p, .prose-sm li,
+  .prose-base p, .prose-base li {
+    color: var(--text-muted) !important;
+  }
+  .prose ul li::marker, .prose ol li::marker,
+  .prose-sm ul li::marker, .prose-sm ol li::marker,
+  .prose-base ul li::marker, .prose-base ol li::marker {
+    color: var(--text-muted) !important;
+  }
+  .prose blockquote, .prose-sm blockquote, .prose-base blockquote {
+    color: var(--text-muted) !important;
+    border-left-color: var(--border-soft) !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   多彩卡片工具类名 (NotebookLM 风格)
+   ═══════════════════════════════════════════════════════════════ */
+.card-pink {
+  background-color: var(--card-pink-bg) !important;
+  color: var(--card-pink-text) !important;
+  border-color: var(--card-pink-border) !important;
+  border-width: 1px;
+}
+.card-yellow {
+  background-color: var(--card-yellow-bg) !important;
+  color: var(--card-yellow-text) !important;
+  border-color: var(--card-yellow-border) !important;
+  border-width: 1px;
+}
+.card-blue {
+  background-color: var(--card-blue-bg) !important;
+  color: var(--card-blue-text) !important;
+  border-color: var(--card-blue-border) !important;
+  border-width: 1px;
+}
+.card-purple {
+  background-color: var(--card-purple-bg) !important;
+  color: var(--card-purple-text) !important;
+  border-color: var(--card-purple-border) !important;
+  border-width: 1px;
+}
+.card-green {
+  background-color: var(--card-green-bg) !important;
+  color: var(--card-green-text) !important;
+  border-color: var(--card-green-border) !important;
+  border-width: 1px;
+}

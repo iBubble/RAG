@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "K/ZuXZE6R9g=",
+  "success": true,
+  "projectFilePath": "/app/backend/docx_builder/KimiDocx.csproj",
+  "expectedPackageFiles": [
+    "/root/.nuget/packages/documentformat.openxml/3.0.2/documentformat.openxml.3.0.2.nupkg.sha512",
+    "/root/.nuget/packages/documentformat.openxml.framework/3.0.2/documentformat.openxml.framework.3.0.2.nupkg.sha512",
+    "/root/.nuget/packages/system.io.packaging/8.0.0/system.io.packaging.8.0.0.nupkg.sha512"
+  ],
+  "logs": []
+}

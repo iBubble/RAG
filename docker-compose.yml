@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  genrag-server:
+    image: rag-rag-server:latest
+    container_name: GenRAG-Server
+    restart: always
+    ports:
+      - "2028:2028" # 前端 (新端口)
+      - "8003:8003" # 后端对外 (原 8001)
+      - "2223:22" # 备用 SSH (原 2222)
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - REDIS_URL=redis://:Sy2026@sy@genrag-redis:6379/0
+      # 第一阶段：保留挂载映射到旧的 ChromaDB
+      - CHROMA_DB_PATH=/app/vector_db
+      - NO_PROXY=localhost,127.0.0.1,genrag-redis,genrag-database,genrag-graphdb,host.docker.internal
+      # 宿主机 M4 Max 真实统一内存总量
+      - HOST_MEMORY_GB=48
+    volumes:
+      - ./app-server:/app
+      - /app/frontend/node_modules
+      - /app/backend/docx_builder/bin
+      - /app/backend/docx_builder/obj
+      # 将本地 macData/GenRAG_Files 路径挂载，与 LawRAG 隔离
+      - /Volumes/macData/GenRAG_Files:/Volumes/SYRAID/RAG_Files
+      # SSH 公钥持久化
+      - ./persistent/ssh/authorized_keys:/root/.ssh/authorized_keys
+      # Antigravity Remote Server 持久化
+      - ./persistent/antigravity-server:/root/.antigravity-server
+      - ./data/chromadb_backup:/app/vector_db
+      # 挂载宿主机 SSH 私钥和 config
+      - /Users/gemini/.ssh/id_rsa:/root/.ssh/id_rsa:ro
+      - /Users/gemini/.ssh/config:/root/.ssh/config:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  genrag-redis:
+    image: redis:alpine
+    container_name: GenRAG-Redis
+    command: redis-server --requirepass "Sy2026@sy"
+    restart: always
+    ports:
+      - "6381:6379" # 映射端口 (原 6380)
+    volumes:
+      - ./data/redis:/data
+
+  genrag-database:
+    image: qdrant/qdrant:latest
+    container_name: GenRAG-Database
+    restart: always
+    ports:
+      - "6335:6333" # 映射端口 (原 6333)
+      - "6336:6334" # 映射端口 (原 6334)
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+
+  genrag-graphdb:
+    image: neo4j:5.18.0
+    container_name: GenRAG-GraphDB
+    restart: always
+    environment:
+      - NEO4J_AUTH=neo4j/neo4j@5fbe78b0
+      - NEO4J_server_memory_pagecache_size=1G
+      - NEO4J_server_memory_heap_initial__size=1G
+      - NEO4J_server_memory_heap_max__size=2G
+    ports:
+      - "7475:7474" # 映射端口 (原 7474)
+      - "7688:7687" # 映射端口 (原 7687)
+    volumes:
+      - ./data/neo4j_data:/data
+
+  genrag-nats:
+    image: nats:2.10-alpine
+    container_name: GenRAG-NATS
+    restart: always
+    ports:
+      - "4223:4222" # 映射端口 (原 4222)
+      - "8223:8222" # 映射端口 (原 8222)

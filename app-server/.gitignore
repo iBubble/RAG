@@ -1,0 +1,26 @@
+# IDE & OS
+.DS_Store
+.vscode/
+.idea/
+
+# Backend (Python)
+backend/.env
+backend/__pycache__/
+backend/.venv/
+backend/venv/
+backend/*.pyc
+backend/.pytest_cache/
+backend/chroma_db/
+backend/data/
+
+# Frontend (Node.js)
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.*.local
+
+# Logs and Misc
+*.log
+tmp/
+debug/
+/docs/

@@ -1,0 +1,13 @@
+FROM /Users/gemini/Downloads/Qwen3.6-35B-A3B-Q8_0.gguf
+
+# [修复 Bug] 强制增设停止符。
+# 这是用来解决之前长文生成时模型意外抛掉下文的截断截流症状。
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|endoftext|>"
+
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>{{ end }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+<|im_start|>assistant
+"""

@@ -1,0 +1,43 @@
+# WHY: 排除不需要进入镜像的大目录和文件，加速 docker build 上下文传输。
+#      vector_db/data/knowledge_base 等持久化数据通过 volume 挂载，不应烘焙到镜像中。
+
+# 持久化数据（通过 volume 挂载）
+vector_db/
+data/
+knowledge_base/
+
+# 开发调试文件
+debug/
+Records/
+docs/
+logo/
+.git/
+.gitignore
+.DS_Store
+*.md
+!README.md
+
+# Node 依赖（镜像内重新 npm install）
+frontend/node_modules/
+frontend/dist/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# IDE / 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 临时文件
+*.tar.gz
+*.zip
+roundhouse.dwg
+patch_title_fix.py
+
+# Agents config (Antigravity)
+.agents/

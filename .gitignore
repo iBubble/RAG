@@ -1,0 +1,60 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 数据目录（数据库持久化数据）
+data/
+persistent/
+
+# 模型文件（体积过大，不适合Git管理）
+**/models/
+*.bin
+*.onnx
+*.safetensors
+
+# 二进制文件
+frpc
+frpc.toml
+app-server/nexus-gateway/nexus-gateway
+
+# 日志文件
+*.log
+frpc.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 环境配置（敏感信息）
+.env
+.env.local
+.env.*.local
+
+# Docker 运行时数据
+docker-data/
+
+# Antigravity / Gemini
+.gemini/
+
+# 备份文件
+*.tar.gz

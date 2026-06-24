@@ -1,0 +1,12 @@
+FROM /Users/gemini/Downloads/Qwen3.6-35B-A3B-Q4_K_M.gguf
+
+# [修复 Bug] 强制增设停止符。
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|endoftext|>"
+
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>{{ end }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+<|im_start|>assistant
+"""
