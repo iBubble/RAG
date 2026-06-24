@@ -122,7 +122,7 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(
     title="ShengyaoRAG Backend",
-    version="0.9.2",
+    version="1.0.0",
     lifespan=lifespan,
 )
 

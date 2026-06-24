@@ -1,7 +1,7 @@
 # 力诺通用知识库 RAG (LinuoRAG)
 
-[![GitHub Repo](https://img.shields.io/badge/GitHub-scsygczx/RAG-181717?logo=github)](https://github.com/scsygczx/RAG)
-![Version](https://img.shields.io/badge/Version-0.9.2-blue)
+[![GitHub Repo](https://img.shields.io/badge/GitHub-iBubble/RAG-181717?logo=github)](https://github.com/iBubble/RAG)
+![Version](https://img.shields.io/badge/Version-1.0.0-blue)
 ![Go](https://img.shields.io/badge/Go-1.18+-00ADD8?logo=go&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128+-009688?logo=fastapi&logoColor=white)

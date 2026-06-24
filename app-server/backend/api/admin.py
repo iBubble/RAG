@@ -386,7 +386,7 @@ def _read_system_settings() -> dict:
         
         # 兜底默认返回值字典
         def_val = {
-            "system_name": "力诺通用知识库 RAG V3.3.2", 
+            "system_name": "力诺通用知识库 V1.0.0", 
             "heartbeat_enabled": True, 
             "system_run_mode": "full", 
             "funny_level": "low",
@@ -469,7 +469,7 @@ def _read_system_settings() -> dict:
             return def_val
         except NameError:
             return {
-                "system_name": "力诺通用知识库 RAG V3.3.2", 
+                "system_name": "力诺通用知识库 V1.0.0", 
                 "heartbeat_enabled": True, 
                 "system_run_mode": "full", 
                 "funny_level": "low",
@@ -691,7 +691,7 @@ async def get_public_settings():
     """公开接口：获取系统名称以及所有 Agent 配置（前台交互与登录页展示使用）。"""
     s = _read_system_settings()
     res = {
-        "system_name": s.get("system_name", "力诺通用知识库 RAG V3.3.2"),
+        "system_name": s.get("system_name", "力诺通用知识库 V1.0.0"),
     }
     for k, v in s.items():
         if k.startswith("agent_") or k.startswith("collab_"):
