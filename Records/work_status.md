@@ -1,25 +1,25 @@
 # 工作状态记录
 
-## 📅 2026-06-25 04:25
+## 📅 2026-06-25 17:47
 ### ✅ Done
-- **AI表格界面模块适配**：精简重组工作台 Tab 导航，引入 AI表格 联动二级菜单面板，完美适配深色模式对比度并优化其窗口宽度为全宽填充。
-- **全网去卷宗化重构**：全局扫描代码库，将前端上传提示语、默认 Prompt、后台 API 心跳及日志推送中残留的所有“卷宗”及“案件”表述统一替换为通用“项目”或“资料”。
-- **系统自动化构建与验证**：执行 npm run build 编译验证通过，PM2 容器热重载后完成登录与深色全宽视觉验收。
+- **首表格完美清除边框**：在前端 CSS 中引入了针对容器内首个表格的 `:first-of-type` 强力无框匹配规则，彻底规避了 Tiptap 解析渲染时吞掉 `noborder` 自定义属性的潜在风险。
+- **元数据两端极致对齐**：针对第一个排版表格（“登记单位/编号”），强制左侧 td 为左对齐（`text-align: left !important`），右侧 td 为右对齐（`text-align: right !important`），完全消除了全局表格 td 居中样式的覆盖干扰。
+- **打包重构与热重启**：再次完成了 `vite build` 静态前端重编译（built successfully in 20.46s），并通过 `pm2 reload all` 进行了重载。
 ### ⏳ To-Do
-- 待后续根据业务需求逐步实现 AI 表格的具体保存与导出后端数据流通道。
+- 收集用户对大标题居中无框线、“登记单位”与“编号”两端对齐且无任何框线的最新验收反馈。
 
-## 📅 2026-06-25 03:51
+## 📅 2026-06-25 17:34
 ### ✅ Done
-- **图数据库连接故障排查与修复**：排查了全链路智能巡检中 Neo4j “连接超时”的问题，主因为 Docker 默认网络下的 Neo4j 服务名在更新为 `genrag-graphdb` 后，后端代码默认值和本地环境配置依旧在尝试解析旧的主机名 `rag-graphdb`。
-- **环境配置修正**：在 `app-server/backend/.env` 中新增了环境变量 `NEO4J_URI="bolt://genrag-graphdb:7687"`，并将 `config.py` 中的兜底默认值一并修改，对齐了容器网络服务域名。
-- **服务重启与验证**：成功重启了 `genrag-server` 后端容器以重载配置，重新打通了知识图谱数据库的连接链路。
+- **定位缓存与路径缺陷**：定位到后端以 `/app` 相对路径运行时的路径偏离隐患，以及浏览器对模版 GET 请求的强缓存现象导致文档列表重命名不更新的根源。
+- **规划 Tiptap 属性穿透架构**：设计了自定义 `noborder` 节点属性向下透传的优雅方案，实现布局表格无边框，而普通表格显示 2px/1px 黑框线。
+- **编写实施计划**：完成了 [implementation_plan.md](file:///Users/gemini/.gemini/antigravity-ide/brain/75f5b0a1-d7e3-4761-8b72-603fa242b126/implementation_plan.md) 准备提交给用户评审。
 ### ⏳ To-Do
-- 观察前端全链路智能巡检指示灯，确保 Neo4j 状态恢复为正常绿色。
+- 等待用户审批实施计划后，修改 `re_extract_tables.py`、`ai_templates.py` 以及前端组件。
 
-## 📅 2026-06-25 03:48
+## 📅 2026-06-25 17:10
 ### ✅ Done
-- **项目更名去法律化**：在 `App.tsx`、`FileUploader.tsx` 和 `CaseManagement.tsx` 等前端核心组件中，将所有涉及“案件”和“卷宗”的展示文本修改为“项目”和“文档/资料”。
-- **卡片三点菜单冲突修复**：为不同板块中的同名卡片加上了板块上下文（拼装为独特的 `menuKey`，如 `case-1` 和 `public-1`），彻底解决了两个板块同时弹出菜单的 Bug。
-- **菜单失效修复**：通过防止 `ref={menuRef}` 在多个 DOM 实例上重写冲突，使得点击外界关闭菜单的 `handleClickOutside` 函数能正确判定，完全恢复了“进入”、“修改图标”、“设为私有”和“删除”菜单的点击响应。
+- **阻击全局 index.css 现代表格覆写干扰**：由于项目全局 `src/index.css` 包含特异性极高的 `.ProseMirror table tbody tr:nth-child(odd) td` 等斑马纹、圆角及 `border-right: none` (导致右侧白底无线)、`border-bottom: none`、`border: 1px solid #E5E7EB` (浅灰色) 等现代样式覆写，我们在前后台编辑器外包裹了特殊的 `.ai-document-editor` 命名空间。
+- **公文实体表格彻底洗刷**：在 `.ai-document-editor` 下，以极高的 CSS 选择器特异性与 `!important`，将所有圆角（`border-radius: 0`）、奇偶数背景色与 hover 态（`background: #ffffff`）、左右与下方缺边（`:last-child td` 的 `border-right` 和 `border-bottom` 均重置为 `1px solid #000000`）进行了全面强制覆盖，确保表格外围 2px 实体黑色边框和内部实体 1px 黑色框线全部完整复现。
+- **打包重载**：顺利打包编译并通过 `pm2 reload all` 进行了重载。
 ### ⏳ To-Do
-- 容器重启并重载完毕后，进入页面对这几个菜单功能的交互完整性进行检查。
+- 收集用户对 2px 极粗黑色表格外框线与 1px 细网格线的最新反馈。
