@@ -11,11 +11,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nats-io/nats.go"
 )
 
 // ChatHandler 处理 /api/chat 的流式生成请求
-func ChatHandler(nc *nats.Conn) gin.HandlerFunc {
+func ChatHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. 读取并克隆请求体原始字节，以防非 smart 模式下后续转发时 Body 为空
 		bodyBytes, err := io.ReadAll(c.Request.Body)

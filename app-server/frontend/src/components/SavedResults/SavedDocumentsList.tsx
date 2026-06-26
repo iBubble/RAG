@@ -129,6 +129,7 @@ export default function SavedDocumentsList() {
 
       setTemplateData(fullDoc.title || '未命名实施方案', fullDoc.sections);
       setCurrentDocId(fullDoc.id);
+      window.dispatchEvent(new CustomEvent('loadSavedTableDocument', { detail: fullDoc }));
     } catch (err) {
       console.error('加载文档失败', err);
       alert('加载文档失败，请重试');
@@ -143,7 +144,7 @@ export default function SavedDocumentsList() {
     if (hasSections) {
       setDocToLoad(doc);
     } else {
-      // WHY: 旧数据无 sections，按需拉取 content 后弹窗预览
+      // WHY: 旧数据无 sections，按需拉取 content 后进行分发或弹窗预览
       try {
         const { getAuthHeaders } = useAuthStore.getState();
         const res = await fetch(`${API_BASE}/api/projects/${projectId || 'default'}/documents/${doc.id}`, {
@@ -151,7 +152,19 @@ export default function SavedDocumentsList() {
         });
         if (!res.ok) throw new Error('获取文档失败');
         const fullDoc = await res.json();
-        setPreviewDoc(fullDoc);
+        
+        let handled = false;
+        const event = new CustomEvent('loadSavedTableDocument', { 
+          detail: { 
+            doc: fullDoc, 
+            onHandled: () => { handled = true; } 
+          } 
+        });
+        window.dispatchEvent(event);
+        
+        if (!handled) {
+          setPreviewDoc(fullDoc);
+        }
       } catch (err) {
         console.error('预览文档失败', err);
         alert('预览文档失败，请重试');

@@ -10,6 +10,7 @@ export default function SystemSettings() {
   const { getAuthHeaders } = useAuthStore();
   const selectedModel = useProjectStore(state => state.selectedModel);
   const setSelectedModel = useProjectStore(state => state.setSelectedModel);
+  const fetchPublicSettings = useProjectStore(state => state.fetchPublicSettings);
   const [systemName, setSystemName] = useState('');
   const [adminLoginName, setAdminLoginName] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
@@ -100,6 +101,7 @@ export default function SystemSettings() {
         setMessage('保存成功');
         setAdminPassword('');
         setAdminLoginName('');
+        await fetchPublicSettings();
       } else {
         const err = await res.json().catch(() => null);
         setMessage(err?.detail || '保存失败');

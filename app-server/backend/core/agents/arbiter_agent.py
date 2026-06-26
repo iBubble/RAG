@@ -107,7 +107,7 @@ class ArbiterAgent(AgentBase):
                 messages=messages,
                 model=self.model,
                 temperature=self.temperature,
-                num_ctx=self.num_ctx,
+                num_ctx=min(self.num_ctx, 8192),
                 num_predict=self.num_predict,
             ):
                 yield token

@@ -3,6 +3,7 @@ import re
 import os
 import fitz
 from pathlib import Path
+from doc_formatter import format_document_to_html
 
 # 投诉登记表高精度精修 HTML 模版
 COMPLAINT_HTML = """<h1>投 诉 登 记 表</h1>
@@ -227,18 +228,45 @@ def refine_doc_name(original_name, page_html):
                 index_part = original_name.split('.', 1)[0] if '.' in original_name else ""
                 return f"{index_part}. {l}" if index_part else l
     return original_name
+def get_custom_template(current_doc, default_text):
+    try:
+        import custom_templates
+        if "投诉登记表" in current_doc or "式样一" in current_doc:
+            return custom_templates.COMPLAINT_HTML
+        elif "举报登记表" in current_doc or "式样二" in current_doc:
+            return custom_templates.REPORT_HTML
+        elif "分送通知书" in current_doc or "式样三" in current_doc:
+            return custom_templates.SEND_NOTICE_HTML
+        elif "身份证明" in current_doc or "式样四" in current_doc:
+            return custom_templates.PROVIDE_IDENTITY_HTML
+        elif "投诉受理决定书" in current_doc or "式样五" in current_doc:
+            return custom_templates.ACCEPT_NOTICE_HTML
+        elif "不予受理决定书" in current_doc or "式样六" in current_doc:
+            return custom_templates.REJECT_NOTICE_HTML
+        elif "投诉调解通知书" in current_doc or "式样七" in current_doc:
+            return custom_templates.MEDIATION_NOTICE_HTML
+        elif "终止调解决定书" in current_doc or "式样八" in current_doc:
+            return custom_templates.TERMINATE_MEDIATION_HTML
+        elif "投诉调解书" in current_doc or "式样九" in current_doc:
+            return custom_templates.MEDIATION_AGREEMENT_HTML
+        elif "举报处理结果告知书" in current_doc or "式样十" in current_doc:
+            return custom_templates.REPORT_RESULT_HTML
+    except Exception as e:
+        print(f"Error loading custom template: {e}")
+    return default_text
+
 def extract_pdf_rich(pdf_path):
     doc = fitz.open(pdf_path)
     catalog = []
     catalog_found = False
     for page_idx in range(min(6, len(doc))):
         page_text = doc[page_idx].get_text()
-        if "目录" in page_text or "目 录" in page_text:
+        if re.search(r'目[\s\n]*录', page_text):
             matches = re.findall(r'(?:^\d+|\n\d+)[\.、\s]+([^\n\d]+)', page_text)
             if matches:
-                catalog = [m.strip().split("（")[0].split("(")[0].strip() for m in matches if len(m.strip()) > 2 and m.strip() not in ["目录", "总体说明"]]
+                items = [m.strip().split("（")[0].split("(")[0].strip() for m in matches if len(m.strip()) > 2 and m.strip() not in ["目录", "总体说明"]]
+                catalog.extend(items)
                 catalog_found = True
-                break
     if not catalog_found:
         for page_idx in range(len(doc)):
             page_text = doc[page_idx].get_text()
@@ -248,8 +276,6 @@ def extract_pdf_rich(pdf_path):
                 
     catalog_with_index = [f"{i+1}.{name}" for i, name in enumerate(catalog)]
     tables = []
-    current_doc = None
-    current_pages = []
     
     def process_page_to_html(page):
         tab_list = page.find_tables()
@@ -268,36 +294,47 @@ def extract_pdf_rich(pdf_path):
             return f"{header_html}\n{table_html}\n{footer_html}"
         else:
             page_text = page.get_text()
-            lines = clean_line_text(page_text).split('\n')
-            return "".join([f"<p>{line}</p>" for line in lines if line.strip()])
+            return format_document_to_html(page_text)
 
+    catalog_idx = 0
+    current_doc = catalog_with_index[0] if catalog_with_index else None
+    current_pages = []
+    
     for page_idx in range(len(doc)):
         page = doc[page_idx]
         page_text = page.get_text()
-        found_new = False
-        for doc_name in catalog_with_index:
-            clean_name = doc_name.split('.', 1)[1] if '.' in doc_name else doc_name
-            if clean_name in page_text[:150]:
-                if current_doc:
-                    full_template = "\n".join(current_pages).strip()
-                    if "投诉登记表" in current_doc or "式样一" in current_doc: full_template = COMPLAINT_HTML
-                    elif "举报登记表" in current_doc or "式样二" in current_doc: full_template = REPORT_HTML
-                    refined_name = refine_doc_name(current_doc, full_template)
-                    tables.append({"name": refined_name, "template": full_template})
-                current_doc = doc_name
-                current_pages = [process_page_to_html(page)]
-                found_new = True
-                break
-        if not found_new:
-            if current_doc: current_pages.append(process_page_to_html(page))
+        
+        found_next = False
+        if catalog_idx + 1 < len(catalog_with_index):
+            next_doc_name = catalog_with_index[catalog_idx + 1]
+            clean_next_name = next_doc_name.split('.', 1)[1] if '.' in next_doc_name else next_doc_name
+            # 拆分括弧部分，做高容错部件匹配
+            parts = re.split(r'[（()）]', clean_next_name)
+            parts = [p.strip() for p in parts if p.strip()]
+            match_text = page_text[:400].replace(" ", "").replace("\n", "")
+            if parts and all(p.replace(" ", "") in match_text for p in parts):
+                found_next = True
+                
+        if found_next:
+            if current_doc:
+                full_template = "\n".join(current_pages).strip()
+                full_template = get_custom_template(current_doc, full_template)
+                refined_name = refine_doc_name(current_doc, full_template)
+                tables.append({"name": refined_name, "template": full_template})
+            
+            catalog_idx += 1
+            current_doc = catalog_with_index[catalog_idx]
+            current_pages = [process_page_to_html(page)]
+        else:
+            if current_doc:
+                current_pages.append(process_page_to_html(page))
             elif catalog_with_index:
                 current_doc = catalog_with_index[0]
                 current_pages = [process_page_to_html(page)]
                 
     if current_doc:
         full_template = "\n".join(current_pages).strip()
-        if "投诉登记表" in current_doc or "式样一" in current_doc: full_template = COMPLAINT_HTML
-        elif "举报登记表" in current_doc or "式样二" in current_doc: full_template = REPORT_HTML
+        full_template = get_custom_template(current_doc, full_template)
         refined_name = refine_doc_name(current_doc, full_template)
         tables.append({"name": refined_name, "template": full_template})
         

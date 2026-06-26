@@ -49,7 +49,7 @@ def render_mermaid_to_png(mermaid_code: str) -> str | None:
 
         # WHY: 使用 urllib 而非 httpx/requests，避免引入额外异步依赖
         req = urllib.request.Request(url, headers={
-            'User-Agent': 'ShengyaoRAG-DocExport/1.0',
+            'User-Agent': 'LiukunRAG-DocExport/1.0',
         })
         with urllib.request.urlopen(req, timeout=15) as response:
             data = response.read()

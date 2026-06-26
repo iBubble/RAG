@@ -15,6 +15,7 @@ interface TrackedFile {
   ingestStatus?: string;  // vectorized / unsupported_format / skipped / pending
   chunks?: number;        // 向量化切片数
   parseProgress?: number; // 后台解析进度估算 (0-99%)
+  attempt?: number;       // 轮询尝试次数
   error?: string;
 }
 
@@ -98,94 +99,176 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const { getAuthHeaders } = useAuthStore();
-  // WHY: 存储所有活跃的轮询定时器 ID，组件卸载时统一清理防止内存泄漏
-  const pollTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
-
-  // 组件卸载时清理所有轮询定时器
+  // ─── 维护 trackedFiles 的最新引用 ───
+  const trackedFilesRef = useRef(trackedFiles);
   useEffect(() => {
-    return () => {
-      pollTimers.current.forEach(id => clearTimeout(id));
-      pollTimers.current.clear();
-    };
-  }, []);
+    trackedFilesRef.current = trackedFiles;
+  }, [trackedFiles]);
 
-  /**
-   * 轮询后台入库状态，直到入库完成或超时。
-   * WHY: 后台解析（OCR/GIS）耗时 1-120 秒不等，
-   *      需要异步轮询而非阻塞等待，确保 UI 能实时反映进度。
-   */
-  const pollIngestStatus = useCallback((fileId: string, fileRef: File) => {
+  // ─── 统一限并发轮询后台入库状态 ───
+  // WHY: 对所有上传完成但仍在 pending 解析的文件进行统一且限并发的轮询，
+  //      限制同一时间的轮询并发数最大为 3，避免 200+ 文件上传时发起上百个并发 HTTP 请求，
+  //      从而打爆浏览器 TCP 连接限制，导致后续文件上传超时挂起。
+  useEffect(() => {
     const POLL_INTERVAL = 3000;  // 3 秒
-    const MAX_ATTEMPTS = 600;    // 最多 1800 秒 (30 分钟)
-    let attempt = 0;
+    const MAX_ATTEMPTS = 600;    // 最多 30 分钟
+    const CONCURRENCY_LIMIT = 3;
 
-    const poll = () => {
-      attempt++;
-      if (attempt > MAX_ATTEMPTS) {
-        // 超时：标记为解析超时/中断，避免用户迷惑
-        setTrackedFiles(prev =>
-          prev.map(t =>
-            t.file === fileRef && t.ingestStatus === 'pending'
-              ? { ...t, ingestStatus: 'timeout' }
-              : t
-          )
-        );
+    // 存储已经在发起请求的文件 ID，避免在同一个 poll 滴答中重复发起
+    const pollingFileIds = new Set<string>();
+
+    const intervalId = setInterval(async () => {
+      const currentTracked = trackedFilesRef.current;
+      
+      // 找出所有需要轮询的文件（状态为 done，ingestStatus 为 pending，且有 fileId）
+      const pendingFiles = currentTracked.filter(
+        t => t.status === 'done' && t.ingestStatus === 'pending' && t.fileId
+      );
+
+      if (pendingFiles.length === 0) {
         return;
       }
 
-      const timerId = setTimeout(async () => {
-        try {
-          const tokenParam = localStorage.getItem('token') ? `&token=${localStorage.getItem('token')}` : '';
-          const res = await fetch(
-            `${API_BASE}/api/files/ingest-status?file_id=${encodeURIComponent(fileId)}&project_id=${encodeURIComponent(projectId)}${tokenParam}`,
-            { headers: getAuthHeaders() }
-          );
-          if (res.status === 401) {
-             window.location.href = '/login';
-             return;
-          }
-          if (!res.ok) { poll(); return; }
+      const tokenParam = localStorage.getItem('token') ? `&token=${localStorage.getItem('token')}` : '';
+      const terminalStates = ['vectorized', 'empty_text', 'failed', 'unsupported_format', 'too_large'];
 
-          const data = await res.json();
-          // WHY: 后端会返回多种终态，只有 pending 和 processing 才需要继续轮询
-          const terminalStates = ['vectorized', 'empty_text', 'failed', 'unsupported_format', 'too_large'];
-          if (terminalStates.includes(data.status)) {
+      // 剔除当前已经在进行中请求的文件 ID，限制最大并发数
+      const filesToPoll = pendingFiles
+        .filter(t => !pollingFileIds.has(t.fileId!))
+        .slice(0, CONCURRENCY_LIMIT);
+
+      if (filesToPoll.length === 0) {
+        return;
+      }
+
+      // 标记为正在轮询
+      filesToPoll.forEach(t => pollingFileIds.add(t.fileId!));
+
+      // 并发轮询
+      await Promise.all(
+        filesToPoll.map(async (tracked) => {
+          const fileId = tracked.fileId!;
+          const currentAttempt = (tracked.attempt || 0) + 1;
+
+          if (currentAttempt > MAX_ATTEMPTS) {
             setTrackedFiles(prev =>
               prev.map(t =>
-                t.file === fileRef
-                  ? { ...t, ingestStatus: data.status, chunks: data.chunks || 0, parseProgress: 100 }
+                t.fileId === fileId
+                  ? { ...t, ingestStatus: 'timeout', parseProgress: 100 }
                   : t
               )
             );
-            pollTimers.current.delete(timerId);
+            pollingFileIds.delete(fileId);
             return;
-          } else {
-            // WHY: 对于仍处于 pending/processing 状态的，基于尝试次数计算渐进式假进度
-            // 公式: 100 - 100 / (1 + (时间(秒) / 30)) -> 30秒时50%, 90秒时75%, 300秒时91%
-            const elapsedSeconds = attempt * (POLL_INTERVAL / 1000);
-            const progress = Math.min(99, Math.round(100 - 100 / (1 + elapsedSeconds / 30)));
+          }
+
+          try {
+            const res = await fetch(
+              `${API_BASE}/api/files/ingest-status?file_id=${encodeURIComponent(fileId)}&project_id=${encodeURIComponent(projectId)}${tokenParam}`,
+              { headers: getAuthHeaders() }
+            );
+            if (res.status === 401) {
+              window.location.href = '/login';
+              return;
+            }
+            if (!res.ok) {
+              setTrackedFiles(prev =>
+                prev.map(t =>
+                  t.fileId === fileId
+                    ? { ...t, attempt: currentAttempt }
+                    : t
+                )
+              );
+              pollingFileIds.delete(fileId);
+              return;
+            }
+
+            const data = await res.json();
+            if (terminalStates.includes(data.status)) {
+              setTrackedFiles(prev =>
+                prev.map(t =>
+                  t.fileId === fileId
+                    ? { ...t, ingestStatus: data.status, chunks: data.chunks || 0, parseProgress: 100 }
+                    : t
+                )
+              );
+            } else {
+              const elapsedSeconds = currentAttempt * (POLL_INTERVAL / 1000);
+              const progress = Math.min(99, Math.round(100 - 100 / (1 + elapsedSeconds / 30)));
+              setTrackedFiles(prev =>
+                prev.map(t =>
+                  t.fileId === fileId
+                    ? { ...t, attempt: currentAttempt, parseProgress: progress }
+                    : t
+                )
+              );
+            }
+          } catch {
             setTrackedFiles(prev =>
               prev.map(t =>
-                t.file === fileRef
-                  ? { ...t, parseProgress: progress }
+                t.fileId === fileId
+                  ? { ...t, attempt: currentAttempt }
                   : t
               )
             );
+          } finally {
+            pollingFileIds.delete(fileId);
           }
-        } catch { /* 网络异常静默重试 */ }
+        })
+      );
+    }, POLL_INTERVAL);
 
-        pollTimers.current.delete(timerId);
-        poll(); // pending/processing → 继续下一轮
-      }, POLL_INTERVAL);
-
-      pollTimers.current.add(timerId);
-    };
-
-    poll();
+    return () => clearInterval(intervalId);
   }, [projectId, getAuthHeaders]);
 
   // WHY：将文件添加并立即触发上传，保证每一份文件都持久化到服务端磁盘
   const addAndUpload = useCallback(async (newFiles: File[]) => {
+    // 1. 计算这批上传文件相对目录的公共根路径
+    let commonRoot = '';
+    const fileDirs = newFiles.map(f => {
+      if ((f as any).customRelativeDir !== undefined) {
+        return (f as any).customRelativeDir;
+      }
+      return f.webkitRelativePath ? f.webkitRelativePath.split('/').slice(0, -1).join('/') : '';
+    });
+
+    if (fileDirs.length > 0 && fileDirs.every(d => d !== '')) {
+      const splitDirs = fileDirs.map(d => d.split('/'));
+      let commonParts: string[] = [];
+      const firstDirParts = splitDirs[0];
+
+      for (let i = 0; i < firstDirParts.length; i++) {
+        const part = firstDirParts[i];
+        const isCommon = splitDirs.every(sd => sd[i] === part);
+        if (isCommon) {
+          commonParts.push(part);
+        } else {
+          break;
+        }
+      }
+      commonRoot = commonParts.join('/');
+    }
+
+    // 2. 如果存在全员共同的根文件夹前缀，进行路径剥离并统一注入到 customRelativeDir 属性中
+    newFiles.forEach((file, idx) => {
+      const originalDir = fileDirs[idx];
+      let finalDir = originalDir;
+      if (commonRoot) {
+        if (originalDir === commonRoot) {
+          finalDir = '';
+        } else if (originalDir.startsWith(commonRoot + '/')) {
+          finalDir = originalDir.substring(commonRoot.length + 1);
+        }
+      }
+
+      Object.defineProperty(file, 'customRelativeDir', {
+        value: finalDir,
+        writable: true,
+        enumerable: true,
+        configurable: true
+      });
+    });
+
     const newTracked: TrackedFile[] = newFiles.map(f => ({
       file: f,
       status: 'pending' as UploadStatus,
@@ -193,11 +276,8 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
 
     setTrackedFiles(prev => [...prev, ...newTracked]);
 
-    // 逐个上传（避免瞬间并发把小型服务打爆）
-    for (let i = 0; i < newFiles.length; i++) {
-      const file = newFiles[i];
-
-      // 更新状态为 uploading
+    // 定义单个文件的上传逻辑
+    const uploadSingleFile = async (file: File) => {
       setTrackedFiles(prev =>
         prev.map(t =>
           t.file === file ? { ...t, status: 'uploading' as UploadStatus } : t
@@ -208,9 +288,10 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
         const formData = new FormData();
         formData.append('files', file);
         formData.append('project_id', projectId);
-        // file.webkitRelativePath 包含了文件连同目录的相对路径，例如 "my_folder/sub_folder/doc.txt"
-        // 我们需要剔除最后一级的文件名，只保留相对目录 "my_folder/sub_folder"
-        const relativeDir = file.webkitRelativePath ? file.webkitRelativePath.split('/').slice(0, -1).join('/') : '';
+        // 优先从拖拽注入的 customRelativeDir 获取，其次从 input 注入的 webkitRelativePath 提取相对目录
+        const relativeDir = (file as any).customRelativeDir !== undefined
+          ? (file as any).customRelativeDir
+          : (file.webkitRelativePath ? file.webkitRelativePath.split('/').slice(0, -1).join('/') : '');
         formData.append('relative_path', relativeDir);
 
         const data = await new Promise<any>((resolve, reject) => {
@@ -253,6 +334,7 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
           xhr.onerror = () => reject(new Error('网络请求失败/中断'));
           xhr.send(formData);
         });
+
         const serverFile = data.files?.[0];
         const serverPath = serverFile?.path || '';
         const ingestStatus = serverFile?.ingest_status || 'skipped';
@@ -261,15 +343,10 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
         setTrackedFiles(prev =>
           prev.map(t =>
             t.file === file
-              ? { ...t, status: 'done' as UploadStatus, fileId: serverFile?.id, serverPath, ingestStatus, chunks }
+              ? { ...t, status: 'done' as UploadStatus, fileId: serverFile?.id, serverPath, ingestStatus, chunks, attempt: 0 }
               : t
           )
         );
-
-        // 🔗 如果后台正在解析，启动轮询直到入库完成
-        if (ingestStatus === 'pending' && serverFile?.id) {
-          pollIngestStatus(serverFile.id, file);
-        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : '未知错误';
         setTrackedFiles(prev =>
@@ -280,8 +357,32 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
           )
         );
       }
+    };
+
+    // ─── 限制并发的文件上传控制池 ───
+    // WHY: 允许最多 3 个文件同时上传，显著提升 284 个等大批量小文件的上传速度，
+    //      配合限流轮询器，完全在浏览器并发连接限制 (6) 的安全水位线内。
+    const CONCURRENT_UPLOADS = 3;
+    let nextIndex = 0;
+
+    const worker = async () => {
+      while (nextIndex < newFiles.length) {
+        const currentIndex = nextIndex++;
+        if (currentIndex >= newFiles.length) {
+          break;
+        }
+        await uploadSingleFile(newFiles[currentIndex]);
+      }
+    };
+
+    const workers = [];
+    const numWorkers = Math.min(CONCURRENT_UPLOADS, newFiles.length);
+    for (let i = 0; i < numWorkers; i++) {
+      workers.push(worker());
     }
-  }, []);
+
+    await Promise.all(workers);
+  }, [projectId, getAuthHeaders]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -290,10 +391,69 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
 
   const handleDragLeave = () => setIsDragging(false);
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      const traverseEntry = async (entry: any, path: string = ''): Promise<File[]> => {
+        const resultFiles: File[] = [];
+        if (entry.isFile) {
+          const file = await new Promise<File>((resolve, reject) => {
+            entry.file(resolve, reject);
+          });
+          const relativeDir = path;
+          Object.defineProperty(file, 'customRelativeDir', {
+            value: relativeDir,
+            writable: true,
+            enumerable: true,
+            configurable: true
+          });
+          resultFiles.push(file);
+        } else if (entry.isDirectory) {
+          const dirReader = entry.createReader();
+          const readAllEntries = async (reader: any): Promise<any[]> => {
+            const allEntries: any[] = [];
+            while (true) {
+              const batch: any[] = await new Promise((resolve, reject) => {
+                reader.readEntries(resolve, reject);
+              });
+              if (batch.length === 0) break;
+              allEntries.push(...batch);
+            }
+            return allEntries;
+          };
+
+          try {
+            const entries = await readAllEntries(dirReader);
+            const nextPath = path ? `${path}/${entry.name}` : entry.name;
+            for (const nextEntry of entries) {
+              const subFiles = await traverseEntry(nextEntry, nextPath);
+              resultFiles.push(...subFiles);
+            }
+          } catch (err) {
+            console.error('读取文件夹失败:', err);
+          }
+        }
+        return resultFiles;
+      };
+
+      const promises = [];
+      for (let i = 0; i < e.dataTransfer.items.length; i++) {
+        const item = e.dataTransfer.items[i];
+        if (item.kind === 'file') {
+          const entry = item.webkitGetAsEntry();
+          if (entry) {
+            promises.push(traverseEntry(entry));
+          }
+        }
+      }
+
+      const allFiles = (await Promise.all(promises)).flat();
+      if (allFiles.length > 0) {
+        addAndUpload(allFiles);
+      }
+    } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       addAndUpload(Array.from(e.dataTransfer.files));
     }
   };

@@ -70,10 +70,3 @@ services:
     volumes:
       - ./data/neo4j_data:/data
 
-  genrag-nats:
-    image: nats:2.10-alpine
-    container_name: GenRAG-NATS
-    restart: always
-    ports:
-      - "4223:4222" # 映射端口 (原 4222)
-      - "8223:8222" # 映射端口 (原 8222)

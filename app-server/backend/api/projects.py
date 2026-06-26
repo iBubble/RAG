@@ -971,16 +971,16 @@ async def update_presence(project_id: str, report: PresenceReport, user: dict = 
             if is_gen:
                 set_agent_active("chat", "正在思考并生成回答...", project_name, duration=90)
             else:
-                set_agent_active("chat", "正在接待在线法律咨询", project_name, duration=90)
+                set_agent_active("chat", "正在解答业务咨询", project_name, duration=90)
         elif tab == "法律事务专家":
-            task_desc = f"正在起草/分析: {sub_tab}" if sub_tab else "正在进行法律事务分析"
+            task_desc = f"正在起草/分析: {sub_tab}" if sub_tab else "正在进行行政事务分析"
             set_agent_active("legal", task_desc, project_name, duration=90)
         elif tab == "常法服务":
-            set_agent_active("service", "正在处理常年法律顾问事务", project_name, duration=90)
+            set_agent_active("service", "正在处理日常业务工作", project_name, duration=90)
         elif tab == "合同审查":
-            set_agent_active("service", "正在进行合同风险审查", project_name, duration=90)
+            set_agent_active("service", "正在进行文档合规性审查", project_name, duration=90)
         elif tab == "定制文档":
-            set_agent_active("service", "正在起草与编辑项目定制文档", project_name, duration=90)
+            set_agent_active("service", "正在起草与编辑项目工作文档", project_name, duration=90)
     except Exception as presence_e:
         logger.warning(f"上报心跳同步 Agent 看板状态失败: {presence_e}")
 

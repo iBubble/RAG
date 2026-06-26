@@ -39,6 +39,7 @@ from api.admin import router as admin_router
 from api.web_ingest import router as web_ingest_router
 from api.knowledge import router as knowledge_router
 from api.legal import router as legal_router
+from api.ai_templates import router as ai_templates_router
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -121,7 +122,7 @@ async def lifespan(application: FastAPI):
 
 
 app = FastAPI(
-    title="ShengyaoRAG Backend",
+    title="LiukunRAG Backend",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -154,6 +155,7 @@ app.include_router(projects_router)
 app.include_router(web_ingest_router)
 app.include_router(knowledge_router)
 app.include_router(legal_router)
+app.include_router(ai_templates_router)
 
 
 @app.get("/health")

@@ -197,7 +197,7 @@ async def review_contract(req: ContractReviewRequest, user: dict = Depends(get_c
         pass
 
     from core.redis_client import set_agent_active
-    set_agent_active("service", f"正在审查合同: {docx_path.name}", project_name, duration=60)
+    set_agent_active("service", f"正在审查文档: {docx_path.name}", project_name, duration=60)
     try:
         from docx import Document
         doc = Document(str(docx_path))
@@ -237,7 +237,7 @@ async def review_contract(req: ContractReviewRequest, user: dict = Depends(get_c
     try:
         import asyncio
         # Step 1: 顾问起草初审意见
-        set_agent_active("service", f"正在进行初审合同风险分析: {docx_path.name}", project_name, duration=25)
+        set_agent_active("service", f"正在进行文档内容合规分析: {docx_path.name}", project_name, duration=25)
         
         chunks = []
         async for chunk in stream_ollama(
@@ -252,11 +252,11 @@ async def review_contract(req: ContractReviewRequest, user: dict = Depends(get_c
 
         if req.collaborative:
             # Step 2: 小杠交叉抗辩审查（状态体现）
-            set_agent_active("contrarian", f"正在审查初审意见并交叉抗辩风险点: {docx_path.name}", project_name, duration=15)
+            set_agent_active("contrarian", f"正在审查初审意见并进行合规审查: {docx_path.name}", project_name, duration=15)
             await asyncio.sleep(1.2)
 
             # Step 3: 大BOSS最终裁定与定稿
-            set_agent_active("arbiter", f"正在进行合同风险定稿与批注格式化: {docx_path.name}", project_name, duration=15)
+            set_agent_active("arbiter", f"正在进行文档合规定稿与格式化: {docx_path.name}", project_name, duration=15)
             await asyncio.sleep(1.0)
 
         # 清洗 <think> 标签并提取 JSON 数组

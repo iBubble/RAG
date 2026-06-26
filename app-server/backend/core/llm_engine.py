@@ -35,38 +35,34 @@ if not logger.handlers:
     logger.addHandler(_handler)
     logger.setLevel(logging.INFO)
 
-# 全局共享的 HTTP 客户端，提高高并发下的连接复用率
-_shared_client: httpx.AsyncClient | None = None
-_shared_client_loop = None
+# 全局共享的 HTTP 客户端缓存，按事件循环隔离，提高高并发下的连接复用率且避免并发冲突
+_loop_clients: dict[asyncio.AbstractEventLoop, httpx.AsyncClient] = {}
 
 def get_client() -> httpx.AsyncClient:
-    global _shared_client, _shared_client_loop
+    global _loop_clients
     try:
         current_loop = asyncio.get_running_loop()
     except RuntimeError:
-        current_loop = None
+        # 非异步上下文，返回一个临时 client
+        return httpx.AsyncClient(
+            timeout=httpx.Timeout(180.0),
+            proxy=None,
+            trust_env=False
+        )
 
-    if _shared_client is None or _shared_client.is_closed or _shared_client_loop != current_loop:
-        # WHY: 事件循环变化时先关闭旧客户端，防止连接和文件描述符泄露
-        if _shared_client is not None and not _shared_client.is_closed:
-            try:
-                # 尝试同步关闭（在非异步上下文中无法 await）
-                import asyncio as _aio
-                loop = _aio.get_event_loop()
-                if loop.is_running():
-                    loop.create_task(_shared_client.aclose())
-                else:
-                    loop.run_until_complete(_shared_client.aclose())
-            except Exception:
-                pass  # 关闭失败不阻断新客户端创建
-        _shared_client = httpx.AsyncClient(
+    # 自动清理已经关闭的事件循环对应的 client，防止连接与内存泄露
+    for l in list(_loop_clients.keys()):
+        if l.is_closed():
+            _loop_clients.pop(l, None)
+
+    if current_loop not in _loop_clients or _loop_clients[current_loop].is_closed:
+        _loop_clients[current_loop] = httpx.AsyncClient(
             timeout=httpx.Timeout(180.0),
             proxy=None,
             trust_env=False,
             limits=httpx.Limits(max_connections=100, max_keepalive_connections=20)
         )
-        _shared_client_loop = current_loop
-    return _shared_client
+    return _loop_clients[current_loop]
 
 
 # ──────────────────────────────────────────────────────────
@@ -387,10 +383,22 @@ class RedisGPUSemaphore:
         self._priority = priority if priority is not None else get_project_priority()
 
     async def __aenter__(self):
+        # 1. 检查可重入性：若当前协程已持有槽位，直接放行
+        current_stack = _gpu_tokens_stack.get()
+        if current_stack and len(current_stack) > 0:
+            info = {
+                "token": None,
+                "use_local": False,
+                "slot_id": None,
+                "is_reentrant": True
+            }
+            _gpu_tokens_stack.set(current_stack + [info])
+            return self
+
         from core.redis_client import get_redis
         r = get_redis()
         
-        # 1. Redis 不可用时，降级使用进程内本地信号量排队限制
+        # 2. Redis 不可用时，降级使用进程内本地信号量排队限制
         if not r:
             await _local_gpu_semaphore.acquire()
             token = _active_slot_id.set(None)
@@ -434,6 +442,8 @@ class RedisGPUSemaphore:
             if self._priority == 1:
                 try:
                     r.incr(high_priority_waiting_key)
+                    # 设 1 分钟 TTL 防排队数永久泄漏
+                    r.expire(high_priority_waiting_key, 60)
                 except Exception:
                     pass
 
@@ -453,12 +463,11 @@ class RedisGPUSemaphore:
 
                 # 2. 尝试抢占槽位
                 try:
-                    current = r.incr(_GPU_SLOT_KEY)
-                    if current == 1:
-                        r.expire(_GPU_SLOT_KEY, _GPU_SLOT_TTL)
-
-                    if current <= self._max_slots:
-                        # 成功抢占槽位
+                    # WHY: 统计所有处于有效生命周期内的 slot_key，防止由于进程被强杀导致的全局 active_slots 计数器永久泄漏。
+                    #      最坏情况下锁只会被占用 _GPU_SLOT_TTL (5分钟) 时间，且会自动过期释放。
+                    active_slots = r.keys("gpu:slot:*")
+                    if len(active_slots) < self._max_slots:
+                        # 成功抢占槽位，写入带 TTL 的 slot 键
                         r.setex(slot_key, _GPU_SLOT_TTL, "1")
                         if self._priority == 1:
                             val = r.decr(high_priority_waiting_key)
@@ -466,9 +475,6 @@ class RedisGPUSemaphore:
                                 r.set(high_priority_waiting_key, 0)
                         entered_ok = True
                         return self
-                    else:
-                        # 满额，回滚计数器
-                        r.decr(_GPU_SLOT_KEY)
                 except Exception:
                     # 异常降级为本地信号量保护
                     if self._priority == 1:
@@ -507,34 +513,41 @@ class RedisGPUSemaphore:
             raise
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        from core.redis_client import get_redis
-        r = get_redis()
-        
         stack = _gpu_tokens_stack.get()
-        slot_id = None
-        use_local = False
-        if stack:
-            new_stack = list(stack)
-            info = new_stack.pop()
-            slot_id = info.get("slot_id")
-            use_local = info.get("use_local", False)
-            _active_slot_id.reset(info["token"])
-            _gpu_tokens_stack.set(new_stack)
+        if not stack:
+            return
+            
+        new_stack = list(stack)
+        info = new_stack.pop()
+        _gpu_tokens_stack.set(new_stack)
+        
+        # 若是重入锁，直接返回，不释放任何实际锁资源
+        if info.get("is_reentrant"):
+            return
+
+        slot_id = info.get("slot_id")
+        use_local = info.get("use_local", False)
+        
+        # 还原最外层 token
+        if info.get("token"):
+            try:
+                _active_slot_id.reset(info["token"])
+            except Exception:
+                pass
 
         # 1. 释放本地信号量
         if use_local:
             _local_gpu_semaphore.release()
 
         # 2. 释放 Redis 槽位
+        from core.redis_client import get_redis
+        r = get_redis()
         if not r or not slot_id:
             return
 
         slot_key = f"gpu:slot:{slot_id}"
         try:
-            if r.delete(slot_key):
-                val = r.decr(_GPU_SLOT_KEY)
-                if val < 0:
-                    r.set(_GPU_SLOT_KEY, 0, ex=_GPU_SLOT_TTL)
+            r.delete(slot_key)
         except Exception:
             pass
 
@@ -770,7 +783,7 @@ def is_heartbeat_enabled() -> bool:
                 return row["value"] not in ("false", "0", "False")
     except Exception as e:
         logger.warning(f"读取数据库心跳设置失败: {e}")
-    return True
+    return False
 
 
 async def unload_model(model: str = DEFAULT_WARMUP_MODEL):

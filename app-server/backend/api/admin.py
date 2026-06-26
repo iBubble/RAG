@@ -372,7 +372,7 @@ def _read_system_settings() -> dict:
         with get_db() as conn:
             rows = conn.execute("SELECT key, value FROM system_settings").fetchall()
         default_agents_info = {
-            "chat": {"name": "小诺 (Linuo)", "gender": "male", "avatar": "horse"},
+            "chat": {"name": "小智 (Agent)", "gender": "male", "avatar": "horse"},
             "service": {"name": "小管 (Manager)", "gender": "female", "avatar": "horse"},
             "legal": {"name": "行业知识专家", "gender": "male", "avatar": "horse"},
             "precompute": {"name": "小预 (Precalc)", "gender": "male", "avatar": "horse"},
@@ -386,8 +386,8 @@ def _read_system_settings() -> dict:
         
         # 兜底默认返回值字典
         def_val = {
-            "system_name": "力诺通用知识库 V1.0.0", 
-            "heartbeat_enabled": True, 
+            "system_name": "智能体通用知识库 V1.0.0", 
+            "heartbeat_enabled": False, 
             "system_run_mode": "full", 
             "funny_level": "low",
             "active_level": "low",
@@ -424,7 +424,7 @@ def _read_system_settings() -> dict:
                 res[k] = v
 
         if "heartbeat_enabled" not in res:
-            res["heartbeat_enabled"] = True
+            res["heartbeat_enabled"] = False
         if "system_run_mode" not in res:
             res["system_run_mode"] = "full"
         if "funny_level" not in res:
@@ -469,8 +469,8 @@ def _read_system_settings() -> dict:
             return def_val
         except NameError:
             return {
-                "system_name": "力诺通用知识库 V1.0.0", 
-                "heartbeat_enabled": True, 
+                "system_name": "智能体通用知识库 V1.0.0", 
+                "heartbeat_enabled": False, 
                 "system_run_mode": "full", 
                 "funny_level": "low",
                 "active_level": "low",
@@ -691,7 +691,8 @@ async def get_public_settings():
     """公开接口：获取系统名称以及所有 Agent 配置（前台交互与登录页展示使用）。"""
     s = _read_system_settings()
     res = {
-        "system_name": s.get("system_name", "力诺通用知识库 V1.0.0"),
+        "system_name": s.get("system_name", "智能体通用知识库 V1.0.0"),
+        "linvis_name": s.get("linvis_name", "麟维斯"),
     }
     for k, v in s.items():
         if k.startswith("agent_") or k.startswith("collab_"):

@@ -123,13 +123,59 @@ async def upload_files(
 
         target_path = target_dir / safe_filename
         
-        # 同名文件自动追加时间戳避免覆盖
+        # 针对同名文件进行去重检测 (MD5 碰撞比对)
+        is_duplicate = False
         if target_path.exists():
-            stem = target_path.stem
-            suffix = target_path.suffix
-            from datetime import timezone, timedelta
-            timestamp = datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%d%H%M%S")
-            target_path = target_dir / f"{stem}_{timestamp}{suffix}"
+            # 1. 流式计算上传文件的 MD5
+            hasher = hashlib.md5()
+            while True:
+                chunk = await file.read(64 * 1024)
+                if not chunk:
+                    break
+                hasher.update(chunk)
+            uploaded_md5 = hasher.hexdigest()
+            await file.seek(0)  # 指针重置回头部
+
+            # 2. 流式计算已存在文件的 MD5
+            existing_hasher = hashlib.md5()
+            with open(target_path, "rb") as ef:
+                while True:
+                    echunk = ef.read(64 * 1024)
+                    if not echunk:
+                        break
+                    existing_hasher.update(echunk)
+            existing_md5 = existing_hasher.hexdigest()
+
+            # 3. 比对并判定
+            if uploaded_md5 == existing_md5:
+                is_duplicate = True
+            else:
+                stem = target_path.stem
+                suffix = target_path.suffix
+                from datetime import timezone, timedelta
+                timestamp = datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%d%H%M%S")
+                target_path = target_dir / f"{stem}_{timestamp}{suffix}"
+
+        if is_duplicate:
+            file_id = hashlib.md5(f"{project_id}_{str(target_path.relative_to(UPLOAD_ROOT))}".encode("utf-8")).hexdigest()
+            from core.status_tracker import get_file_status
+            status_data = get_file_status(project_id, file_id)
+            existing_status = status_data.get("status")
+            if not existing_status:
+                existing_status = "vectorized" if get_chunk_count(file_id) > 0 else "pending"
+            existing_chunks = status_data.get("chunks", 0)
+
+            saved.append({
+                "id": file_id,
+                "filename": safe_filename,
+                "size": target_path.stat().st_size,
+                "path": str(target_path.relative_to(UPLOAD_ROOT)),
+                "content_type": file.content_type,
+                "ingest_status": existing_status,
+                "chunks": existing_chunks,
+                "message": "检测到相同内容文件，已自动去重实现秒传",
+            })
+            continue
 
         # WHY: 流式分块写入磁盘，避免大文件（如 250MB+ 的 .shp/.dbf）一次性撑爆内存
         CHUNK_SIZE = 8 * 1024 * 1024  # 8MB 分块
@@ -254,7 +300,10 @@ async def list_files(project_id: str = "default", user: dict = Depends(get_curre
                         status_data = get_file_status(project_id, file_id)
                         ingest_status = status_data.get("status")
                         if not ingest_status:
-                            ingest_status = "vectorized" if get_chunk_count(file_id) > 0 else "pending"
+                            chunks = get_chunk_count(file_id)
+                            ingest_status = "vectorized" if chunks > 0 else "pending"
+                            from core.status_tracker import update_file_status
+                            update_file_status(project_id, file_id, ingest_status, chunks=chunks)
                         result.append({
                             "id": file_id, "filename": d, "path": rel_path,
                             "size": total_size, "is_folder": False,
@@ -304,7 +353,10 @@ async def list_files(project_id: str = "default", user: dict = Depends(get_curre
                         status_data = get_file_status(project_id, file_id)
                         ingest_status = status_data.get("status")
                         if not ingest_status:
-                            ingest_status = "vectorized" if get_chunk_count(file_id) > 0 else "pending"
+                            chunks = get_chunk_count(file_id)
+                            ingest_status = "vectorized" if chunks > 0 else "pending"
+                            from core.status_tracker import update_file_status
+                            update_file_status(project_id, file_id, ingest_status, chunks=chunks)
                         entry = {
                             "id": file_id, "filename": f, "path": rel_path,
                             "size": path.stat().st_size,
@@ -325,7 +377,10 @@ async def list_files(project_id: str = "default", user: dict = Depends(get_curre
                     status_data = get_file_status(project_id, file_id)
                     ingest_status = status_data.get("status")
                     if not ingest_status:
-                        ingest_status = "vectorized" if get_chunk_count(file_id) > 0 else "pending"
+                        chunks = get_chunk_count(file_id)
+                        ingest_status = "vectorized" if chunks > 0 else "pending"
+                        from core.status_tracker import update_file_status
+                        update_file_status(project_id, file_id, ingest_status, chunks=chunks)
                     result.append({
                         "id": file_id, "filename": f, "path": rel_path,
                         "size": path.stat().st_size,

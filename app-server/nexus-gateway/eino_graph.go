@@ -81,8 +81,8 @@ func RunEinoOrchestration(ctx context.Context, req *EinoAgentRequest, w io.Write
 	if llmModel == "" {
 		llmModel = "qwen3.6:35b-q4"
 	}
-	llm8b := NewOllamaChat("qwen3:8b")
 	llm35b := NewOllamaChat(llmModel)
+	llm8b := llm35b // 统一使用 35B 大模型进行决策，避免混用 8B 导致显存碎片与 CPU 降级
 
 	writeEvent(w, "supervisor", "routing", fmt.Sprintf("🧠 %s 正在分析任务...", nameSupervisor))
 

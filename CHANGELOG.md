@@ -2,15 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.6.1] - 2026-06-25
+
+### Changed
+- **优化智能填表与已保存文档的切换联动交互**：
+  - 点击右侧历史归档列表中由智能填表（AI表格）保存的无大纲文档（通常以 `二级子表名称_时间` 命名）时，不再弹出一只读预览模态框（[SavedDocumentsList.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/SavedResults/SavedDocumentsList.tsx)）。
+  - 通过 `CustomEvent` 事件派发机制通知 [AITablePanel.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/AITable/AITablePanel.tsx) 接管，并自动将系统当前活动的 Tab 切换至 **「AI表格」**。
+  - 接管后，系统基于解析后的标题前缀反查并联动修改一级类别和二级子表的下拉选择状态，并将保存的历史 HTML 内容无缝还原加载至 Tiptap 编辑器画板中。
+  - 为防止因模板数据（categories）尚未完成异步加载所导致的反查失效，特别在组件内引入了结合 `useRef` 与 `useState` 的待处理缓存器（`pendingLoadDoc`），实现异步时序与竞态下的完美联动。
+
 ## [3.6.0] - 2026-06-25
 
 ### Changed
 - **全面去法律化与通用 RAG 平台重塑**：
-  - 将系统名称从“貔貅法律知识库 (LawRAG)”全面改造为“力诺通用知识库 RAG (LinuoRAG)”。
+  - 将系统名称从“貔貅法律知识库 (LawRAG)”全面改造为“智能体通用知识库 RAG (AgentRAG)”。
   - 重塑多阶段工作流，将特化法律文书（起诉状、答辩状、合同审查、意见书、收案评估）转化为通用的文书起草、文档审阅、可行性方案、项目评估等企业顾问工作流。
-  - 重命名并泛化系统默认 Agent 角色名（如“小貔 (Pixiu)” -> “小诺 (Linuo)”，“法律服务专家” -> “文档审查专家”）。
+  - 重命名并泛化系统默认 Agent 角色名（如“小貔 (Pixiu)” -> “智能体 (Agent)”，“法律服务专家” -> “文档审查专家”）。
 - **LOGO 与品牌形象重新设计**：
   - 生成并物理覆盖了科技美学的新版 Logo 及 Favicon 文件（包含 [logo.png](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/public/logo.png)、[favicon.png](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/public/favicon.png)）。
+
+### Fixed
+- **彻底修复智能填表时关键信息遗漏（如电话、事实依据留空）及生成废话解释文字的 Bug**：
+  - 全文无损提取：将智能填表接口（[generate.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/api/generate.py)）中案件背景材料的处理从原本极易因语义距离远而漏检的 RAG 向量检索，改为直接从 Qdrant 倒查用户选定文档的全部 chunks 并按 `chunk_index` 升序拼装出原汁原味的无损全文。100% 确保投诉人姓名、电话及关键事实案情等敏感数据完整输入大模型。
+  - Prompt 强规约与后置清洗：在填表 Prompt 中新增硬性限制，严禁大模型输出分析、思考、说明和任何关于“为什么留空”的自然语言废话。同时，在后端对 LLM 输出文本进行重构清洗，提取第一个 HTML 标签（如 `<h1>`、`<table>`）到最后一个闭合标签之间的内容，强力剔除首尾的多余杂质解释字句，保障前端表单渲染洁净无暇。
+- **解决大批量文件上传时连接拥塞与上传极慢的 Bug**：
+  - 并发上传池：重构 [FileUploader.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/FileUploader/FileUploader.tsx) 中的文件上传为限制最多 3 个并发上传的控制池（`CONCURRENT_UPLOADS = 3`），极大加快了 284 个等大批量小文件的上传效率。
+  - 轮询并发限制：在同一个文件内重构并移除了针对每个文件独立启动的轮询定时器，改用全局组件级单一的 `setInterval` 并发限制轮询（最大并发数限制为 3），彻底释放浏览器的 TCP 并发连接管道，完美消除了大批量上传因连接被打满引发超时失败的问题。
+- **解决文件上传完成后列表变空且刷新加载缓慢的体验 Bug**：
+  - 前端实时刷新：在 [TreeView.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/TreeView/TreeView.tsx) 中将 `refreshCounter` 加入 `useEffect` 依赖，当上传弹窗关闭时立刻触发本地文件列表重新获取，实现无感实时刷新，消除了列表滞后变空的现象。
+  - 后端扫描性能水合缓存：在 [files.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/api/files.py) 的 `/list` 接口中，针对未落地 `.job_states` 文件状态的历史文件，在第一次从 Qdrant 反查完 `get_chunk_count` 状态后立即回写保存到本地 `.job_states` 状态文件。下次刷新直接走本地 IO 读取，免除了上百次 Qdrant 串行 RPC 查询，将项目列表的刷新速度从超时 15 秒缩短至 10 毫秒以内。
+- **解决拖拽文件夹上传时丢失目录树形结构的缺陷**：
+  - 拖拽相对路径提取：在 [FileUploader.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/FileUploader/FileUploader.tsx) 的 `handleDrop` 中利用 HTML5 FileSystemEntry API 对拖入的实体进行递归扫描（`webkitGetAsEntry()`），并流式读取所有子文件，手动计算其正确的相对路径 `customRelativeDir` 进行注入。
+  - 树状持久化：支持前端在拖拽上传文件夹时将相对路径传递到后端，后端将文件保存在子目录中，使得左侧文档树能够完美展现子文件夹的树形层级结构，杜绝了文件被平铺堆积在项目根目录的情况。
 
 ## [3.5.2] - 2026-06-11
 

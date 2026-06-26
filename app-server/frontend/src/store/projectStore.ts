@@ -209,7 +209,7 @@ export const useProjectStore = create<ProjectState>()(
   // WHY: 每项目聊天记录限制最多 100 条，防止长期使用后 IndexedDB 膨胀触发 OOM。
   //      超过 100 条时丢弃最早的消息。
   setProjectMessages: (projectId, updater) => set((state) => {
-    const prevMsg = state.agentMessagesByProject[projectId] || [{ id: '1', role: 'agent', content: '您好！我是力诺通用知识库问答助手，由本地模型驱动。请问有什么可以帮您？' }];
+    const prevMsg = state.agentMessagesByProject[projectId] || [{ id: '1', role: 'agent', content: '您好！我是智能体通用知识库问答助手，由本地模型驱动。请问有什么可以帮您？' }];
     const nextMsg = typeof updater === 'function' ? updater(prevMsg) : updater;
     const _MAX_MESSAGES = 100;
     const trimmed = nextMsg.length > _MAX_MESSAGES ? nextMsg.slice(-_MAX_MESSAGES) : nextMsg;

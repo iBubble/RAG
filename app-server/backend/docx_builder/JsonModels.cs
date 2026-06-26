@@ -10,7 +10,7 @@ public class DocRequest
     public string Title { get; set; }
 
     [JsonPropertyName("org_name")]
-    public string OrgName { get; set; } = "云南力诺科技有限公司";
+    public string OrgName { get; set; } = "智能体";
 
     [JsonPropertyName("date_str")]
     public string DateStr { get; set; } = "";

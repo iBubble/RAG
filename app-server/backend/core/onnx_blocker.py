@@ -39,7 +39,7 @@ class _OnnxRuntimeLoader(importlib.abc.Loader):
 
     def exec_module(self, module):
         raise ImportError(
-            f'[ShengyaoRAG] {module.__name__} 已被阻断'
+            f'[LiukunRAG] {module.__name__} 已被阻断'
             f'（ARM/QEMU 环境不兼容，使用 PyTorch 后端替代）'
         )
 

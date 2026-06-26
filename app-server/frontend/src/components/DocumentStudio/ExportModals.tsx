@@ -25,7 +25,7 @@ export default function ExportModals({ projectId, templateTitle, sections, showT
   const [exportMessage, setExportMessage] = useState('');
   const [showExportModal, setShowExportModal] = useState(false);
   const [showCoverModal, setShowCoverModal] = useState(false);
-  const [coverOrgName, setCoverOrgName] = useState('云南力诺科技有限公司');
+  const [coverOrgName, setCoverOrgName] = useState('智能体');
   const [coverDateStr, setCoverDateStr] = useState('');
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [isCoverLoading, setIsCoverLoading] = useState(false);
@@ -291,8 +291,8 @@ export default function ExportModals({ projectId, templateTitle, sections, showT
                    <p className="text-[10px] text-gray-400 mt-1">如需修改标题，请返回主界面顶部修改。</p>
                  </div>
                  <div>
-                   <label className="block text-xs font-semibold text-gray-700 mb-2">承办律师/律所 (落款)</label>
-                   <input type="text" value={coverOrgName} onChange={(e) => setCoverOrgName(e.target.value)} placeholder="云南力诺科技有限公司" className="w-full bg-white border border-gray-300 focus:border-pink-400 focus:ring-1 focus:ring-pink-400 rounded-lg px-3 py-2 text-sm outline-none transition-all" />
+                   <label className="block text-xs font-semibold text-gray-700 mb-2">单位/个人 (落款)</label>
+                   <input type="text" value={coverOrgName} onChange={(e) => setCoverOrgName(e.target.value)} placeholder="智能体" className="w-full bg-white border border-gray-300 focus:border-pink-400 focus:ring-1 focus:ring-pink-400 rounded-lg px-3 py-2 text-sm outline-none transition-all" />
                  </div>
                  <div>
                    <label className="block text-xs font-semibold text-gray-700 mb-2">覆盖日期 (可选)</label>

@@ -199,7 +199,7 @@ def _wrap_title(text: str, max_chars: int = 18) -> list[str]:
 
 def generate_cover_image(
     title: str,
-    org_name: str = "云南力诺科技有限公司",
+    org_name: str = "智能体",
     date_str: Optional[str] = None,
 ) -> Optional[str]:
     """
@@ -273,7 +273,7 @@ def generate_cover_image(
             ["STFangsong", "FangSong", "Songti", "STHeiti"], 36
         )
         _draw_centered_text(
-            draw, "— ShengyaoRAG 智能生成 —",
+            draw, "— LiukunRAG 智能生成 —",
             brand_y, A4_W, brand_font,
             MORANDI["accent_1"] + (120,),
         )

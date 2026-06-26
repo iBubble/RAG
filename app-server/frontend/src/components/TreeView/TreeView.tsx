@@ -139,6 +139,8 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
   const { getAuthHeaders } = useAuthStore();
   const seenFileIdsRef = useRef<Set<string>>(new Set());
   const seenRefIdsRef = useRef<Set<string>>(new Set());
+  const knownFoldersRef = useRef<Set<string>>(new Set());
+  const hasLoadedSavedFoldersRef = useRef<boolean>(false);
 
   const fetchFiles = async () => {
     try {
@@ -174,10 +176,41 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
   useEffect(() => {
     setCheckedFiles([]);
     seenFileIdsRef.current.clear();
+    knownFoldersRef.current.clear();
+    hasLoadedSavedFoldersRef.current = false;
+
+    // 从 localStorage 中恢复已有的文件展开/收拢状态
+    const saved = localStorage.getItem(`project_expanded_folders_${projectId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setExpandedFolders(new Set(parsed));
+          hasLoadedSavedFoldersRef.current = true;
+        } else {
+          setExpandedFolders(new Set());
+        }
+      } catch {
+        setExpandedFolders(new Set());
+      }
+    } else {
+      setExpandedFolders(new Set());
+    }
+
     fetchFiles();
     const timer = setInterval(fetchFiles, 5000);
     return () => clearInterval(timer);
   }, [projectId]);
+
+  // 监听展开状态的改变并持久化到 localStorage 中
+  useEffect(() => {
+    if (projectId) {
+      localStorage.setItem(
+        `project_expanded_folders_${projectId}`,
+        JSON.stringify(Array.from(expandedFolders))
+      );
+    }
+  }, [expandedFolders, projectId]);
 
   // 加载引用的公共文档文件列表
   const fetchRefFiles = async () => {
@@ -212,6 +245,7 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
   // WHY: 组件加载 / projectId 变化 / 切换Tab / 上传弹窗关闭(refreshCounter) 时均刷新引用列表，
   //       确保 Tab 标题上的数量始终正确。
   useEffect(() => {
+    fetchFiles();
     fetchRefFiles();
   }, [projectId, activeTab, refreshCounter]);
 
@@ -328,30 +362,51 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
     return root;
   }, [files, projectId]);
 
-  // 渲染后将新发现的文件夹自动加入展开集合
+  // 渲染后将真正新创建的文件夹自动加入展开集合，保留用户手动折叠的状态
   useEffect(() => {
-    const newFolders = new Set<string>();
+    const allFolders = new Set<string>();
     const collectFolders = (node: TreeNode, currentPath: string = '') => {
       Object.values(node.children).forEach(child => {
         if (child.isFolder) {
           const pathKey = currentPath ? `${currentPath}/${child.name}` : child.name;
-          newFolders.add(pathKey);
+          allFolders.add(pathKey);
           collectFolders(child, pathKey);
         }
       });
     };
     collectFolders(treeRoot);
     
-    setExpandedFolders(prev => {
-      let changed = false;
-      const next = new Set(prev);
-      newFolders.forEach(f => {
-        if (!next.has(f)) {
-          next.add(f);
-          changed = true;
-        }
+    // 如果是从 localStorage 恢复状态后的第一次渲染
+    if (hasLoadedSavedFoldersRef.current) {
+      // 此时列表中已有的所有文件夹路径均标记为已处理，后续仅新增文件夹会自动展开
+      allFolders.forEach(f => knownFoldersRef.current.add(f));
+      hasLoadedSavedFoldersRef.current = false;
+      return;
+    }
+
+    // 找出哪些文件夹是全新出现的（之前不在 knownFoldersRef 中）
+    const newlyAddedFolders: string[] = [];
+    allFolders.forEach(f => {
+      if (!knownFoldersRef.current.has(f)) {
+        newlyAddedFolders.push(f);
+        knownFoldersRef.current.add(f);
+      }
+    });
+
+    // 如果有全新文件夹，把它们加入 expandedFolders 中展开
+    if (newlyAddedFolders.length > 0) {
+      setExpandedFolders(prev => {
+        const next = new Set(prev);
+        newlyAddedFolders.forEach(f => next.add(f));
+        return next;
       });
-      return changed ? next : prev;
+    }
+    
+    // 清理已不存在的文件夹缓存
+    knownFoldersRef.current.forEach(f => {
+      if (!allFolders.has(f)) {
+        knownFoldersRef.current.delete(f);
+      }
     });
   }, [treeRoot]);
 

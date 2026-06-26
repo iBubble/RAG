@@ -686,7 +686,7 @@ public partial class DocxEngine
     // ============================================================================
     public static void AddBackcoverSection(Body body, string backcoverImageId, DocRequest? request = null)
     {
-        string orgName = request?.OrgName ?? "云南力诺科技有限公司";
+        string orgName = request?.OrgName ?? "智能体";
         string year = DateTime.Now.ToString("yyyy");
 
         // Background image

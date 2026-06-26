@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Save, Download, FileSpreadsheet, Loader2, FileText,
   Bold, Italic, Table as TableIcon, Trash2, Plus, 
-  ChevronDown, ChevronUp, Columns, Layers
+  ChevronDown, ChevronUp, Columns, Layers, Sparkles
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { useProjectStore } from '../../store/projectStore';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Table } from '@tiptap/extension-table';
@@ -12,6 +13,7 @@ import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import Placeholder from '@tiptap/extension-placeholder';
+
 
 const CustomTable = Table.extend({
   addAttributes() {
@@ -67,14 +69,23 @@ const API_BASE = import.meta.env.VITE_API_BASE || '';
 interface AITable { name: string; template: string; }
 interface AICategory { name: string; tables: AITable[]; }
 
-export default function AITablePanel({ canWrite = true }: { canWrite?: boolean }) {
+export default function AITablePanel({ projectId = 'default', canWrite = true }: { projectId?: string; canWrite?: boolean }) {
   const { getAuthHeaders } = useAuthStore();
+  const checkedFileIds = useProjectStore(state => state.checkedFileIds);
+  const checkedRefIds = useProjectStore(state => state.checkedRefIds);
+  const selectedModel = useProjectStore(state => state.selectedModel);
+  const [refGlobalLib, setRefGlobalLib] = useState(false);
+  const [isAIFilling, setIsAIFilling] = useState(false);
+
   const [categories, setCategories] = useState<AICategory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedTable, setSelectedTable] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  const pendingDocRef = useRef<any>(null);
+  const [pendingLoadDoc, setPendingLoadDoc] = useState<any>(null);
 
   const editor = useEditor({
     extensions: [
@@ -129,7 +140,7 @@ export default function AITablePanel({ canWrite = true }: { canWrite?: boolean }
       if (res.ok) {
         const data: AICategory[] = await res.json();
         setCategories(data || []);
-        if (data && data.length > 0) {
+        if (data && data.length > 0 && !pendingDocRef.current) {
           const firstCat = data[0];
           setSelectedCategory(firstCat.name);
           if (firstCat.tables && firstCat.tables.length > 0) {
@@ -145,6 +156,69 @@ export default function AITablePanel({ canWrite = true }: { canWrite?: boolean }
   useEffect(() => {
     fetchTemplates();
   }, [editor]);
+
+  const loadDocToTable = (fullDoc: any) => {
+    if (!editor || !fullDoc) return;
+    const title = fullDoc.title || '';
+    const parts = title.split('_');
+    const tableName = parts[0];
+    
+    let foundCategory = '';
+    let foundTable = '';
+    
+    for (const cat of categories) {
+      const tbl = cat.tables?.find(t => t.name === tableName);
+      if (tbl) {
+        foundCategory = cat.name;
+        foundTable = tbl.name;
+        break;
+      }
+    }
+    
+    if (foundCategory && foundTable) {
+      setSelectedCategory(foundCategory);
+      setSelectedTable(foundTable);
+    }
+    
+    editor.commands.setContent(fullDoc.content || '');
+  };
+
+  useEffect(() => {
+    const handleLoadDocument = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const detail = customEvent.detail;
+      if (!detail || !editor) return;
+
+      const fullDoc = detail.doc ? detail.doc : detail;
+      const onHandled = detail.onHandled;
+
+      const title = fullDoc.title || '';
+      if (title.includes('_')) {
+        useProjectStore.getState().setActiveTab('AI表格');
+        if (onHandled) onHandled();
+      }
+
+      pendingDocRef.current = fullDoc;
+      if (categories.length === 0) {
+        setPendingLoadDoc(fullDoc);
+      } else {
+        loadDocToTable(fullDoc);
+      }
+    };
+    
+    window.addEventListener('loadSavedTableDocument', handleLoadDocument);
+    return () => {
+      window.removeEventListener('loadSavedTableDocument', handleLoadDocument);
+    };
+  }, [editor, categories]);
+
+  useEffect(() => {
+    if (categories.length > 0 && pendingLoadDoc && editor) {
+      loadDocToTable(pendingLoadDoc);
+      setPendingLoadDoc(null);
+      pendingDocRef.current = null;
+    }
+  }, [categories, pendingLoadDoc, editor]);
 
   const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const catName = e.target.value;
@@ -167,14 +241,141 @@ export default function AITablePanel({ canWrite = true }: { canWrite?: boolean }
     editor?.commands.setContent(tbl?.template || '');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!editor) return;
     setIsSaving(true);
-    setTimeout(() => { setIsSaving(false); alert('🎉 模板数据保存成功！'); }, 800);
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const formattedTime = `${year}-${month}-${day} ${hours}:${minutes}`;
+      const title = `${selectedTable || '智能表单'}_${formattedTime}`;
+      
+      const docId = 'doc_' + Math.random().toString(36).substr(2, 9);
+      const fullText = editor.getHTML();
+      
+      const docData = {
+        id: docId,
+        title: title,
+        content: fullText,
+        timestamp: Date.now(),
+        tokens: fullText.length,
+        sections: [],
+        isAutoSave: false
+      };
+      
+      const res = await fetch(`${API_BASE}/api/projects/${projectId || 'default'}/documents`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify(docData)
+      });
+      
+      if (!res.ok) {
+        throw new Error('保存文档失败');
+      }
+      
+      window.dispatchEvent(new CustomEvent('documentSaved'));
+      alert('🎉 模板数据保存成功！');
+    } catch (e: any) {
+      console.error(e);
+      alert(`❌ 保存失败: ${e.message}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleExport = () => {
+    if (!editor) return;
     setIsExporting(true);
-    setTimeout(() => { setIsExporting(false); alert('📂 已成功导出为 Word 表格样式格式文档！'); }, 800);
+    
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const formattedTime = `${year}${month}${day}_${hours}${minutes}`;
+      const fileName = `${selectedTable || '智能表单'}_${formattedTime}.doc`;
+      
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${selectedTable || '智能表单'}</title>
+          <style>
+            table { border-collapse: collapse; width: 100%; font-family: SimSun, Arial, sans-serif; }
+            td, th { border: 1px solid #000000; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; font-weight: bold; }
+            h1, p { font-family: SimSun, Arial, sans-serif; }
+            h1 { text-align: center; }
+          </style>
+        </head>
+        <body>
+          ${editor.getHTML()}
+        </body>
+        </html>
+      `;
+      
+      const blob = new Blob([htmlContent], { type: 'application/msword;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      console.error('导出失败', e);
+      alert('导出失败，请重试');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleAIFill = async () => {
+    if (!editor) return;
+    setIsAIFilling(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/generate/fill-table`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          template_html: editor.getHTML(),
+          project_id: projectId,
+          file_ids: checkedFileIds,
+          ref_ids: checkedRefIds,
+          ref_global_lib: refGlobalLib,
+          model: selectedModel
+        })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || '填表生成失败');
+      }
+      const data = await res.json();
+      if (data.html) {
+        editor.commands.setContent(data.html);
+      } else {
+        alert('⚠️ 未能生成有效的内容，请检查勾选的参考文件。');
+      }
+    } catch (e: any) {
+      console.error(e);
+      alert(`❌ AI智能填表失败: ${e.message}`);
+    } finally {
+      setIsAIFilling(false);
+    }
   };
 
   const currentTables = categories.find(c => c.name === selectedCategory)?.tables || [];
@@ -215,6 +416,18 @@ export default function AITablePanel({ canWrite = true }: { canWrite?: boolean }
                 ))}
               </select>
             </div>
+            <div className="flex-initial flex items-center gap-1.5 self-end pb-2 ml-4">
+              <input
+                type="checkbox"
+                id="refGlobalLib"
+                checked={refGlobalLib}
+                onChange={(e) => setRefGlobalLib(e.target.checked)}
+                className="w-4 h-4 rounded text-indigo-600 border-gray-300 dark:border-stone-700 bg-gray-50 dark:bg-[#1E1F22] focus:ring-indigo-500 cursor-pointer"
+              />
+              <label htmlFor="refGlobalLib" className="text-[11px] font-semibold text-gray-600 dark:text-stone-300 cursor-pointer select-none whitespace-nowrap">
+                参考全局公共文档库
+              </label>
+            </div>
           </div>
         )}
       </div>
@@ -247,6 +460,14 @@ export default function AITablePanel({ canWrite = true }: { canWrite?: boolean }
           )}
           
           <div className="flex gap-2">
+            <button
+              onClick={handleAIFill}
+              disabled={isAIFilling || !editor}
+              className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg flex items-center gap-1.5 font-semibold disabled:opacity-50 text-xs shadow-sm transition-all duration-200"
+            >
+              {isAIFilling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+              AI智能填表
+            </button>
             <button onClick={handleSave} disabled={isSaving || !canWrite} className="px-3.5 py-1.5 bg-[#8B7355] hover:bg-[#705c43] text-white rounded-lg flex items-center gap-1 font-medium disabled:opacity-50 text-xs shadow-sm"><Save className="w-3.5 h-3.5" /> 保存</button>
             <button onClick={handleExport} disabled={isExporting} className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-1 font-semibold disabled:opacity-50 text-xs shadow-sm"><Download className="w-3.5 h-3.5" /> 导出</button>
           </div>
@@ -365,44 +586,35 @@ export default function AITablePanel({ canWrite = true }: { canWrite?: boolean }
               background-color: transparent !important;
             }
             
-            /* 第一个排版表格（如“登记单位：___ 编号：___”）强制无边框与左右对齐 */
-            .ai-document-editor .ProseMirror > .tableWrapper:first-of-type table,
-            .ai-document-editor .ProseMirror > table:first-of-type {
+            /* 带有 noborder="true" 或 noborder 属性的排版/布局表格强制无边框 */
+            .ai-document-editor .ProseMirror table[noborder="true"],
+            .ai-document-editor .ProseMirror table[noborder] {
               border: none !important;
               box-shadow: none !important;
-              margin: 8px 0 !important;
-              table-layout: auto !important;
               background: transparent !important;
               background-color: transparent !important;
             }
-            .ai-document-editor .ProseMirror > .tableWrapper:first-of-type tr,
-            .ai-document-editor .ProseMirror > .tableWrapper:first-of-type tbody tr,
-            .ai-document-editor .ProseMirror > table:first-of-type tr,
-            .ai-document-editor .ProseMirror > table:first-of-type tbody tr {
-              border: none !important;
-              background: transparent !important;
-              background-color: transparent !important;
-            }
-            .ai-document-editor .ProseMirror > .tableWrapper:first-of-type td,
-            .ai-document-editor .ProseMirror > .tableWrapper:first-of-type th,
-            .ai-document-editor .ProseMirror > table:first-of-type td,
-            .ai-document-editor .ProseMirror > table:first-of-type th {
+            .ai-document-editor .ProseMirror table[noborder="true"] tr,
+            .ai-document-editor .ProseMirror table[noborder] tr,
+            .ai-document-editor .ProseMirror table[noborder="true"] td,
+            .ai-document-editor .ProseMirror table[noborder] td,
+            .ai-document-editor .ProseMirror table[noborder="true"] th,
+            .ai-document-editor .ProseMirror table[noborder] th {
               border: none !important;
               border-top: none !important;
               border-bottom: none !important;
               border-left: none !important;
               border-right: none !important;
-              padding: 4px 0 !important;
               background: transparent !important;
               background-color: transparent !important;
             }
-            /* 左侧单元格左对齐，右侧单元格右对齐 */
-            .ai-document-editor .ProseMirror > .tableWrapper:first-of-type td:first-child,
-            .ai-document-editor .ProseMirror > table:first-of-type td:first-child {
+            /* 对于 2 列的 noborder 布局表格（如登记单位和编号），做两端对齐 */
+            .ai-document-editor .ProseMirror table[noborder="true"] td:first-child:nth-last-child(2),
+            .ai-document-editor .ProseMirror table[noborder] td:first-child:nth-last-child(2) {
               text-align: left !important;
             }
-            .ai-document-editor .ProseMirror > .tableWrapper:first-of-type td:last-child,
-            .ai-document-editor .ProseMirror > table:first-of-type td:last-child {
+            .ai-document-editor .ProseMirror table[noborder="true"] td:first-child:nth-last-child(2) ~ td,
+            .ai-document-editor .ProseMirror table[noborder] td:first-child:nth-last-child(2) ~ td {
               text-align: right !important;
             }
 

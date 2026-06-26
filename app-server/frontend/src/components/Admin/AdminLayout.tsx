@@ -9,12 +9,14 @@ import LearningProgress from './LearningProgress';
 import ServiceStatus from './ServiceStatus';
 import LinvisSettings from './LinvisSettings';
 import AgentSettings from './AgentSettings';
-import { Users, FolderKanban, ScrollText, Settings, ArrowLeft, ShieldCheck, ActivitySquare, Activity, Sparkles } from 'lucide-react';
+import AITemplateManagement from './AITemplateManagement';
+import { Users, FolderKanban, ScrollText, Settings, ArrowLeft, ShieldCheck, ActivitySquare, Activity, Sparkles, FileSpreadsheet } from 'lucide-react';
 
 const navItems = [
   { path: '/admin', label: '用户管理', icon: Users, end: true },
   { path: '/admin/projects', label: '案件管理', icon: FolderKanban },
   { path: '/admin/logs', label: '日志管理', icon: ScrollText },
+  { path: '/admin/ai-templates', label: 'AI模板管理', icon: FileSpreadsheet },
   { path: '/admin/learning-progress', label: '学习进度', icon: ActivitySquare },
   { path: '/admin/service-status', label: '系统状态', icon: Activity },
   { path: '/admin/linvis', label: '可视化看板', icon: FolderKanban },
@@ -87,6 +89,7 @@ export default function AdminLayout() {
           <Route path="settings" element={<SystemSettings />} />
           <Route path="linvis" element={<LinvisSettings />} />
           <Route path="agents" element={<AgentSettings />} />
+          <Route path="ai-templates" element={<AITemplateManagement />} />
         </Routes>
       </main>
     </div>

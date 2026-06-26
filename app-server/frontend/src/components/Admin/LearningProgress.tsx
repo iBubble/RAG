@@ -66,6 +66,7 @@ export default function LearningProgress() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedProjectName, setSelectedProjectName] = useState<string | null>(null);
   const [activeGraphProject, setActiveGraphProject] = useState<string | null>(null);
+  const [isRetryingAll, setIsRetryingAll] = useState(false);
 
   const sortedProjects = useMemo(() => {
     return [...projects].sort((a, b) => {
@@ -243,6 +244,39 @@ export default function LearningProgress() {
       }
     } catch (e) {
       alert('请求异常，请检查网络');
+    }
+  };
+
+  const handleRetryAll = async () => {
+    if (!selectedProjectId || !failedFiles || failedFiles.length === 0) return;
+    setIsRetryingAll(true);
+    let successCount = 0;
+    try {
+      const promises = failedFiles.map(async (f) => {
+        try {
+          const res = await fetch(`${API_BASE}/api/admin/projects/${selectedProjectId}/failed-files/retry`, {
+            method: 'POST',
+            headers: {
+              ...getAuthHeaders(),
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ filename: f.filename, stage: f.stage })
+          });
+          if (res.ok) {
+            successCount++;
+          }
+        } catch (err) {
+          console.error(`重试文件 ${f.filename} 失败`, err);
+        }
+      });
+      await Promise.all(promises);
+      alert(`已成功下发 ${successCount} 个文件的重试任务！请稍候刷新看板。`);
+      setFailedFiles([]);
+      fetchProgress();
+    } catch (e) {
+      alert('批量重试请求异常');
+    } finally {
+      setIsRetryingAll(false);
     }
   };
 
@@ -913,6 +947,18 @@ export default function LearningProgress() {
               >
                 关闭
               </button>
+              {failedFiles && failedFiles.length > 0 && (
+                <button
+                  onClick={handleRetryAll}
+                  disabled={isRetryingAll}
+                  className="px-4 py-2 text-sm font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  {isRetryingAll ? (
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  ) : null}
+                  全部重试
+                </button>
+              )}
               {failedFiles && failedFiles.length > 0 && (
                 <button
                   onClick={copyFailedFiles}

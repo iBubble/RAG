@@ -4,4 +4,4 @@
  *      所有页面自动引用，避免多处硬编码不一致。
  */
 export const APP_VERSION = '1.0.0';
-export const APP_NAME = '力诺通用知识库';
+export const APP_NAME = '智能体通用知识库';

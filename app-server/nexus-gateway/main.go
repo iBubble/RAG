@@ -7,7 +7,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"github.com/nats-io/nats.go"
 )
 
 func main() {
@@ -18,28 +17,8 @@ func main() {
 	// 2. 初始化 JWT 模块
 	initJWT()
 
-	// 3. 连接 NATS 消息总线（带重试机制，应对容器启动顺序）
-	natsURL := os.Getenv("NATS_URL")
-	if natsURL == "" {
-		natsURL = "nats://rag-nats:4222"
-	}
-
-	var nc *nats.Conn
-	var err error
-	for i := 0; i < 10; i++ {
-		log.Printf("[Go-Gateway] 正在连接 NATS 服务 (%s)... 尝试 %d/10", natsURL, i+1)
-		nc, err = nats.Connect(natsURL, nats.Name("Go-Nexus-Gateway"), nats.Timeout(5*time.Second))
-		if err == nil {
-			break
-		}
-		time.Sleep(2 * time.Second)
-	}
-
-	if err != nil {
-		log.Fatalf("[Go-Gateway] 连接 NATS 服务最终失败: %v", err)
-	}
-	defer nc.Close()
-	log.Println("[Go-Gateway] NATS 连接成功！")
+	// 3. 移除 NATS 消息总线连接（本系统核心业务已废弃 NATS 订阅机制）
+	log.Println("[Go-Gateway] NATS 模块已在重构中废弃，跳过连接初始化")
 
 	// 4. 路由配置与启动
 	gin.SetMode(gin.ReleaseMode)
@@ -60,11 +39,19 @@ func main() {
 		backendURL = "http://127.0.0.1:8002"
 	}
 
-	// 核心对话流式接口：由 Go + NATS 自行处理
-	r.POST("/api/chat", AuthMiddleware(), ChatHandler(nc))
+	// 核心对话流式接口：由 Go 本地 Eino.Graph 编排处理
+	r.POST("/api/chat", AuthMiddleware(), ChatHandler())
 
-	// 泛解析：使用 NoRoute 机制将其他所有未精确匹配接口转发至 Python 后端 (8002 端口)
-	r.NoRoute(ReverseProxy(backendURL))
+	// 针对前端资源和 API 分流代理
+	frontendURL := "http://127.0.0.1:2028"
+	r.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if len(path) >= 4 && path[:4] == "/api" {
+			ReverseProxy(backendURL)(c)
+		} else {
+			ReverseProxy(frontendURL)(c)
+		}
+	})
 
 	port := os.Getenv("GATEWAY_PORT")
 	if port == "" {

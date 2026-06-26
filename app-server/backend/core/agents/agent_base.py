@@ -150,7 +150,7 @@ class AgentBase:
                         model=self.model,
                         tools=tools_schema if tools_schema else None,
                         temperature=self.temperature,
-                        num_ctx=self.num_ctx,
+                        num_ctx=min(self.num_ctx, 8192),
                         num_predict=self.num_predict,
                     )
             except Exception as e:

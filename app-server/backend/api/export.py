@@ -187,7 +187,7 @@ def _add_cover_page(doc, report_title: str):
 
     org_p = doc.add_paragraph()
     org_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    org_run = org_p.add_run('云南力诺科技有限公司')
+    org_run = org_p.add_run('智能体')
     org_run.font.name = 'FangSong'
     org_run._element.rPr.rFonts.set(qn('w:eastAsia'), 'FangSong')
     org_run.font.size = Pt(18)
@@ -532,7 +532,7 @@ async def export_to_docx(req: ExportRequest, user: dict = Depends(get_current_us
     # 1. 构建适合 C# SDK 的 JSON 模型
     doc_request = {
         "title": report_title,
-        "org_name": "云南力诺科技有限公司",
+        "org_name": "智能体",
         "date_str": datetime.now(timezone(timedelta(hours=8))).strftime("%Y年%m月"),
         "sections": []
     }
@@ -937,7 +937,7 @@ async def download_docx(task_id: str, user: dict = Depends(get_current_user)):
 
 class CoverPreviewRequest(BaseModel):
     title: str
-    org_name: Optional[str] = "云南力诺科技有限公司"
+    org_name: Optional[str] = "智能体"
     date_str: Optional[str] = None
 
 @router.post("/cover-preview")

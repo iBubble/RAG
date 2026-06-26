@@ -113,7 +113,7 @@ export default function LoginPage() {
         </form>
 
         <p className="text-center text-[10px] text-gray-400 tracking-widest mt-6 uppercase">
-          © 云南力诺科技有限公司
+          © 智能体
         </p>
       </div>
     </div>

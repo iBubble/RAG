@@ -43,7 +43,7 @@ class Settings(BaseSettings):
         case_sensitive=False
     )
 
-    APP_NAME: str = "ShengyaoRAG Backend"
+    APP_NAME: str = "LiukunRAG Backend"
     FRONTEND_URL: str = "http://localhost:8008"
     ALLOW_ORIGINS: list[str] = ["http://localhost:8008", "https://rag.syhsgis.com"]
     

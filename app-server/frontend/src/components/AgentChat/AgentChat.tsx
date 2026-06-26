@@ -47,7 +47,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
   const isGenerating = chatStreamingState.projectId === projectId && chatStreamingState.isGenerating;
 
   const publicSettings = useProjectStore(state => state.publicSettings);
-  const chatAgentNameRaw = publicSettings?.agent_chat_name || '小诺 (Linuo)';
+  const chatAgentNameRaw = publicSettings?.agent_chat_name || '小智 (Agent)';
   const chatAgentName = chatAgentNameRaw.split(' ')[0].split('(')[0].split('（')[0];
 
   const getAgentAvatarEmoji = (avatar?: string) => {
@@ -58,14 +58,14 @@ export default function AgentChat({ projectId }: { projectId: string }) {
     return '💡';
   };
 
-  const defaultWelcome = `您好！我是您的力诺知识问答助手${chatAgentName}，由本地模型驱动。请问有什么可以帮您？`;
+  const defaultWelcome = `您好！我是您的智能体知识问答助手${chatAgentName}，由本地模型驱动。请问有什么可以帮您？`;
   const messages = agentMessagesByProject[projectId] || [{ id: '1', role: 'agent', content: defaultWelcome }];
   const setMessages = (updater: Message[] | ((prev: Message[]) => Message[])) => setProjectMessages(projectId, updater);
 
   const addChatSnippet = useProjectStore(state => state.addChatSnippet);
   const selectedModel = useProjectStore(state => state.selectedModel);
   const templateSections = useProjectStore(state => state.templateSections);
-  const { getAuthHeaders } = useAuthStore();
+  const { getAuthHeaders, user } = useAuthStore();
   
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus>('checking');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -75,7 +75,6 @@ export default function AgentChat({ projectId }: { projectId: string }) {
   const [isRecommending, setIsRecommending] = useState(false);
 
   const [chatMode, setChatMode] = useState<string>('fast');
-  const [hasSetDefaultMode, setHasSetDefaultMode] = useState(false);
   const fetchPublicSettings = useProjectStore(state => state.fetchPublicSettings);
 
   useEffect(() => {
@@ -85,15 +84,9 @@ export default function AgentChat({ projectId }: { projectId: string }) {
   }, [publicSettings, fetchPublicSettings]);
 
   useEffect(() => {
-    if (publicSettings && !hasSetDefaultMode) {
-      if (publicSettings.collab_chat_enabled === 'true') {
-        setChatMode('smart');
-      } else {
-        setChatMode('fast');
-      }
-      setHasSetDefaultMode(true);
-    }
-  }, [publicSettings, hasSetDefaultMode]);
+    setChatMode('fast');
+  }, [user]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const streamingContent = isGenerating ? chatStreamingState.streamingContent : '';
@@ -197,6 +190,23 @@ export default function AgentChat({ projectId }: { projectId: string }) {
         });
       } catch (err) {
         console.error('[AgentChat] 清空聊天历史失败:', err);
+      }
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!window.confirm('确定要永久删除这条对话记录吗？')) return;
+    const updated = messages.filter(m => m.id !== messageId);
+    setMessages(updated);
+    if (projectId) {
+      try {
+        await fetch(`${API_BASE}/api/chat/history`, {
+          method: 'POST',
+          headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project_id: projectId, messages: updated })
+        });
+      } catch (err) {
+        console.error('[AgentChat] 删除单条消息时同步失败:', err);
       }
     }
   };
@@ -596,11 +606,24 @@ export default function AgentChat({ projectId }: { projectId: string }) {
                 </div>
               )}
 
-              <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+              <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed group relative ${
                 msg.role === 'user'
                   ? 'bg-[#D6CCF9] text-gray-800 rounded-tr-sm shadow-sm'
                   : 'bg-white text-gray-800 shadow-sm border border-[#E0DCD5]/60 rounded-tl-sm'
               }`}>
+                {!msg.isStreaming && msg.id !== '1' && (
+                  <button
+                    onClick={() => handleDeleteMessage(msg.id)}
+                    className={`absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1.5 rounded-lg cursor-pointer ${
+                      msg.role === 'user'
+                        ? 'text-purple-700 hover:text-red-700 hover:bg-[#c5b8f7]'
+                        : 'text-gray-400 hover:text-red-500 hover:bg-gray-100'
+                    }`}
+                    title="永久删除此条对话"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 {/* WHY: 用户消息不需要 Markdown 解析，直接纯文本渲染保持白色字体；
                          Agent 消息使用 MarkdownBlock 渲染结构化内容 */}
                 {msg.role === 'user'
@@ -670,25 +693,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
       </div>
 
       <div className="p-4 border-t border-[#E0DCD5]/60 bg-transparent shrink-0">
-        {/* 对话框前方的模式切换 — 胶囊样式 */}
-        <div className="flex items-center gap-2 mb-3">
-          <div className="flex items-center bg-gray-50 border border-[#E0DCD5] rounded-full p-0.5 shadow-sm">
-            <button
-              onClick={() => setChatMode('fast')}
-              className={`text-[11px] px-3 py-1 rounded-full transition-all ${chatMode === 'fast' ? 'bg-[#8B7355] text-white font-semibold shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              title="隐藏思考过程，结合项目资料直接输出专属答案"
-            >
-              ⚡ 快速
-            </button>
-            <button
-              onClick={() => setChatMode('smart')}
-              className={`text-[11px] px-3 py-1 rounded-full transition-all ${chatMode === 'smart' ? 'bg-gradient-to-r from-purple-600 to-amber-500 text-white font-semibold shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              title="多Agent协同：【协同】文档秘书路由 → 【协同】法律分析专家执行 → 【协同】审查员质疑 → 【协同】仲裁官裁决"
-            >
-              🤝 协同
-            </button>
-          </div>
-        </div>
+
 
         <div className="relative">
           <textarea

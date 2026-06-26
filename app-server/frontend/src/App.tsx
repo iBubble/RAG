@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
 import { createPortal } from 'react-dom';
-import { Routes, Route, useNavigate, useParams, Navigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, useParams, Navigate, useLocation } from 'react-router-dom';
 import DocumentStudio from './components/DocumentStudio/DocumentStudio';
 import HomePage from './components/HomePage/HomePage';
 import AgentChat from './components/AgentChat/AgentChat';
@@ -32,6 +32,7 @@ import {
   Table
 } from 'lucide-react';
 import { useThemeStore } from './store/themeStore';
+import { APP_VERSION, APP_NAME } from './version';
 
 const TAB_ITEMS = [
   { id: '智能助手', label: '智能助手', icon: Sparkles },
@@ -42,6 +43,7 @@ const TAB_ITEMS = [
 export function ThemeSwitcher() {
   const [isOpen, setIsOpen] = useState(false);
   const { colorMode, setColorMode } = useThemeStore();
+  const { user } = useAuthStore();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -95,6 +97,9 @@ export function ThemeSwitcher() {
                   key={item.id}
                   onClick={() => {
                     setColorMode(item.id as any);
+                    if (user?.login_name) {
+                      localStorage.setItem(`colorMode_${user.login_name}`, item.id);
+                    }
                     setIsOpen(false);
                   }}
                   className={`flex items-center gap-2.5 w-full px-4 py-2.5 text-left text-xs transition-colors cursor-pointer ${
@@ -384,12 +389,22 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  const { isLoggedIn, fetchMe } = useAuthStore();
+  const { isLoggedIn, user, fetchMe } = useAuthStore();
   const applyTheme = useThemeStore(state => state.applyTheme);
   const colorMode = useThemeStore(state => state.colorMode);
+  const location = useLocation();
+  const fetchPublicSettings = useProjectStore(state => state.fetchPublicSettings);
+  const publicSettings = useProjectStore(state => state.publicSettings);
+
+  const systemName = publicSettings?.system_name || `${APP_NAME} V${APP_VERSION}`;
 
   // 初始化主题并监听系统深色模式变化
   useEffect(() => {
+    // 强制重置：如果全局默认主题为 'system'，则强行重置为 'light'，确保所有未手动调整过的历史页面均显示为浅色模式
+    if (useThemeStore.getState().colorMode === 'system') {
+      useThemeStore.getState().setColorMode('light');
+    }
+
     applyTheme();
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -403,10 +418,51 @@ function App() {
     return () => mediaQuery.removeEventListener('change', handleSystemThemeChange);
   }, [applyTheme, colorMode]);
 
-  // 启动时验证 Token 有效性
+  // 当用户登录状态或者用户名改变时，加载并应用该用户的专属色彩主题模式
+  useEffect(() => {
+    if (user?.login_name) {
+      const savedUserMode = localStorage.getItem(`colorMode_${user.login_name}`);
+      if (savedUserMode) {
+        useThemeStore.getState().setColorMode(savedUserMode as any);
+      } else {
+        // 如果该账号之前没有保存过主题模式，默认采用“浅色模式（light）”
+        useThemeStore.getState().setColorMode('light');
+      }
+    } else {
+      // 未登录时，默认也用浅色模式
+      useThemeStore.getState().setColorMode('light');
+    }
+  }, [user?.login_name]);
+
+  // 启动时验证 Token 有效性，并获取公共设置
   useEffect(() => {
     if (isLoggedIn) fetchMe();
-  }, []);
+    fetchPublicSettings();
+  }, [isLoggedIn, fetchPublicSettings]);
+
+  // 监听路由与系统设置，动态同步浏览器网页标题
+  useEffect(() => {
+    const path = location.pathname;
+    if (path.startsWith('/project/')) {
+      // 项目详情页的标题由 StudioLayout 自行设置，避免与此处路由监听冲突
+      return;
+    }
+    if (path === '/login') {
+      document.title = `登录 - ${systemName}`;
+    } else if (path === '/register') {
+      document.title = `注册 - ${systemName}`;
+    } else if (path === '/profile') {
+      document.title = `个人中心 - ${systemName}`;
+    } else if (path.startsWith('/admin')) {
+      document.title = `后台管理 - ${systemName}`;
+    } else if (path === '/linvis') {
+      document.title = `知识图谱 - ${systemName}`;
+    } else if (path === '/') {
+      document.title = systemName;
+    } else {
+      document.title = systemName;
+    }
+  }, [location.pathname, systemName]);
 
   return (
     <Routes>
@@ -437,6 +493,8 @@ function StudioLayout() {
   const isGenerating = useProjectStore(state => state.chatStreamingState.isGenerating);
 
   const fetchPublicSettings = useProjectStore(state => state.fetchPublicSettings);
+  const publicSettings = useProjectStore(state => state.publicSettings);
+  const systemName = publicSettings?.system_name || `${APP_NAME} V${APP_VERSION}`;
 
   useEffect(() => {
     fetchPublicSettings();
@@ -518,6 +576,15 @@ function StudioLayout() {
     };
     if (projectId) loadProject();
   }, [projectId]);
+
+  // 动态修改项目详情页的网页标题
+  useEffect(() => {
+    if (projectName) {
+      document.title = `${projectName} - ${systemName}`;
+    } else {
+      document.title = systemName;
+    }
+  }, [projectName, systemName]);
 
   // 保存项目名
   const saveProjectName = async () => {
@@ -734,7 +801,7 @@ function StudioLayout() {
             </div>
 
             <div className="h-full" style={{ display: activeTab === 'AI表格' ? 'block' : 'none' }}>
-              <AITablePanel canWrite={canWrite} />
+              <AITablePanel projectId={projectId} canWrite={canWrite} />
             </div>
 
             <div className="h-full" style={{ display: activeTab === '智能助手' ? 'block' : 'none' }}>

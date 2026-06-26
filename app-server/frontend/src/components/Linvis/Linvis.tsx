@@ -131,9 +131,6 @@ export default function Linvis() {
     if (data.system_status.linvis_name) {
       document.title = data.system_status.linvis_name;
     }
-    return () => {
-      document.title = '力诺通用知识库RAG';
-    };
   }, [data.system_status.linvis_name]);
 
   if (loading) {
@@ -211,7 +208,7 @@ export default function Linvis() {
               </div>
               
               <div className="flex flex-wrap justify-center gap-16 z-10">
-                {showAgent('chat') && <LinvisDesk agentKey="chat" {...getAgentProps('chat', '小诺 (Linuo)', 'male', 'horse')} roleTitle="智能对话专家" info={data.agents.chat} />}
+                {showAgent('chat') && <LinvisDesk agentKey="chat" {...getAgentProps('chat', '小智 (Agent)', 'male', 'horse')} roleTitle="智能对话专家" info={data.agents.chat} />}
                 {showAgent('service') && <LinvisDesk agentKey="service" {...getAgentProps('service', '小管 (Manager)', 'female', 'horse')} roleTitle="文档审查专家" info={data.agents.service} />}
               </div>
 

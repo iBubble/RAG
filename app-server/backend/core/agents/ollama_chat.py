@@ -81,7 +81,7 @@ async def ollama_chat(
     for attempt in range(max_retries):
         try:
             client = get_client()
-            resp = await client.post(url, json=payload, timeout=120.0)
+            resp = await client.post(url, json=payload, timeout=600.0)
             resp.raise_for_status()
             data = resp.json()
 
@@ -148,7 +148,7 @@ async def ollama_chat_stream(
             client = get_client()
             in_think = False
 
-            async with client.stream("POST", url, json=payload, timeout=60.0) as response:
+            async with client.stream("POST", url, json=payload, timeout=600.0) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if not line.strip():

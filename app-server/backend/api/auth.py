@@ -118,7 +118,7 @@ def _init_admin():
             (
                 admin_id, "系统管理员", "admin", "admin@syhsgis.com",
                 _hash_password(os.environ.get("ADMIN_INIT_PASSWORD", settings.ADMIN_INIT_PASSWORD)),
-                "云南力诺科技有限公司", "",
+                "智能体", "",
                 "admin", "active", "",
                 datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None).isoformat(),
             ),

@@ -10,7 +10,7 @@
  */
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
-import { Wand2, Rocket, Trash2, ChevronDown, Square, Copy, Paperclip, AlertTriangle } from 'lucide-react';
+import { Rocket, Trash2, Square, Paperclip, AlertTriangle, Bold, Italic, Plus, ChevronDown, ChevronUp, Columns, Layers, Table as TableIcon } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Table } from '@tiptap/extension-table';
@@ -32,7 +32,6 @@ interface SectionBlockProps {
   onGenerate: (section: DocSection, editor: any, mode?: string) => void;
   onActivate: () => void;
   onStopGenerate: () => void;
-  hasExemplar?: boolean;
 }
 
 const SectionBlock = forwardRef<SectionBlockHandle, SectionBlockProps>(({
@@ -42,26 +41,14 @@ const SectionBlock = forwardRef<SectionBlockHandle, SectionBlockProps>(({
   onSaveContent,
   onGenerate,
   onActivate,
-  onStopGenerate,
-  hasExemplar = false
+  onStopGenerate
 }, ref) => {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [showModeMenu, setShowModeMenu] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
   const lastUpdateRef = useRef<number>(0);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // WHY: 点击外部关闭下拉菜单
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowModeMenu(false);
-      }
-    };
-    if (showModeMenu) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showModeMenu]);
+
 
   const editor = useEditor({
     extensions: [
@@ -118,7 +105,6 @@ const SectionBlock = forwardRef<SectionBlockHandle, SectionBlockProps>(({
     if (e) e.stopPropagation();
     if (isGenerating) return;
     setIsGenerating(true);
-    setShowModeMenu(false);
     try {
       await onGenerate(section, editor, mode);
     } finally {
@@ -168,7 +154,7 @@ const SectionBlock = forwardRef<SectionBlockHandle, SectionBlockProps>(({
             停止生成
           </button>
         ) : (
-          <div className="relative flex items-center gap-1.5" ref={menuRef}>
+          <div className="relative flex items-center gap-1.5">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -178,42 +164,33 @@ const SectionBlock = forwardRef<SectionBlockHandle, SectionBlockProps>(({
               title="清除本节内容">
               <Trash2 className="w-3.5 h-3.5" />
             </button>
-            <div className="flex items-center">
-              <button
-                onClick={handleGenerateClick}
-                className="flex items-center gap-1.5 text-[13px] font-medium text-indigo-600 bg-indigo-50/80 px-3 py-1 rounded-l-md border border-indigo-100 hover:bg-indigo-100/80 transition-all shadow-sm">
-                <Rocket className="w-3.5 h-3.5" />
-                智能编写
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setShowModeMenu(!showModeMenu); }}
-                className="flex items-center text-[13px] font-medium text-indigo-600 bg-indigo-50/80 px-1.5 py-1 rounded-r-md border border-l-0 border-indigo-100 hover:bg-indigo-100/80 transition-all shadow-sm">
-                <ChevronDown className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            {showModeMenu && (
-              <div className="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 min-w-[180px]">
-                <button onClick={(e) => handleGenerateClick(e, 'generate')}
-                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-indigo-50 flex items-center gap-2">
-                  <Wand2 className="w-3.5 h-3.5 text-purple-500" /> AI 自由生成
-                </button>
-                <button onClick={(e) => handleGenerateClick(e, 'replace')}
-                  disabled={!hasExemplar}
-                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-teal-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
-                  🔄 智能替换
-                </button>
-                <button onClick={(e) => handleGenerateClick(e, 'clone')}
-                  disabled={!hasExemplar}
-                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-amber-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
-                  <Copy className="w-3.5 h-3.5 text-amber-600" /> 精确复刻
-                </button>
-              </div>
-            )}
+            <button
+              onClick={handleGenerateClick}
+              className="flex items-center gap-1.5 text-[13px] font-medium text-indigo-600 bg-indigo-50/80 px-3 py-1 rounded-md border border-indigo-100 hover:bg-indigo-100/80 transition-all shadow-sm">
+              <Rocket className="w-3.5 h-3.5" />
+              智能编写
+            </button>
           </div>
         )}
       </h3>
 
       <div className="pl-2">
+        {editor && (
+          <div className="flex items-center gap-1 bg-white dark:bg-[#1E1F22] px-2 py-1 rounded-lg border border-gray-200 dark:border-stone-800 mb-2 w-fit">
+            <button onClick={() => editor.chain().focus().toggleBold().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded text-gray-600 dark:text-stone-300" title="加粗"><Bold className="w-3.5 h-3.5" /></button>
+            <button onClick={() => editor.chain().focus().toggleItalic().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded text-gray-600 dark:text-stone-300" title="斜体"><Italic className="w-3.5 h-3.5" /></button>
+            <div className="w-[1px] h-3.5 bg-gray-200 dark:bg-stone-800 mx-1" />
+            <button onClick={() => editor.chain().focus().addRowAfter().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded flex items-center gap-0.5 text-gray-600 dark:text-stone-300" title="在下方增行"><Plus className="w-3 h-3" /><ChevronDown className="w-3 h-3" /></button>
+            <button onClick={() => editor.chain().focus().addRowBefore().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded flex items-center gap-0.5 text-gray-600 dark:text-stone-300" title="在上方增行"><Plus className="w-3 h-3" /><ChevronUp className="w-3 h-3" /></button>
+            <button onClick={() => editor.chain().focus().deleteRow().run()} className="p-1 hover:bg-red-50 text-red-500 dark:hover:bg-red-950/20 rounded flex items-center gap-0.5" title="删行"><Trash2 className="w-3 h-3" /><ChevronDown className="w-3 h-3" /></button>
+            <div className="w-[1px] h-3.5 bg-gray-200 dark:bg-stone-800 mx-1" />
+            <button onClick={() => editor.chain().focus().addColumnAfter().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded flex items-center gap-0.5 text-gray-600 dark:text-stone-300" title="在右侧增列"><Plus className="w-3 h-3" /><Columns className="w-3 h-3" /></button>
+            <button onClick={() => editor.chain().focus().deleteColumn().run()} className="p-1 hover:bg-red-50 text-red-500 dark:hover:bg-red-950/20 rounded flex items-center gap-0.5" title="删列"><Trash2 className="w-3 h-3" /><Columns className="w-3 h-3" /></button>
+            <div className="w-[1px] h-3.5 bg-gray-200 dark:bg-stone-800 mx-1" />
+            <button onClick={() => editor.chain().focus().mergeCells().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded text-gray-600 dark:text-stone-300" title="合并单元格"><Layers className="w-3.5 h-3.5" /></button>
+            <button onClick={() => editor.chain().focus().splitCell().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded text-gray-600 dark:text-stone-300" title="拆分单元格"><TableIcon className="w-3.5 h-3.5" /></button>
+          </div>
+        )}
         <div className="tiptap-wrapper min-h-[50px]">
           <EditorContent editor={editor} />
         </div>

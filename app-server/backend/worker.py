@@ -19,12 +19,13 @@ from core.celery_app import celery_app
 from core.extractors import extract_text
 from core.vector_store import ingest_text, estimate_chunk_count
 from core.status_tracker import update_file_status
+from core.config import settings
 
 logger = get_task_logger(__name__)
 
 # WHY: chunks 超过此阈值时，BGE-M3 编码在 ARM 上大概率超过 480s 软超时。
 #      自动将任务从 fast queue 重路由到 slow_queue（3000s 超时）。
-_CHUNK_THRESHOLD_SLOW_QUEUE = 200
+_CHUNK_THRESHOLD_SLOW_QUEUE = 50
 
 
 @worker_process_init.connect
@@ -214,18 +215,14 @@ def process_document(self, file_path: str, file_id: str, filename: str, project_
             # WHY: 向量化完成后标记为 graph_queued，等待图谱提取
             update_file_status(project_id, file_id, "graph_queued", chunks=chunks)
 
-            # === RAPTOR 多层摘要 ===
-            # WHY: 对 chunk 数 ≥ 5 的文件构建多层摘要，增强宏观问题回答能力。
-            #      在基础入库完成后立即执行，因为 RAPTOR 需要读取已入库的 chunk。
-            #      失败不影响后续图谱提取流程。
+            # === 异步触发 RAPTOR 多层摘要 ===
+            # WHY: 将重度消耗 LLM 的 RAPTOR 摘要异步提交到 slow_queue，
+            #      避免在 fast_queue (celery 队列) 中占用并发 slot 导致切片入库卡死。
             if chunks >= 5:
-                try:
-                    from core.vector_store import ingest_raptor_layers
-                    raptor_count = ingest_raptor_layers(file_id, filename, project_id)
-                    if raptor_count > 0:
-                        logger.info(f"🌲 RAPTOR 摘要完成: {filename}, {raptor_count} 个摘要 chunk")
-                except Exception as re:
-                    logger.warning(f"🌲 RAPTOR 摘要失败(非致命): {filename}, {re}")
+                process_raptor_extraction.apply_async(
+                    args=[file_id, filename, project_id],
+                    queue='slow_queue'
+                )
 
             # 触发后台全量 GraphRAG 提炼 (极度消耗 LLM，放入 slow_queue)
             process_graph_extraction.apply_async(
@@ -453,6 +450,44 @@ def process_graph_extraction(self, file_id: str, filename: str, project_id: str)
                     logger.warning(f"Failed to set community summary to completed in redis: {_re}")
 
     return {"status": "success", "triples": total_triples}
+
+
+@celery_app.task(
+    bind=True,
+    name="worker.process_raptor_extraction",
+    max_retries=1,
+    autoretry_for=(),
+    retry_backoff=True,
+)
+def process_raptor_extraction(self, file_id: str, filename: str, project_id: str):
+    """
+    后台任务：为已向量化的文档构建 RAPTOR 多层摘要（放入 slow_queue 异步执行）。
+    """
+    from core.llm_engine import current_project_id
+    current_project_id.set(project_id)
+    if should_pause_project_task(project_id, "summary"):
+        logger.info(f"⏳ 检测到高优先级案件摘要任务，退避 process_raptor_extraction: project={project_id}, file={filename}")
+        process_raptor_extraction.apply_async(
+            args=[file_id, filename, project_id],
+            queue=self.request.delivery_info.get('routing_key', 'slow_queue') if self.request.delivery_info else 'slow_queue',
+            countdown=30
+        )
+        return {"status": "paused_due_to_high_priority"}
+
+    logger.info(f"🌲 开始后台 RAPTOR 摘要提取: {filename} ({file_id})")
+
+    from core.vector_store import ingest_raptor_layers
+    try:
+        raptor_count = ingest_raptor_layers(file_id, filename, project_id)
+        if raptor_count > 0:
+            logger.info(f"🌲 RAPTOR 摘要完成: {filename}, {raptor_count} 个摘要 chunk")
+            return {"status": "success", "raptor_chunks": raptor_count}
+        else:
+            logger.info(f"🌲 RAPTOR 摘要跳过或未生成有效 chunk: {filename}")
+            return {"status": "skipped"}
+    except Exception as e:
+        logger.warning(f"🌲 RAPTOR 摘要构建失败: {filename}, 错误: {e}")
+        return {"status": "failed", "error": str(e)}
 
 
 @celery_app.task(bind=True, name="worker.precompute_project", time_limit=18000, soft_time_limit=14400)

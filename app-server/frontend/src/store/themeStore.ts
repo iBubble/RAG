@@ -40,7 +40,7 @@ export const useThemeStore = create<ThemeState>()(
       };
 
       return {
-        colorMode: 'system',
+        colorMode: 'light',
 
         setColorMode: (mode) => {
           set({ colorMode: mode });

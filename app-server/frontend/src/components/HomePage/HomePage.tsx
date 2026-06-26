@@ -25,6 +25,7 @@ export default function HomePage() {
   const navigate = useNavigate();
   const { user, logout, getAuthHeaders } = useAuthStore();
   const [systemName, setSystemName] = useState(`${APP_NAME} V${APP_VERSION}`);
+  const [linvisName, setLinvisName] = useState('麟维斯');
   const [projects, setProjects] = useState<Project[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -132,7 +133,10 @@ export default function HomePage() {
   useEffect(() => {
     fetch(`${API_BASE}/api/admin/settings/public`)
       .then(r => r.json())
-      .then(d => d.system_name && setSystemName(d.system_name))
+      .then(d => {
+        if (d.system_name) setSystemName(d.system_name);
+        if (d.linvis_name) setLinvisName(d.linvis_name);
+      })
       .catch(() => {});
   }, []);
 
@@ -257,7 +261,7 @@ export default function HomePage() {
 
       <div className="flex items-center justify-between mb-auto">
         <div className="text-6xl drop-shadow-sm transition-transform duration-300 group-hover:scale-110">
-          {isLibrary ? (proj.icon || '📚') : (proj.icon || '⚖️')}
+          {proj.icon || '📚'}
         </div>
       </div>
       {/* 三点菜单 */}
@@ -327,14 +331,14 @@ export default function HomePage() {
             <ThemeSwitcher />
             {/* 智能巡检健康指示灯 */}
             <SystemStatusIndicator />
-            {/* 麟维斯看板（原齿轮设置按钮） */}
+            {/* 可视化看板（原齿轮设置按钮） */}
             <button 
               onClick={() => navigate('/linvis')} 
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 text-indigo-700 hover:from-indigo-500/20 hover:to-purple-500/20 transition-all font-semibold text-xs shadow-sm cursor-pointer" 
-              title="进入麟维斯看板"
+              title={`进入${linvisName}`}
             >
               <Settings className="w-3.5 h-3.5" />
-              <span>麟维斯看板</span>
+              <span>{linvisName}</span>
             </button>
             {/* 用户头像菜单 */}
             <div className="relative" ref={userMenuRef}>
@@ -487,7 +491,7 @@ export default function HomePage() {
                   value={newProjectName}
                   onChange={(e) => { setNewProjectName(e.target.value); if (createError) setCreateError(''); }}
                   onKeyDown={(e) => e.key === 'Enter' && handleCreateProject()}
-                  placeholder={newProjectType === 'library' ? '例如：中国法律法规库' : '例如：力诺管理制度规范'}
+                  placeholder={newProjectType === 'library' ? '例如：中国法律法规库' : '例如：智能体管理制度规范'}
                   className={`w-full px-4 py-2.5 bg-gray-50 border rounded-xl outline-none transition-all placeholder:text-gray-400 ${
                     createError ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-200' : 'border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200'
                   }`}

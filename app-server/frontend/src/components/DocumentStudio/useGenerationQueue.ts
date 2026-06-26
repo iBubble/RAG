@@ -52,8 +52,6 @@ export default function useGenerationQueue({
   activateSection,
 }: UseGenerationQueueOptions) {
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
-  const [isReplacingAll, setIsReplacingAll] = useState(false);
-  const [isCloningAll, setIsCloningAll] = useState(false);
 
   // WHY: 用 ref 而非 state 做中断信号，因为 async 循环中 state 读不到最新值
   const abortBatchRef = useRef(false);
@@ -144,143 +142,11 @@ export default function useGenerationQueue({
     }
   };
 
-  // ─── 范文智能替换 ───
-  const handleReplaceAll = async () => {
-    const hasExemplar = (useProjectStore.getState().exemplarSections || []).length > 0;
-    if (isReplacingAll || sections.length === 0 || !hasExemplar) return;
-    setIsReplacingAll(true);
-    abortBatchRef.current = false;
-    currentTopSectionTitleRef.current = null;
 
-    let generatedCount = 0;
-    let skippedCount = 0;
-
-    try {
-      const sectionIds = sections.map((s: DocSection) => s.id);
-      for (const sectionId of sectionIds) {
-        if (abortBatchRef.current) break;
-
-        // WHY: 实时从 store 读取最新内容，在 L1 边界触发保存
-        const latestSections = useProjectStore.getState().templateSections;
-        const latestSection = latestSections.find((s: DocSection) => s.id === sectionId);
-        if (!latestSection) continue;
-
-        // WHY: 遇到 L1 级章节边界时保存进度，与 handleGenerateAll 行为一致
-        if (latestSection.level === 1) {
-          if (currentTopSectionTitleRef.current !== null && canWrite) {
-            try {
-              await performSave(true);
-              console.log(`[ReplaceBatch] L1「${currentTopSectionTitleRef.current}」已完成，保存进度`);
-            } catch (saveErr) {
-              console.warn('[ReplaceBatch] 保存失败，继续生成', saveErr);
-            }
-          }
-          currentTopSectionTitleRef.current = latestSection.title;
-        }
-
-        // WHY: 虚拟化架构——先激活目标章节
-        activateSection(sectionId);
-        const ref = await waitForRef(sectionRefs, sectionId);
-        if (ref) {
-          await ref.generate('replace');
-          // WHY: 给 React 渲染周期时间更新 DOM，再检查生成结果
-          await new Promise(r => setTimeout(r, 200));
-
-          // 检查替换是否实际产生了内容
-          const updatedSections = useProjectStore.getState().templateSections;
-          const updated = updatedSections.find((s: DocSection) => s.id === sectionId);
-          const cleanText = (updated?.content || '')
-            .replace(/<[^>]*>?/gm, '').trim();
-          if (cleanText.length > 5) {
-            generatedCount++;
-          } else {
-            skippedCount++;
-          }
-        } else {
-          skippedCount++;
-        }
-      }
-    } catch (err: any) {
-      if (err.message === '401_UNAUTHORIZED') {
-        abortBatchRef.current = true;
-        showToast('登录凭证已过期失效，请刷新页面或重新登录', 'error');
-      }
-    } finally {
-      // 最终保存
-      try {
-        if (sections.length > 0 && canWrite) await performSave(true);
-      } catch (e) {
-        console.warn('[ReplaceBatch] 最终保存失败', e);
-      }
-
-      const msg = skippedCount > 0
-        ? `范文智能替换完成：成功 ${generatedCount} 节，跳过 ${skippedCount} 节`
-        : `范文智能替换完成：成功生成 ${generatedCount} 节`;
-      showToast(msg, generatedCount > 0 ? 'success' : 'warning');
-
-      currentTopSectionTitleRef.current = null;
-      abortBatchRef.current = false;
-      setIsReplacingAll(false);
-    }
-  };
-
-  // ─── 范文精确复刻 ───
-  const handleCloneAll = async () => {
-    const storeState = useProjectStore.getState();
-    const exemplarSections = storeState.exemplarSections || [];
-    const exemplarTitle = storeState.exemplarTitle || '';
-    const templateTitle = storeState.templateTitle || '';
-    const hasExemplar = exemplarSections.length > 0;
-
-    if (isCloningAll || !hasExemplar) return;
-    setIsCloningAll(true);
-    abortBatchRef.current = false;
-
-    try {
-      // 用范文的 sections 覆盖当前大纲
-      const { setTemplateData } = useProjectStore.getState();
-      const clonedSections = exemplarSections.map((es: any, idx: number) => ({
-        id: `clone-${Date.now()}-${idx}`,
-        title: es.title,
-        level: es.level || 1,
-        content: '',
-      }));
-      setTemplateData(templateTitle || exemplarTitle || '范文复刻', clonedSections);
-
-      // 等一帧让 React 渲染新 sections
-      await new Promise(r => setTimeout(r, 300));
-
-      // Step 2: 逐章节用 clone 模式生成
-      const latestSections = useProjectStore.getState().templateSections;
-      const cloneIds = latestSections.map((s: DocSection) => s.id);
-      for (const sectionId of cloneIds) {
-        if (abortBatchRef.current) break;
-        // WHY: 虚拟化架构——先激活目标章节
-        activateSection(sectionId);
-        const ref = await waitForRef(sectionRefs, sectionId);
-        if (ref) {
-          await ref.generate('clone');
-          await new Promise(r => setTimeout(r, 100));
-        }
-      }
-    } catch (err: any) {
-      if (err.message === '401_UNAUTHORIZED') {
-        abortBatchRef.current = true;
-        showToast('登录凭证已过期失效，请刷新页面或重新登录', 'error');
-      }
-    } finally {
-      abortBatchRef.current = false;
-      setIsCloningAll(false);
-    }
-  };
 
   return {
     isGeneratingAll,
-    isReplacingAll,
-    isCloningAll,
     handleGenerateAll,
-    handleReplaceAll,
-    handleCloneAll,
     handleStopBatch,
   };
 }

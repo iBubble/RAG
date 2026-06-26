@@ -73,9 +73,9 @@ class ChatRequest(BaseModel):
 MAX_HISTORY_ROUNDS = 6   # 最多保留最近 6 轮对话（12 条消息）
 MAX_HISTORY_CHARS = 3000  # 历史总字符预算，超出从最早的开始裁剪
 
-# [NEW] 资深总工人设：面向云南力诺科技有限公司的专业约束
+# [NEW] 资深总工人设：面向智能体的专业约束
 EXPERT_PERSONA = """你是一位深耕水利水电、水土保持及国土空间规划领域 20 年的资深总工程师。
-你目前正在为云南力诺科技有限公司主导核心技术咨询。
+你目前正在为智能体主导核心技术咨询。
 你的回复特征：
 1. 严谨性：所有结论必须符合国家及四川省地方工程技术标准。
 2. 逻辑性：采用总分总结构，条理清晰，层次分明。
@@ -2914,6 +2914,219 @@ async def internal_cache_set(req: InternalCacheSetRequest):
         req.answer, req.sources, None
     )
     return {"status": "success"}
+class FillTableRequest(BaseModel):
+    template_html: str
+    project_id: str
+    file_ids: List[str] = []
+    ref_ids: List[str] = []
+    ref_global_lib: bool = False
+    model: str = ""
 
+@router.post("/generate/fill-table")
+async def fill_table(req: FillTableRequest, user: dict = Depends(get_current_user)):
+    """
+    AI 智能填表接口。
+    数据来源来自左侧勾选文档经过大模型推理得出。
+    如果“参考全局公共文档库”勾选，则自动在公共文档分类项目下的资料库寻找匹配相关法规、制度。
+    """
+    import re
+    import hashlib
+    import os
+    from pathlib import Path
+    from core.database import get_db
+    from core.config import settings
+    from core.vector_store import query_by_file_ids
+    from core.llm_engine import stream_ollama
+    from starlette.concurrency import run_in_threadpool
 
+    # 1. 提取 HTML 中模板关键字段的关键字作为 RAG 查询词（兼容表格单元格与段落属性前缀）
+    keywords = []
+    
+    # 提取 td / th 中的字段
+    cells = re.findall(r'<(?:td|th)[^>]*>(.*?)</(?:td|th)>', req.template_html, re.DOTALL | re.IGNORECASE)
+    for cell in cells:
+        txt = re.sub(r'<[^>]+>', '', cell)
+        txt = re.sub(r'[_＿\s\t\r\n]+', ' ', txt).strip()
+        if txt and len(txt) > 1 and len(txt) < 100:
+            keywords.append(txt)
+            
+    # 提取段落 p / span 中含有冒号的属性前缀
+    p_texts = re.findall(r'<(?:p|span)[^>]*>(.*?)</(?:p|span)>', req.template_html, re.DOTALL | re.IGNORECASE)
+    for p_t in p_texts:
+        txt = re.sub(r'<[^>]+>', '', p_t)
+        clean_txt = re.sub(r'[_＿]+', '', txt).strip()
+        if '：' in clean_txt:
+            kw = clean_txt.split('：')[0].strip()
+            if 1 < len(kw) < 20:
+                keywords.append(kw)
+    
+    seen = set()
+    unique_keywords = []
+    for kw in keywords:
+        if kw not in seen:
+            seen.add(kw)
+            unique_keywords.append(kw)
+    
+    search_query = " ".join(unique_keywords[:30])
+    if not search_query:
+        search_query = "表格填写背景资料与事实信息"
 
+    # 2. 筛选本案勾选的文件
+    _case_fids = list(req.file_ids) if req.file_ids else []
+
+    # 3. 收集公共文档库的文件
+    _pub_fids = list(req.ref_ids) if req.ref_ids else []
+    
+    if req.ref_global_lib:
+        try:
+            with get_db() as conn:
+                lib_rows = conn.execute(
+                    "SELECT id FROM projects WHERE project_type = 'library'"
+                ).fetchall()
+                lib_ids = [dict(r)["id"] for r in lib_rows]
+            
+            upload_dir = Path(settings.UPLOAD_DIR)
+            for lib_id in lib_ids:
+                lib_dir = upload_dir / lib_id
+                if lib_dir.exists():
+                    for root, dirs, fnames in os.walk(str(lib_dir)):
+                        dirs[:] = [d for d in dirs if not d.startswith(".")]
+                        for fname in fnames:
+                            if fname.startswith("."):
+                                continue
+                            fpath = os.path.join(root, fname)
+                            rel_path = os.path.relpath(fpath, str(upload_dir))
+                            fid = hashlib.md5(f"{lib_id}_{rel_path}".encode("utf-8")).hexdigest()
+                            _pub_fids.append(fid)
+            _pub_fids = list(set(_pub_fids))
+        except Exception as e:
+            logger.warning(f"填表加载全局公共文档库文件失败: {e}")
+
+    # 4. 针对本案文档从磁盘直接读取全文，针对公共库使用 RAG
+    case_docs = []
+    if _case_fids:
+        def _load_case_files_from_disk():
+            import os
+            import hashlib
+            from pathlib import Path
+            from core.config import settings
+            from core.extractors import extract_text
+            upload_root = Path(settings.UPLOAD_DIR)
+            project_dir = upload_root / req.project_id
+            if not project_dir.exists():
+                return []
+            fid_map = {}
+            for root, dirs, files in os.walk(str(project_dir)):
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                for f in files:
+                    if f.startswith('.'):
+                        continue
+                    fpath = Path(root) / f
+                    try:
+                        if fpath.stat().st_size > 20 * 1024 * 1024:
+                            continue
+                    except OSError:
+                        continue
+                    rel_path = str(fpath.relative_to(upload_root))
+                    fid = hashlib.md5(f"{req.project_id}_{rel_path}".encode("utf-8")).hexdigest()
+                    if fid in _case_fids:
+                        try:
+                            text = extract_text(str(fpath))
+                            if text and text.strip():
+                                fid_map[fid] = (text, f)
+                        except Exception as e:
+                            logger.warning(f"从磁盘读取文件 {f} 失败: {e}")
+            docs = []
+            for fid in _case_fids:
+                if fid in fid_map:
+                    text, filename = fid_map[fid]
+                    docs.append({"content": text, "metadata": {"filename": filename}})
+            return docs
+        case_docs = await run_in_threadpool(_load_case_files_from_disk)
+
+    pub_docs = []
+    if _pub_fids:
+        pub_docs = await run_in_threadpool(
+            query_by_file_ids, search_query, _pub_fids, "", 10
+        )
+    
+    # 5. 组合上下文
+    from datetime import datetime
+    context_parts = []
+    project_name = ""
+    if req.project_id:
+        try:
+            with get_db() as conn:
+                project_row = conn.execute(
+                    "SELECT name FROM projects WHERE id = ?", (req.project_id,)
+                ).fetchone()
+                if project_row:
+                    project_name = dict(project_row).get("name", "")
+        except Exception as e:
+            logger.warning(f"获取项目名称失败: {e}")
+            
+    now = datetime.now()
+    context_parts.append(f"### 系统当前环境上下文信息\n【当前日期】：{now.strftime('%Y年%m月%d日')}\n【当前时间】：{now.strftime('%Y年%m月%d日 %H时%M分')}\n【当前关联的项目/案件名称】：{project_name}")
+    
+    seen_content = set()
+    if case_docs:
+        context_parts.append("### 案件背景事实材料")
+        for doc in case_docs:
+            content = doc['content'].strip()
+            if content not in seen_content:
+                seen_content.add(content)
+                context_parts.append(f"【文件来源: {doc['metadata'].get('filename', '未知文件')}】\n{content}")
+                
+    if pub_docs:
+        context_parts.append("### 公共法规、制度及参考材料")
+        for doc in pub_docs:
+            content = doc['content'].strip()
+            if content not in seen_content:
+                seen_content.add(content)
+                context_parts.append(f"【参考来源: {doc['metadata'].get('filename', '未知文件')}】\n{content}")
+
+    context_str = "\n\n".join(context_parts)
+    llm_model = req.model if req.model else settings.DEFAULT_LLM_MODEL
+    
+    prompt = f"""你是一个智能文档填表专家。你的任务是直接在给定的 HTML 模板中，将空白单元格或下划线占位符替换为对应的背景信息，并返回填充修改后的 HTML。
+
+### 背景事实材料及系统环境上下文
+{context_str}
+
+### 待填充的 HTML 模板
+{req.template_html}
+
+### 填表要求：
+- 必须原封不动地保留输入模板中的所有 HTML 标签、属性及内联样式，只在空白单元格（如空的 td）或下划线占位符（如“______”）处填充上对应的真实事实。
+- 单元格内原有的固定字段文字（例如“姓名”、“联系电话”等）绝对不能修改或删除。
+- 绝对只能输出一份被填充修改后的完整 HTML 代码。严禁在输出中包含原有的空白模板，也严禁输出任何解释、分析、注意、说明或“```html”代码块包裹标记。
+
+请直接输出替换后的完整 HTML：
+"""
+
+    response_text = ""
+    try:
+        async for chunk in stream_ollama(prompt, model=llm_model, temperature=0.2, num_ctx=16384, num_predict=8192):
+            response_text += chunk
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM 填表生成失败: {e}")
+
+    filled_html = response_text.strip()
+    if filled_html.startswith("```"):
+        lines = filled_html.splitlines()
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        filled_html = "\n".join(lines).strip()
+        
+    # 如果大模型在 HTML 外面输出了多余的文字，我们使用正则提取最外层的完整 HTML 部分
+    html_match = re.search(
+        r'(<(?:h\d|table|div|p|span|form|html|body|style|tr|td|thead|tbody|section)[^>]*>.*</(?:h\d|table|div|p|span|form|html|body|style|tr|td|thead|tbody|section)>)',
+        filled_html,
+        re.DOTALL | re.IGNORECASE
+    )
+    if html_match:
+        filled_html = html_match.group(1).strip()
+        
+    return {"html": filled_html}

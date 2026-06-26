@@ -23,9 +23,10 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# WHY: 意图分类仅输出 ~60 tokens 的 JSON 评分，8B 小模型完全胜任，
-#      推理速度比 35B 快 10x（5-15s → 1-3s）。
-_INTENT_MODEL = "qwen3:8b"
+from core.config import settings
+
+# WHY: 统一使用 35B 大模型以独占 GPU 显存，避免混用 8B 导致显存碎片与 CPU 降级
+_INTENT_MODEL = settings.DEFAULT_LLM_MODEL
 
 
 # ── 意图分类结果 ─────────────────────────────────────────

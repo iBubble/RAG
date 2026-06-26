@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { FileText, CheckCircle2, Wand2, List, Save, Plus, Trash2, ChevronRight, ChevronLeft, BookOpen, X, Eye, EyeOff, Square, Copy, Zap, Loader2, UploadCloud, AlertTriangle } from 'lucide-react';
+import { FileText, CheckCircle2, Wand2, List, Save, Plus, Trash2, ChevronRight, ChevronLeft, X, Square, Loader2, UploadCloud, AlertTriangle } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { useProjectStore } from '../../store/projectStore';
 import { useAuthStore } from '../../store/authStore';
@@ -35,7 +35,6 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
   const [activeHeadingId, setActiveHeadingId] = useState<string>('');
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(false);
   const [customInstruction, setCustomInstruction] = useState('');
-  const [showCloneConfirmModal, setShowCloneConfirmModal] = useState(false);
   const [sectionToDelete, setSectionToDelete] = useState<any | null>(null);
   const [showClearContentConfirm, setShowClearContentConfirm] = useState(false);
   const [showAddChapterModal, setShowAddChapterModal] = useState(false);
@@ -122,35 +121,14 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
   const currentDocId = useProjectStore((state: any) => state.currentDocId);
 
   // WHY: 范文状态用于双路 Prompt 引擎的 Track B
-  const exemplarTitle = useProjectStore((state: any) => state.exemplarTitle);
   const exemplarSections = useProjectStore((state: any) => state.exemplarSections);
-  const setExemplarData = useProjectStore((state: any) => state.setExemplarData);
-  const clearExemplar = useProjectStore((state: any) => state.clearExemplar);
   const hasExemplar = exemplarSections && exemplarSections.length > 0;
   const { getAuthHeaders } = useAuthStore();
-  const exemplarInputRef = useRef<HTMLInputElement>(null);
   
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [showExemplarPreview, setShowExemplarPreview] = useState(false);
-  const exemplarScrollRef = useRef<HTMLDivElement>(null);
-  const [isPrecomputing, setIsPrecomputing] = useState(false);
-  // WHY: 智能预计算下拉菜单状态
-  const [showPrecomputeMenu, setShowPrecomputeMenu] = useState(false);
-  const precomputeMenuRef = useRef<HTMLDivElement>(null);
   // WHY: 缓存填充状态
   const [isFillingCache, setIsFillingCache] = useState(false);
-
-  // WHY: 点击外部关闭预计算下拉菜单
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (precomputeMenuRef.current && !precomputeMenuRef.current.contains(e.target as Node)) {
-        setShowPrecomputeMenu(false);
-      }
-    };
-    if (showPrecomputeMenu) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showPrecomputeMenu]);
 
   // Calculate Progress
   const completedCount = sections.filter((s: DocSection) => {
@@ -275,34 +253,15 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
   };
 
 
-  // WHY: 批量生成逻辑（一键生成/范文替换/精确复刻）已抽离至 useGenerationQueue Hook
   const {
-    isGeneratingAll, isReplacingAll, isCloningAll,
-    handleGenerateAll, handleReplaceAll, handleCloneAll, handleStopBatch,
+    isGeneratingAll,
+    handleGenerateAll, handleStopBatch,
   } = useGenerationQueue({
     sections, canWrite, sectionRefs, abortControllerRef, performSave, showToast,
     activateSection: setActiveHeadingId,
   });
 
-  const triggerClone = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
 
-    const hitCache = await tryUseDraftCache('clone');
-    if (hitCache) return;
-
-    const hasContent = sections.some((s: DocSection) => s.content.replace(/<[^>]*>?/gm, '').trim().length > 5);
-    if (hasContent) {
-      setShowCloneConfirmModal(true);
-    } else {
-      handleCloneAll();
-    }
-  };
-
-  const executeClone = () => {
-    setShowCloneConfirmModal(false);
-    handleCloneAll();
-  };
 
 
 
@@ -375,7 +334,7 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       // WHY: 如果正在生成中，弹出确认框，给用户一个挽回的机会
-      if (isGeneratingAll || isReplacingAll || isCloningAll) {
+      if (isGeneratingAll) {
         e.preventDefault();
         e.returnValue = '文档正在生成中，关闭页面可能导致未保存的内容丢失。确定离开吗？';
       }
@@ -396,7 +355,7 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [sections, templateTitle, currentDocId, projectId, canWrite, isGeneratingAll, isReplacingAll, isCloningAll]);
+  }, [sections, templateTitle, currentDocId, projectId, canWrite, isGeneratingAll]);
 
 
   const handleSaveToLibrary = async (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -418,65 +377,6 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
 
   // WHY: 范文上传处理 — 调用 /api/exemplar/parse 解析带正文的范文，
   //      然后持久化存储到项目路径并更新前端状态。
-  const handleExemplarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      // 1. 解析范文（带正文内容）
-      const parseRes = await fetch(`${API_BASE}/api/exemplar/parse`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: formData,
-      });
-      if (!parseRes.ok) throw new Error('范文解析失败');
-      const data = await parseRes.json();
-
-      // 2. 持久化到后端项目专属路径
-      await fetch(`${API_BASE}/api/exemplar/project/${projectId || 'default'}`, {
-        method: 'POST',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: data.filename, sections: data.sections }),
-      });
-
-      // 3. 更新前端状态
-      setExemplarData(data.filename, data.sections);
-    } catch (err) {
-      console.error(err);
-      alert('范文解析失败，请确认文件为合法 .docx 格式');
-    } finally {
-      if (exemplarInputRef.current) exemplarInputRef.current.value = '';
-    }
-  };
-
-  const handleTriggerPrecompute = async (mode: string = 'replace') => {
-    try {
-      setIsPrecomputing(true);
-      setShowPrecomputeMenu(false);
-      const modeLabel: Record<string, string> = {
-        generate: '一键成文', replace: '范文仿写', clone: '范文复刻'
-      };
-      showToast(`⚡ 正在发起「${modeLabel[mode] || mode}」预计算，请稍候...`, 'success');
-      const res = await fetch(`${API_BASE}/api/exemplar/project/${projectId || 'default'}/precompute`, {
-        method: 'POST',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode }),
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || '触发预计算失败');
-      }
-      showToast(`✅ 「${modeLabel[mode] || mode}」预计算已成功触发并在后台运行`, 'success');
-    } catch (err: any) {
-      console.error(err);
-      showToast(`❌ ${err.message || '触发预计算失败'}`, 'error');
-    } finally {
-      setIsPrecomputing(false);
-    }
-  };
 
   /**
    * 从预计算缓存填充所有章节（防内存溢出版本）。
@@ -1070,21 +970,8 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
         </div>
         {/* Row 2: Actions — 三组分布 */}
         <div className="px-6 py-2.5 flex items-center bg-gray-50/50">
-          {/* 一组：靠左 — 一键成文 + 一键清除 */}
+          {/* 一组：靠左 — 一键成文 + 一键清除 + 协同 */}
           <div className="flex items-center gap-2">
-            {/* 范文挂载状态指示器 */}
-            {hasExemplar && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded text-xs mr-1">
-                <BookOpen className="w-3.5 h-3.5 text-amber-600" />
-                <span className="text-amber-700 font-medium truncate max-w-[120px]" title={exemplarTitle}>{exemplarTitle}</span>
-                <button onClick={() => setShowExemplarPreview(!showExemplarPreview)} className={`transition-colors ${showExemplarPreview ? 'text-amber-700' : 'text-amber-400 hover:text-amber-600'}`} title={showExemplarPreview ? '隐藏范文预览' : '展开范文预览'}>
-                  {showExemplarPreview ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                </button>
-                <button onClick={() => { clearExemplar(); setShowExemplarPreview(false); }} className="text-amber-400 hover:text-red-500 transition-colors" title="清除范文">
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            )}
 
             {/* 0. 大纲模板 */}
             <button
@@ -1101,7 +988,7 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
                 <Square className="w-3 h-3 fill-red-500" /> 停止生成
               </button>
             ) : (
-              <button onClick={async () => { if (!(await tryUseDraftCache('generate'))) handleGenerateAll(); }} disabled={isReplacingAll || isCloningAll || isFillingCache || sections.length === 0} className="px-3 py-1.5 border border-purple-200 text-purple-600 rounded text-xs font-medium hover:bg-purple-50 flex items-center gap-1.5 transition-colors disabled:opacity-50">
+              <button onClick={async () => { if (!(await tryUseDraftCache('generate'))) handleGenerateAll(); }} disabled={isFillingCache || sections.length === 0} className="px-3 py-1.5 border border-purple-200 text-purple-600 rounded text-xs font-medium hover:bg-purple-50 flex items-center gap-1.5 transition-colors disabled:opacity-50">
                 <Wand2 className="w-3.5 h-3.5" /> 一键成文
               </button>
             )}
@@ -1119,104 +1006,13 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
             >
                <Trash2 className="w-3.5 h-3.5" /> 一键清除
             </button>
+
+
           </div>
 
-          {/* 分隔线居中于一组和二组之间 */}
-          <div className="flex-1 flex items-center justify-center gap-4">
-            <div className="w-px h-5 bg-gray-300"></div>
-            <label className="flex items-center gap-1.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={collaborative}
-                onChange={(e) => setCollaborative(e.target.checked)}
-                className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
-              />
-              <span className="text-xs font-semibold text-gray-500">协同</span>
-            </label>
-            <div className="w-px h-5 bg-gray-300"></div>
-          </div>
+          {/* 靠中占位符 */}
+          <div className="flex-1"></div>
 
-          {/* 二组：居中 — 挂载范文 + 智能预写 + 范文仿写 + 范文复刻 */}
-          <div className="flex items-center gap-2">
-            {/* 3. 挂载范文 */}
-            {!hasExemplar && (
-              <button onClick={() => exemplarInputRef.current?.click()}
-                className="px-3 py-1.5 border border-amber-200 text-amber-600 rounded text-xs font-medium hover:bg-amber-50 flex items-center gap-1.5 transition-colors">
-                <BookOpen className="w-3.5 h-3.5" /> 挂载范文
-              </button>
-            )}
-            <input type="file" ref={exemplarInputRef} accept=".docx" onChange={handleExemplarUpload} hidden />
-
-            {/* 4. 智能预写 */}
-            {canWrite && (
-              <div className="relative" ref={precomputeMenuRef}>
-                <button 
-                  onClick={() => setShowPrecomputeMenu(!showPrecomputeMenu)}
-                  disabled={isPrecomputing || isFillingCache}
-                  className="px-3 py-1.5 border border-blue-200 text-blue-600 rounded text-xs font-medium hover:bg-blue-50 flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                  title="后台预计算：提前为所有章节生成文本，点击生成时秒级渲染"
-                >
-                  <Zap className={`w-3.5 h-3.5 ${isPrecomputing ? 'animate-pulse' : ''}`} /> 
-                  {isPrecomputing ? '预写中...' : isFillingCache ? '缓存加载中...' : '智能预写'}
-                  <ChevronRight className={`w-3 h-3 transition-transform ${showPrecomputeMenu ? 'rotate-90' : ''}`} />
-                </button>
-                {showPrecomputeMenu && (
-                  <div className="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 min-w-[200px]">
-                    <button
-                      onClick={() => handleTriggerPrecompute('generate')}
-                      disabled={sections.length === 0}
-                      className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-purple-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Wand2 className="w-3.5 h-3.5 text-purple-500" /> 一键成文预写
-                    </button>
-                    <button
-                      onClick={() => handleTriggerPrecompute('replace')}
-                      disabled={!hasExemplar}
-                      className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-teal-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <>🔄</> 范文仿写预写
-                      {!hasExemplar && <span className="text-[10px] text-gray-400">(需范文)</span>}
-                    </button>
-                    <button
-                      onClick={() => handleTriggerPrecompute('clone')}
-                      disabled={!hasExemplar}
-                      className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-amber-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Copy className="w-3.5 h-3.5 text-amber-600" /> 范文复刻预写
-                      {!hasExemplar && <span className="text-[10px] text-gray-400">(需范文)</span>}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 5. 范文仿写 */}
-            {isReplacingAll ? (
-              <button onClick={handleStopBatch} className="px-3 py-1.5 border border-red-300 text-red-600 bg-red-50 rounded text-xs font-medium hover:bg-red-100 flex items-center gap-1.5 transition-colors">
-                <Square className="w-3 h-3 fill-red-500" /> 停止仿写
-              </button>
-            ) : (
-              <button onClick={async () => { if (!(await tryUseDraftCache('replace'))) handleReplaceAll(); }} disabled={isGeneratingAll || isCloningAll || isFillingCache || sections.length === 0 || !hasExemplar} className="px-3 py-1.5 border border-teal-200 text-teal-600 rounded text-xs font-medium hover:bg-teal-50 flex items-center gap-1.5 transition-colors disabled:opacity-50" title={!hasExemplar ? '请先挂载范文' : '以范文为底稿，替换地名和数据'}>
-                <>🔄</> 范文仿写
-              </button>
-            )}
-
-            {/* 6. 范文复刻 */}
-            {isCloningAll ? (
-              <button onClick={handleStopBatch} className="px-3 py-1.5 border border-red-300 text-red-600 bg-red-50 rounded text-xs font-medium hover:bg-red-100 flex items-center gap-1.5 transition-colors">
-                <Square className="w-3 h-3 fill-red-500" /> 停止复刻
-              </button>
-            ) : (
-              <button onClick={triggerClone} disabled={isGeneratingAll || isReplacingAll || isFillingCache || !hasExemplar} className="px-3 py-1.5 border border-amber-200 text-amber-600 rounded text-xs font-medium hover:bg-amber-50 flex items-center gap-1.5 transition-colors disabled:opacity-50" title={!hasExemplar ? '请先挂载范文' : '1:1复刻范文结构，自动克隆大纲并仅替换地名和数据'}>
-                <Copy className="w-3.5 h-3.5" /> 范文复刻
-              </button>
-            )}
-          </div>
-
-          {/* 分隔线居中于二组和三组之间 */}
-          <div className="flex-1 flex items-center justify-center">
-            <div className="w-px h-5 bg-gray-300"></div>
-          </div>
 
           {/* 三组：靠右 — 保存 + 封面 + 导出 */}
           <div className="flex items-center gap-2">
@@ -1298,10 +1094,7 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
                   onClick={() => {
                      setActiveHeadingId(section.id);
                      document.getElementById(`sec-${section.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                     // WHY: 联动滚动范文预览面板到对应章节位置
-                     if (showExemplarPreview && hasExemplar) {
-                       document.getElementById(`exemplar-sec-${index}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                     }
+
                   }}
                 >
                   <span className="truncate pr-16">{section.title}</span>
@@ -1347,7 +1140,7 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
         {/* Right Canvas + Exemplar Preview */}
         <div className="flex-1 bg-gray-100 relative flex pt-2 pb-8 overflow-hidden gap-4 px-4 justify-center">
            {/* Main A4 Canvas */}
-           <div className={`${showExemplarPreview && hasExemplar ? 'w-1/2' : 'w-[850px] max-w-full'} h-full transition-all duration-300 flex flex-col gap-4`}>
+            <div className="w-[850px] max-w-full h-full transition-all duration-300 flex flex-col gap-4">
              {/* 自定义要求输入框（扁平无外框、自适应主题模式） */}
              <div className="bg-[#fcfbf9] dark:bg-[#1a1b1e] text-stone-850 dark:text-stone-200 p-3 rounded-xl shadow-sm border border-stone-200 dark:border-[#2e3035] flex flex-col gap-1.5 shrink-0">
                <div className="flex items-center gap-1.5 text-stone-500 dark:text-stone-400 font-bold text-xs select-none">
@@ -1391,7 +1184,6 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
                            onSaveContent={saveContent}
                            onGenerate={handleGenerateSection}
                            onStopGenerate={handleStopBatch}
-                           hasExemplar={hasExemplar}
                            ref={(methods) => {
                              if (methods) {
                                sectionRefs.current[section.id] = methods;
@@ -1445,39 +1237,6 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
              )}
            </div>
 
-           {/* WHY: 范文预览面板 — 挂载范文后可展开，与生成文档左右对比 */}
-           {showExemplarPreview && hasExemplar && (
-             <div className="w-1/2 h-full bg-amber-50/30 border border-amber-200 shadow-md rounded flex flex-col transition-all duration-300">
-               {/* 范文面板顶栏 */}
-               <div className="flex items-center justify-between px-4 py-2 border-b border-amber-200 bg-amber-50">
-                 <div className="flex items-center gap-2 text-xs font-medium text-amber-700">
-                   <BookOpen className="w-3.5 h-3.5" />
-                   <span className="truncate max-w-[200px]">{exemplarTitle}</span>
-                   <span className="text-amber-500">（范文预览·只读）</span>
-                 </div>
-                 <button onClick={() => setShowExemplarPreview(false)} className="p-1 text-amber-400 hover:text-amber-600 transition-colors" title="收起预览">
-                   <EyeOff className="w-3.5 h-3.5" />
-                 </button>
-               </div>
-               {/* 范文内容区 */}
-               <div className="flex-1 overflow-y-auto scroll-smooth px-10 pt-10 pb-32" ref={exemplarScrollRef}>
-                 {exemplarSections.map((es: any, idx: number) => (
-                   <div key={idx} className="mb-6" id={`exemplar-sec-${idx}`}>
-                     <h3 className={`font-bold text-gray-800 mb-2 ${es.level === 1 ? 'text-xl' : es.level === 2 ? 'text-base' : 'text-sm'}`}>
-                       {es.title}
-                     </h3>
-                     {es.content ? (
-                       <div className={`text-gray-600 text-sm leading-relaxed whitespace-pre-wrap ${es.level > 1 ? 'pl-4' : ''}`}>
-                         {es.content}
-                       </div>
-                     ) : (
-                       <div className={`text-gray-300 text-xs italic ${es.level > 1 ? 'pl-4' : ''}`}>（此节无正文）</div>
-                     )}
-                   </div>
-                 ))}
-               </div>
-             </div>
-           )}
         </div>
       </div>
 
@@ -1529,15 +1288,21 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
                   <p className="text-xs text-gray-500 mb-6 relative z-10">共成功挂载 {sections.length} 个骨干节点</p>
                   
                   {canWrite && (
-                    <>
+                    <div className="flex items-center gap-3 relative z-10">
                       <input type="file" ref={templateFileInputRef} onChange={handleTemplateUpload} hidden />
                       <button 
+                        onClick={() => setShowTemplateModal(false)}
+                        className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-all shadow-sm hover:shadow flex items-center gap-2"
+                      >
+                        确定
+                      </button>
+                      <button 
                         onClick={() => templateFileInputRef.current?.click()}
-                        className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-50 hover:text-indigo-600 transition-all shadow-sm hover:shadow relative z-10 flex items-center gap-2"
+                        className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-50 hover:text-indigo-600 transition-all shadow-sm hover:shadow flex items-center gap-2"
                       >
                         <UploadCloud className="w-4 h-4" /> 更换大纲模板
                       </button>
-                    </>
+                    </div>
                   )}
                 </div>
               ) : (
@@ -1565,44 +1330,7 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
         document.body
       )}
 
-      {showCloneConfirmModal && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 select-none">
-          <div 
-            className="absolute inset-0 bg-[#0F0F11]/45 backdrop-blur-[2px] transition-opacity" 
-            onClick={() => setShowCloneConfirmModal(false)}
-          />
-          <div className="relative bg-white dark:bg-[#1E1F22] rounded-xl p-5 shadow-2xl border border-stone-200 dark:border-stone-800 max-w-sm w-full flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-start gap-3 text-stone-800 dark:text-stone-200">
-              <div className="p-2.5 rounded-full bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 shrink-0">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div className="flex flex-col gap-1 min-w-0">
-                <h3 className="text-sm font-bold text-stone-900 dark:text-stone-100">
-                  ⚡ 范文精确复刻
-                </h3>
-                <p className="text-xs text-stone-500 dark:text-stone-400 leading-normal mt-3 whitespace-pre-wrap font-sans">
-                  当前大纲已有内容，精确复刻将用范文的大纲结构完全覆盖并重新生成。确定要继续覆盖吗？
-                </p>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 mt-2">
-              <button
-                onClick={() => setShowCloneConfirmModal(false)}
-                className="px-4 py-1.5 text-xs font-semibold text-stone-600 dark:text-stone-300 hover:text-stone-800 dark:hover:text-stone-100 hover:bg-stone-50 dark:hover:bg-stone-800 rounded-lg transition-colors border border-stone-200 dark:border-stone-700 cursor-pointer"
-              >
-                取消
-              </button>
-              <button
-                onClick={executeClone}
-                className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 rounded-lg transition-all shadow-sm cursor-pointer"
-              >
-                确认复刻
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+
 
       {showClearContentConfirm && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 select-none">

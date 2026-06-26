@@ -577,67 +577,35 @@ export default function AITemplateManagement() {
                         background: #ffffff !important;
                       }
                       
-                      /* 精准定位透明布局表格（用于如“登记单位：___ 编号：___”的左右对齐排版） */
-                      .ai-document-editor .ProseMirror table[noborder="true"] {
+                      /* 带有 noborder="true" 或 noborder 属性的排版/布局表格强制无边框 */
+                      .ai-document-editor .ProseMirror table[noborder="true"],
+                      .ai-document-editor .ProseMirror table[noborder] {
                         border: none !important;
                         box-shadow: none !important;
-                        margin: 8px 0 !important;
-                        table-layout: auto !important;
                         background: transparent !important;
                         background-color: transparent !important;
                       }
                       .ai-document-editor .ProseMirror table[noborder="true"] tr,
-                      .ai-document-editor .ProseMirror table[noborder="true"] tbody tr,
+                      .ai-document-editor .ProseMirror table[noborder] tr,
                       .ai-document-editor .ProseMirror table[noborder="true"] td,
-                      .ai-document-editor .ProseMirror table[noborder="true"] th {
+                      .ai-document-editor .ProseMirror table[noborder] td,
+                      .ai-document-editor .ProseMirror table[noborder="true"] th,
+                      .ai-document-editor .ProseMirror table[noborder] th {
                         border: none !important;
                         border-top: none !important;
                         border-bottom: none !important;
                         border-left: none !important;
                         border-right: none !important;
-                        padding: 4px 0 !important;
                         background: transparent !important;
                         background-color: transparent !important;
                       }
-                      
-                      /* 第一个排版表格（如“登记单位：___ 编号：___”）强制无边框与左右对齐 */
-                      .ai-document-editor .ProseMirror > .tableWrapper:first-of-type table,
-                      .ai-document-editor .ProseMirror > table:first-of-type {
-                        border: none !important;
-                        box-shadow: none !important;
-                        margin: 8px 0 !important;
-                        table-layout: auto !important;
-                        background: transparent !important;
-                        background-color: transparent !important;
-                      }
-                      .ai-document-editor .ProseMirror > .tableWrapper:first-of-type tr,
-                      .ai-document-editor .ProseMirror > .tableWrapper:first-of-type tbody tr,
-                      .ai-document-editor .ProseMirror > table:first-of-type tr,
-                      .ai-document-editor .ProseMirror > table:first-of-type tbody tr {
-                        border: none !important;
-                        background: transparent !important;
-                        background-color: transparent !important;
-                      }
-                      .ai-document-editor .ProseMirror > .tableWrapper:first-of-type td,
-                      .ai-document-editor .ProseMirror > .tableWrapper:first-of-type th,
-                      .ai-document-editor .ProseMirror > table:first-of-type td,
-                      .ai-document-editor .ProseMirror > table:first-of-type th {
-                        border: none !important;
-                        border-top: none !important;
-                        border-bottom: none !important;
-                        border-left: none !important;
-                        border-right: none !important;
-                        padding: 4px 0 !important;
-                        background: transparent !important;
-                        background-color: transparent !important;
-                      }
-                      /* 左侧单元格左对齐，右侧单元格右对齐 */
-                      .ai-document-editor .ProseMirror > .tableWrapper:first-of-type td:first-child,
-                      .ai-document-editor .ProseMirror > table:first-of-type td:first-child {
+                      /* 对于 2 列的 noborder 布局表格（如登记单位和编号），做两端对齐 */
+                      .ai-document-editor .ProseMirror table[noborder="true"] td:first-child:nth-last-child(2),
+                      .ai-document-editor .ProseMirror table[noborder] td:first-child:nth-last-child(2) {
                         text-align: left !important;
                       }
-                      .ai-document-editor .ProseMirror > .tableWrapper:first-of-type td:last-child,
-                      .ai-document-editor .ProseMirror > table:first-of-type td:last-child {
+                      .ai-document-editor .ProseMirror table[noborder="true"] td:first-child:nth-last-child(2) ~ td,
+                      .ai-document-editor .ProseMirror table[noborder] td:first-child:nth-last-child(2) ~ td {
                         text-align: right !important;
                       }
 

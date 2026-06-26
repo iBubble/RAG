@@ -1,10 +1,10 @@
-# 力诺通用知识库（通用版检索增强生成知识库 V1.0.0 RAG）
+# 智能体通用知识库（通用版检索增强生成知识库 V1.0.0 RAG）
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-iBubble/RAG-181717?logo=github)](https://github.com/iBubble/RAG)
 ![Version](https://img.shields.io/badge/Version-1.0.0-blue)
 ![License](https://img.shields.io/badge/License-Proprietary-red)
 
-力诺通用知识库是**云南力诺科技有限公司**研发的**多用户协同高密度通用知识库与 AI 文档辅助生成系统**。
+智能体通用知识库是**智能体**研发的**多用户协同高密度通用知识库与 AI 文档辅助生成系统**。
 
 系统已全面升级为基于 Docker (OrbStack) 的微服务编排网格，通过热挂载实现全景隔离与实时构建，包含内置代理通讯隧道、JWT 严格鉴权与严格租户隔离机制，用于深度保障企业图纸等核心机密。
 
@@ -408,4 +408,4 @@ pm2 restart all     # 平滑重启
 
 ---
 
-*本架构拓扑已于 2026 年完成全真机物理映射脱离，最终解释权归 **云南力诺科技有限公司** 独家所有。*
+*本架构拓扑已于 2026 年完成全真机物理映射脱离，最终解释权归 **智能体** 独家所有。*
