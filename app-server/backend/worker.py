@@ -25,7 +25,7 @@ logger = get_task_logger(__name__)
 
 # WHY: chunks 超过此阈值时，BGE-M3 编码在 ARM 上大概率超过 480s 软超时。
 #      自动将任务从 fast queue 重路由到 slow_queue（3000s 超时）。
-_CHUNK_THRESHOLD_SLOW_QUEUE = 50
+_CHUNK_THRESHOLD_SLOW_QUEUE = 300
 
 
 @worker_process_init.connect

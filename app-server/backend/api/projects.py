@@ -1355,26 +1355,21 @@ async def exclude_ref_files(
 @router.get("/{case_id}/ref-files")
 async def list_ref_files(case_id: str, user: dict = Depends(get_current_user)):
     """
-    获取案件引用的所有公共文档文件列表。
-    WHY: 前端左侧"公共文档"Tab 需要展示引用的文件。
+    获取所有公共文档库（library）的文件列表。
+    WHY: 用户期望默认引用系统中所有的公共文档。
     """
     require_project_access(case_id, user, write=False)
 
     with get_db() as conn:
-        refs = conn.execute(
-            "SELECT library_id, file_ids FROM project_refs WHERE case_id = ?",
-            (case_id,),
+        # 获取所有公共文档库项目
+        libraries = conn.execute(
+            "SELECT id FROM projects WHERE project_type = 'library' AND visibility = 'public'"
         ).fetchall()
-
-    if not refs:
-        return {"files": []}
 
     import os, hashlib
     all_files = []
-    for ref in refs:
-        ref_dict = dict(ref)
-        lib_id = ref_dict["library_id"]
-        selected_ids = json.loads(ref_dict.get("file_ids", "[]"))
+    for lib in libraries:
+        lib_id = lib["id"]
         lib_dir = Path(settings.UPLOAD_DIR) / lib_id
 
         if not lib_dir.exists():
@@ -1393,10 +1388,6 @@ async def list_ref_files(case_id: str, user: dict = Depends(get_current_user)):
                 file_id = hashlib.md5(
                     f"{lib_id}_{rel_path}".encode("utf-8")
                 ).hexdigest()
-
-                # 如果指定了 file_ids，只返回勾选的
-                if selected_ids and file_id not in selected_ids:
-                    continue
 
                 all_files.append({
                     "id": file_id,

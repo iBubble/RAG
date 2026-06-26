@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { useAuthStore } from '../../store/authStore';
-import { FileText, FileSpreadsheet, FileImage, FileVideo, FileAudio, FileQuestion, Loader2, CheckSquare, Square, Folder, FolderOpen, Trash2, Download, X } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileImage, FileVideo, FileAudio, FileQuestion, Loader2, CheckSquare, Square, Folder, FolderOpen, Trash2, Download } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
@@ -130,15 +130,12 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
   const [showConfirmBulkExclude, setShowConfirmBulkExclude] = useState(false);
   
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  // WHY: 双 Tab——“本案文档”显示项目本身的文件，“公共文档”显示引用的公共文档。
-  const [activeTab, setActiveTab] = useState<'local' | 'public'>('local');
   const [refFiles, setRefFiles] = useState<FileItem[]>([]);
-  const [refLoading, setRefLoading] = useState(false);
+  const [usePublicRef, setUsePublicRef] = useState<boolean>(true);
 
   const { checkedFileIds, toggleFileCheck, setCheckedFiles, activePreviewFile, setActivePreviewFile, refreshCounter, checkedRefIds, setCheckedRefIds } = useProjectStore();
   const { getAuthHeaders } = useAuthStore();
   const seenFileIdsRef = useRef<Set<string>>(new Set());
-  const seenRefIdsRef = useRef<Set<string>>(new Set());
   const knownFoldersRef = useRef<Set<string>>(new Set());
   const hasLoadedSavedFoldersRef = useRef<boolean>(false);
 
@@ -214,40 +211,40 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
 
   // 加载引用的公共文档文件列表
   const fetchRefFiles = async () => {
-    setRefLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/projects/${projectId}/ref-files`, { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         setRefFiles(data.files || []);
-        // WHY: 用 seenRefIdsRef 追踪已知文件，只对首次出现的文件自动勾选，
-        //       用户取消勾选的文件不会被重新选中。
-        const newFiles = data.files || [];
-        const currentRefIds = useProjectStore.getState().checkedRefIds;
-        const newIds: string[] = [];
-        for (const f of newFiles) {
-          if (!seenRefIdsRef.current.has(f.id)) {
-            seenRefIdsRef.current.add(f.id);
-            newIds.push(f.id);
-          }
-        }
-        if (newIds.length > 0) {
-          setCheckedRefIds([...currentRefIds, ...newIds]);
-        }
       }
     } catch (e) {
       console.error('获取公共文档引用失败', e);
-    } finally {
-      setRefLoading(false);
     }
   };
 
-  // WHY: 组件加载 / projectId 变化 / 切换Tab / 上传弹窗关闭(refreshCounter) 时均刷新引用列表，
-  //       确保 Tab 标题上的数量始终正确。
+  // 联动逻辑：当 usePublicRef 状态或引用的公共文件列表 refFiles 变化时，同步更新选中的 checkedRefIds
+  useEffect(() => {
+    if (usePublicRef) {
+      const allIds = refFiles.map(f => f.id);
+      const currentIds = useProjectStore.getState().checkedRefIds;
+      const isSame = allIds.length === currentIds.length && allIds.every(id => currentIds.includes(id));
+      if (!isSame) {
+        setCheckedRefIds(allIds);
+      }
+    } else {
+      const currentIds = useProjectStore.getState().checkedRefIds;
+      if (currentIds.length > 0) {
+        setCheckedRefIds([]);
+      }
+    }
+  }, [usePublicRef, refFiles, setCheckedRefIds]);
+
+  // WHY: 组件加载 / projectId 变化 / 上传弹窗关闭(refreshCounter) 时均刷新引用列表，
+  //       确保数量始终正确。
   useEffect(() => {
     fetchFiles();
     fetchRefFiles();
-  }, [projectId, activeTab, refreshCounter]);
+  }, [projectId, refreshCounter]);
 
   // 删除文件：触发自定义确认弹窗
   const handleDeleteFileClick = (file: FileItem, e: React.MouseEvent) => {
@@ -775,32 +772,24 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Tab 切换条 */}
-      <div className="flex border-b border-[#E0DCD5] mb-1">
-        <button
-          onClick={() => setActiveTab('local')}
-          className={`flex-1 py-2 text-xs font-medium text-center transition-colors ${
-            activeTab === 'local'
-              ? 'text-[#8B7355] border-b-2 border-[#8B7355]'
-              : 'text-gray-400 hover:text-gray-600'
-          }`}
-        >
-          本案文档 ({files.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('public')}
-          className={`flex-1 py-2 text-xs font-medium text-center transition-colors ${
-            activeTab === 'public'
-              ? 'text-[#8B7355] border-b-2 border-[#8B7355]'
-              : 'text-gray-400 hover:text-gray-600'
-          }`}
-        >
-          公共文档 ({refFiles.length})
-        </button>
-      </div>
+      {/* 引用所有公共文档 */}
+      {refFiles.length > 0 && (
+        <div className="flex items-center justify-between p-2 mb-1 bg-[#F7F5F0] border border-[#E0DCD5] rounded-md shadow-sm">
+          <div 
+            className="flex items-center gap-2 cursor-pointer group select-none"
+            onClick={() => setUsePublicRef(!usePublicRef)}
+          >
+            <div className={`shrink-0 transition-colors ${usePublicRef ? 'text-[#8B7355]' : 'text-gray-400 group-hover:text-[#8B7355]'}`}>
+              {usePublicRef ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+            </div>
+            <span className={`text-xs font-semibold transition-colors ${usePublicRef ? 'text-[#8B7355]' : 'text-gray-500 group-hover:text-gray-700'}`}>
+              引用所有公共文档 ({refFiles.length}个)
+            </span>
+          </div>
+        </div>
+      )}
 
-      {activeTab === 'local' ? (
-        <>
+      <>
           {/* 顶部工具栏：全选与选中统计 */}
           <div className="flex items-center justify-between pb-2 border-b border-gray-100 px-1 flex-nowrap gap-1">
              <div 
@@ -855,132 +844,6 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
             {renderTree(treeRoot)}
           </div>
         </>
-      ) : (
-        /* 公共文档 Tab */
-        <div className="flex flex-col gap-2">
-          {refLoading ? (
-            <div className="flex justify-center py-4">
-              <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-            </div>
-          ) : refFiles.length === 0 ? (
-            <div className="text-gray-400 text-center mt-4 text-sm">
-              暂无引用的公共文档
-              <p className="text-xs text-gray-300 mt-1">在上传界面中点击"引用公共文档"添加</p>
-            </div>
-          ) : (
-            <>
-              {/* 公共文档工具栏 */}
-              <div className="flex items-center justify-between pb-2 border-b border-gray-100 px-1 flex-nowrap gap-1">
-                <div
-                  className="flex items-center gap-1.5 cursor-pointer group shrink-0"
-                  onClick={() => {
-                    if (checkedRefIds.length === refFiles.length) {
-                      setCheckedRefIds([]);
-                    } else {
-                      setCheckedRefIds(refFiles.map(f => f.id));
-                    }
-                  }}
-                >
-                  <div className={`mt-0.5 shrink-0 ${checkedRefIds.length > 0 ? 'text-indigo-500' : 'text-gray-300'}`}>
-                    {checkedRefIds.length === refFiles.length ? <CheckSquare className="w-4 h-4 group-hover:opacity-80" /> : <Square className="w-4 h-4 group-hover:text-indigo-400" />}
-                  </div>
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-indigo-600 transition-colors whitespace-nowrap">
-                    全选({checkedRefIds.length}/{refFiles.length})
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {checkedRefIds.length > 0 && (
-                    <button
-                      onClick={() => handleDownload(
-                        refFiles.filter(f => checkedRefIds.includes(f.id)).map(f => f.path),
-                        `公共文档_${checkedRefIds.length}个文件.zip`
-                      )}
-                      disabled={downloadingId === 'bulk-ref-downloading'}
-                      className="text-xs text-blue-500 font-medium hover:bg-blue-50 px-2 py-1 rounded flex items-center gap-1 transition-colors"
-                    >
-                      <Download className="w-3 h-3" />
-                      下载 ({checkedRefIds.length})
-                    </button>
-                  )}
-                  {checkedRefIds.length > 0 && (
-                    <button
-                      onClick={() => setShowConfirmBulkExclude(true)}
-                      className="text-xs text-orange-500 font-medium hover:bg-orange-50 px-2 py-1 rounded flex items-center gap-1 transition-colors"
-                    >
-                      <X className="w-3 h-3" />
-                      排除 ({checkedRefIds.length})
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* 公共文档文件列表 */}
-              <div className="space-y-0.5 pb-4">
-                {refFiles.map(file => {
-                  const isChecked = checkedRefIds.includes(file.id);
-                  return (
-                    <div
-                      key={file.id}
-                      className={`flex items-start gap-1 p-1.5 rounded cursor-pointer transition-colors group/file ${
-                        isChecked ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-50 text-gray-700'
-                      }`}
-                      style={{ paddingLeft: '6px' }}
-                    >
-                      <div
-                        className="mt-0.5 text-indigo-500 shrink-0"
-                        onClick={() => {
-                          setCheckedRefIds(
-                            checkedRefIds.includes(file.id)
-                              ? checkedRefIds.filter(id => id !== file.id)
-                              : [...checkedRefIds, file.id]
-                          );
-                        }}
-                      >
-                        {isChecked ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4 text-gray-300" />}
-                      </div>
-                      <div className="flex items-start gap-1.5 flex-1 min-w-0 ml-0.5"
-                        onClick={() => onFileClick?.(file)}
-                      >
-                        {renderFileIcon(file)}
-                        <div className="flex-1 min-w-0">
-                          <div className="truncate text-sm" title={file.filename}>
-                            {file.filename}
-                          </div>
-                          <div className="text-[10px] text-gray-400">
-                            {(file.size / 1024).toFixed(1)} KB · 公共文档
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 悬浮下载与排除按钮 */}
-                      <div className="flex items-center gap-1 mt-0.5 opacity-0 group-hover/file:opacity-100 transition-opacity shrink-0">
-                        <button
-                          className="p-0.5 rounded hover:bg-blue-100 text-gray-300 hover:text-blue-500"
-                          title={`下载 ${file.filename}`}
-                          onClick={(e) => { e.stopPropagation(); handleDownload([file.path], file.filename); }}
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          className="p-0.5 rounded hover:bg-orange-100 text-gray-300 hover:text-orange-500"
-                          title={`排除 ${file.filename}`}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowConfirmExcludeFile(file);
-                          }}
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
-      )}
 
       {/* 自定义确认弹窗组件列表 */}
       <ConfirmModal

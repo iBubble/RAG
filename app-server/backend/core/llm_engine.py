@@ -560,8 +560,8 @@ async def stream_ollama(
     prompt: str,
     model: str = settings.DEFAULT_LLM_MODEL,
     temperature: float = 0.7,
-    num_ctx: int = 16384,
-    num_predict: int = 12288,
+    num_ctx: int = 32768,
+    num_predict: int = 24576,
 ) -> AsyncGenerator[str, None]:
     """
     通过 Ollama REST API 流式调用本地大模型。
@@ -578,8 +578,8 @@ async def _stream_ollama_inner(
     prompt: str,
     model: str = settings.DEFAULT_LLM_MODEL,
     temperature: float = 0.7,
-    num_ctx: int = 16384,
-    num_predict: int = 12288,
+    num_ctx: int = 32768,
+    num_predict: int = 24576,
 ) -> AsyncGenerator[str, None]:
     """Ollama 流式调用的内部实现（被信号量包裹）。"""
     url = f"{settings.OLLAMA_BASE_URL}/api/generate"

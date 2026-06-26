@@ -720,7 +720,7 @@ function StudioLayout() {
         </div>
         <div className="flex-1 p-4 text-xs text-gray-500 overflow-y-auto">
            {canWrite && (
-             <button onClick={() => setUploadModalOpen(true)} className="w-full py-2 mb-4 border border-dashed border-gray-300 rounded hover:border-blue-400 hover:text-blue-600 transition-colors">
+             <button onClick={() => setUploadModalOpen(true)} className="w-full py-2 mb-4 border border-solid border-gray-300 rounded hover:border-blue-400 hover:text-blue-600 transition-colors">
                + 上传项目文件/资料
              </button>
            )}

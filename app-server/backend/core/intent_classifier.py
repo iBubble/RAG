@@ -136,7 +136,7 @@ _STRATEGY_TEMPLATES = {
         "inject_community": True,
     },
     "comparison": {
-        "vector_top_k": 12,
+        "vector_top_k": 8,
         "graph_max_paths": 8,
         "table_max": 4,
         "num_ctx": 16384,
@@ -144,7 +144,7 @@ _STRATEGY_TEMPLATES = {
         "inject_community": True,
     },
     "general_qa": {
-        "vector_top_k": 12,
+        "vector_top_k": 8,
         "graph_max_paths": 8,
         "table_max": 3,
         "num_ctx": 16384,

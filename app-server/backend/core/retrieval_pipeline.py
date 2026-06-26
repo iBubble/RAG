@@ -715,7 +715,7 @@ async def run_retrieval(
     """
     result = RetrievalResult()
 
-    vector_top_k = strategy.get("vector_top_k", 12)
+    vector_top_k = strategy.get("vector_top_k", 8)
     graph_max_paths = strategy.get("graph_max_paths", 8)
     table_max = strategy.get("table_max", 2)
     inject_stats = strategy.get("inject_table_stats", False)

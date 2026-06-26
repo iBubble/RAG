@@ -404,8 +404,8 @@ async def _sse_generator(
     think_mode: str = "format",
     sources: list = None,
     strip_title: str = "",
-    num_predict: int = 8192,
-    num_ctx: int = 16384,
+    num_predict: int = 24576,
+    num_ctx: int = 32768,
     slots: list = None,
     verification_ctx: dict = None,
     data_analysis: dict = None,
@@ -1138,7 +1138,7 @@ async def _collaborative_sse_generator(
         await asyncio.sleep(0.005)
 
     from core.llm_engine import stream_ollama
-    raw_stream = stream_ollama(prompt, model=model, num_predict=8192, num_ctx=16384)
+    raw_stream = stream_ollama(prompt, model=model, num_predict=24576, num_ctx=32768)
     from core.think_filter import filter_think_stream
     filtered_stream = filter_think_stream(raw_stream)
 
@@ -2199,7 +2199,7 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
     
     # WHY: L1 缓存的策略指纹 — 用 intent + strategy 核心字段的 hash 表示，
     #      确保不同意图（即使 search_query 相同）不会共用缓存。
-    _strategy_fp = f"{intent}:{strategy.get('vector_top_k', 12)}:{strategy.get('inject_data_analysis', False)}"
+    _strategy_fp = f"{intent}:{strategy.get('vector_top_k', 8)}:{strategy.get('inject_data_analysis', False)}"
 
     if use_rag:
         # ── L1 缓存检查：检索结果命中则跳过多路并行检索 ──
@@ -2707,7 +2707,7 @@ async def recommend_persona(req: RecommendPersonaRequest, user: dict = Depends(g
             try:
                 async for chunk in stream_ollama(
                     meta_prompt, model=req.model,
-                    num_predict=8192, num_ctx=16384,
+                    num_predict=24576, num_ctx=32768,
                 ):
                     full_text += chunk
                     yield " "
@@ -3106,7 +3106,7 @@ async def fill_table(req: FillTableRequest, user: dict = Depends(get_current_use
 
     response_text = ""
     try:
-        async for chunk in stream_ollama(prompt, model=llm_model, temperature=0.2, num_ctx=16384, num_predict=8192):
+        async for chunk in stream_ollama(prompt, model=llm_model, temperature=0.2, num_ctx=32768, num_predict=24576):
             response_text += chunk
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM 填表生成失败: {e}")
