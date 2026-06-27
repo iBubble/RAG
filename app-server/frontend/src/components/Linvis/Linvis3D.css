@@ -47,49 +47,34 @@
   border-bottom: none;
 }
 
-/* ===== 3D拟物化立杆门牌 (图二 Wayfinding 导视风格) ===== */
+/* ===== 极简扁平化导视指示牌 (图二 Wayfinding 导视风格) ===== */
 .zone-signboard {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  width: 48px;
-  height: 145px; /* 长条竖牌 */
-  border-radius: 20px; /* 大圆角 */
+  width: 44px;
+  height: 125px; /* 长条竖牌 */
+  border-radius: 18px; /* 圆润大圆角 */
   position: relative;
   flex-shrink: 0;
-  padding: 12px 0 8px 0;
-  box-shadow: 
-    -6px 10px 18px rgba(0,0,0,0.25),
-    inset 0 1px 0 rgba(255,255,255,0.3);
-  margin-left: 28px;
-  margin-right: 16px;
-  /* 45度角侧向3D旋转 */
-  transform: perspective(600px) rotateY(-40deg) rotateX(10deg) rotateZ(2deg);
-  transform-style: preserve-3d;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  overflow: visible; /* 让底部的立杆显示 */
+  padding: 10px 0 6px 0;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+  margin-left: 20px;
+  margin-right: 12px;
+  /* 取消 3D 偏转，保持扁平 */
+  transform: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  overflow: hidden;
 }
 .zone-signboard:hover {
-  transform: perspective(600px) rotateY(-30deg) rotateX(10deg) rotateZ(2deg) scale(1.05);
-  box-shadow: 
-    -10px 15px 26px rgba(0,0,0,0.3),
-    inset 0 1px 0 rgba(255,255,255,0.4);
+  transform: scale(1.04);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.18);
 }
 
-/* 支撑立杆 (Pole) */
+/* 移除立杆 */
 .zone-signboard::after {
-  content: "";
-  position: absolute;
-  bottom: -40px; /* 往下伸出 */
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  height: 40px;
-  background: linear-gradient(90deg, #6b7280 0%, #374151 100%);
-  box-shadow: -2px 3px 5px rgba(0,0,0,0.18);
-  z-index: -1;
-  border-radius: 2px;
+  display: none;
 }
 
 /* 移除原先的顶部吊挂挂绳 */
@@ -98,18 +83,18 @@
 }
 
 .sign-icon {
-  font-size: 18px;
-  margin-bottom: 6px;
-  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.2));
+  font-size: 16px;
+  margin-bottom: 4px;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.15));
 }
 
 .sign-text {
   font-size: 11px;
   font-weight: 900;
-  line-height: 1.25;
+  line-height: 1.2;
   text-align: center;
-  letter-spacing: 2px;
-  writing-mode: vertical-rl; /* 垂直书写，完美对应图二指示牌格式 */
+  letter-spacing: 2.5px;
+  writing-mode: vertical-rl; /* 垂直书写 */
   text-orientation: mixed;
   color: #ffffff;
   flex-grow: 1;
@@ -119,37 +104,37 @@
 }
 
 .sign-arrow {
-  font-size: 12px;
+  font-size: 11px;
   color: #ffffff;
-  margin-top: 4px;
+  margin-top: 2px;
   font-weight: bold;
   transform: rotate(90deg); /* ➔ 旋转90度朝下指，表示指向右侧行 */
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.15));
 }
 
 /* 1. 业务处理区 (深红底, 粗白边) */
 .sign-red {
   background: #b91c1c;
-  border: 3.5px solid #ffffff;
+  border: 3px solid #ffffff;
   box-shadow: 
-    0 4px 12px rgba(185, 28, 28, 0.35),
-    -6px 10px 18px rgba(0,0,0,0.25);
+    0 3px 8px rgba(185, 28, 28, 0.25),
+    0 4px 8px rgba(0,0,0,0.12);
 }
 /* 2. 核心项目区 (橘色底, 粗白边) */
 .sign-orange {
   background: #ea580c;
-  border: 3.5px solid #ffffff;
+  border: 3px solid #ffffff;
   box-shadow: 
-    0 4px 12px rgba(234, 88, 12, 0.35),
-    -6px 10px 18px rgba(0,0,0,0.25);
+    0 3px 8px rgba(234, 88, 12, 0.25),
+    0 4px 8px rgba(0,0,0,0.12);
 }
 /* 3. 资料工坊 (深红/褐红底, 粗白边) */
 .sign-darkred {
   background: #851c1c;
-  border: 3.5px solid #ffffff;
+  border: 3px solid #ffffff;
   box-shadow: 
-    0 4px 12px rgba(133, 28, 28, 0.35),
-    -6px 10px 18px rgba(0,0,0,0.25);
+    0 3px 8px rgba(133, 28, 28, 0.25),
+    0 4px 8px rgba(0,0,0,0.12);
 }
 
 /* ===== 工位行 ===== */
