@@ -239,7 +239,7 @@ export default function Linvis() {
           className="flex items-center gap-2 px-4 py-2.5 bg-white border border-[#e0dcd5] rounded-xl hover:bg-gray-50 text-gray-700 text-sm font-semibold transition-all shadow-sm cursor-pointer"
         >
           <Home className="w-4 h-4 text-gray-500" />
-          <span>返回案件空间</span>
+          <span>返回事项空间</span>
         </button>
 
         <button

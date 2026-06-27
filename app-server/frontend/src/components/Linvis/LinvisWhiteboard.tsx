@@ -39,7 +39,7 @@ export default function LinvisWhiteboard({ status }: WhiteboardProps) {
       <div className="flex flex-wrap items-center justify-center gap-4 text-xs font-medium">
         {showItem('total_projects') && (
           <div className="flex items-center gap-1.5 bg-[#fefaf3] px-2.5 py-1 rounded-lg border border-[#f5e6d3]">
-            <span className="text-gray-400">进行中案件:</span>
+            <span className="text-gray-400">进行中事项:</span>
             <span className="font-bold text-amber-900">{wb.total_projects}</span>
           </div>
         )}
