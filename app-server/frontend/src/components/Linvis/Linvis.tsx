@@ -264,29 +264,29 @@ export default function Linvis() {
             {/* 第一排：业务处理区 */}
             {/* 第一排：业务处理区 */}
             {/* 第一排：业务处理区 */}
+            {/* 第一排：业务处理区 */}
             {hasVisibleInZone(['chat', 'service', 'planner', 'checker', 'auditor']) && (
               <div className="office-zone">
                 <div className="zone-sign-arrow-container">
                   <svg width="110" height="150" viewBox="0 0 110 150" className="zone-arrow-svg">
                     <path 
-                      d="M 15 150 L 15 50 Q 15 25 35 25 L 75 25 L 75 10 L 105 42.5 L 75 75 L 75 60 L 55 60 Q 50 60 50 65 L 50 150 Z" 
+                      d="M 15 10 L 15 100 Q 15 125 35 125 L 75 125 L 75 140 L 105 107.5 L 75 75 L 75 90 L 55 90 Q 50 90 50 85 L 50 10 Z" 
                       fill="#b91c1c" 
                       stroke="#ffffff" 
                       strokeWidth="3.5"
                       strokeLinejoin="round"
                     />
                     <path 
-                      d="M 18 147 L 18 50 Q 18 28 35 28 L 73 28 L 73 18 L 98 42.5 L 73 67 L 73 57 L 55 57 Q 53 57 53 62 L 53 147 Z" 
+                      d="M 18 13 L 18 100 Q 18 122 35 122 L 73 122 L 73 132 L 98 107.5 L 73 83 L 73 93 L 55 93 Q 53 93 53 88 L 53 13 Z" 
                       fill="none" 
                       stroke="#ffffff" 
                       strokeWidth="1.5" 
                       strokeDasharray="3 3"
                       opacity="0.9"
                     />
-                    <text x="32.5" y="65" fill="#ffffff" fontSize="13" textAnchor="middle">🛎️</text>
                     <text 
                       x="32.5" 
-                      y="78" 
+                      y="26" 
                       fill="#ffffff" 
                       fontSize="11" 
                       fontWeight="900" 
@@ -325,24 +325,23 @@ export default function Linvis() {
                 <div className="zone-sign-arrow-container">
                   <svg width="110" height="150" viewBox="0 0 110 150" className="zone-arrow-svg">
                     <path 
-                      d="M 15 150 L 15 50 Q 15 25 35 25 L 75 25 L 75 10 L 105 42.5 L 75 75 L 75 60 L 55 60 Q 50 60 50 65 L 50 150 Z" 
+                      d="M 15 10 L 15 100 Q 15 125 35 125 L 75 125 L 75 140 L 105 107.5 L 75 75 L 75 90 L 55 90 Q 50 90 50 85 L 50 10 Z" 
                       fill="#ea580c" 
                       stroke="#ffffff" 
                       strokeWidth="3.5"
                       strokeLinejoin="round"
                     />
                     <path 
-                      d="M 18 147 L 18 50 Q 18 28 35 28 L 73 28 L 73 18 L 98 42.5 L 73 67 L 73 57 L 55 57 Q 53 57 53 62 L 53 147 Z" 
+                      d="M 18 13 L 18 100 Q 18 122 35 122 L 73 122 L 73 132 L 98 107.5 L 73 83 L 73 93 L 55 93 Q 53 93 53 88 L 53 13 Z" 
                       fill="none" 
                       stroke="#ffffff" 
                       strokeWidth="1.5" 
                       strokeDasharray="3 3"
                       opacity="0.9"
                     />
-                    <text x="32.5" y="65" fill="#ffffff" fontSize="13" textAnchor="middle">💡</text>
                     <text 
                       x="32.5" 
-                      y="78" 
+                      y="26" 
                       fill="#ffffff" 
                       fontSize="11" 
                       fontWeight="900" 
@@ -368,24 +367,23 @@ export default function Linvis() {
                 <div className="zone-sign-arrow-container">
                   <svg width="110" height="150" viewBox="0 0 110 150" className="zone-arrow-svg">
                     <path 
-                      d="M 15 150 L 15 50 Q 15 25 35 25 L 75 25 L 75 10 L 105 42.5 L 75 75 L 75 60 L 55 60 Q 50 60 50 65 L 50 150 Z" 
+                      d="M 15 10 L 15 100 Q 15 125 35 125 L 75 125 L 75 140 L 105 107.5 L 75 75 L 75 90 L 55 90 Q 50 90 50 85 L 50 10 Z" 
                       fill="#851c1c" 
                       stroke="#ffffff" 
                       strokeWidth="3.5"
                       strokeLinejoin="round"
                     />
                     <path 
-                      d="M 18 147 L 18 50 Q 18 28 35 28 L 73 28 L 73 18 L 98 42.5 L 73 67 L 73 57 L 55 57 Q 53 57 53 62 L 53 147 Z" 
+                      d="M 18 13 L 18 100 Q 18 122 35 122 L 73 122 L 73 132 L 98 107.5 L 73 83 L 73 93 L 55 93 Q 53 93 53 88 L 53 13 Z" 
                       fill="none" 
                       stroke="#ffffff" 
                       strokeWidth="1.5" 
                       strokeDasharray="3 3"
                       opacity="0.9"
                     />
-                    <text x="32.5" y="65" fill="#ffffff" fontSize="13" textAnchor="middle">📁</text>
                     <text 
                       x="32.5" 
-                      y="78" 
+                      y="26" 
                       fill="#ffffff" 
                       fontSize="11" 
                       fontWeight="900" 
