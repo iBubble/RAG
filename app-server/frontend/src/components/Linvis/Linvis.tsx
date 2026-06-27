@@ -286,11 +286,11 @@ export default function Linvis() {
                     />
                     <text 
                       x="32.5" 
-                      y="26" 
+                      y="24" 
                       fill="#ffffff" 
                       fontSize="11" 
                       fontWeight="900" 
-                      textAnchor="middle" 
+                      textAnchor="start" 
                       letterSpacing="3"
                       style={{ writingMode: 'vertical-rl' }}
                     >
@@ -341,11 +341,11 @@ export default function Linvis() {
                     />
                     <text 
                       x="32.5" 
-                      y="26" 
+                      y="24" 
                       fill="#ffffff" 
                       fontSize="11" 
                       fontWeight="900" 
-                      textAnchor="middle" 
+                      textAnchor="start" 
                       letterSpacing="3"
                       style={{ writingMode: 'vertical-rl' }}
                     >
@@ -383,11 +383,11 @@ export default function Linvis() {
                     />
                     <text 
                       x="32.5" 
-                      y="26" 
+                      y="24" 
                       fill="#ffffff" 
                       fontSize="11" 
                       fontWeight="900" 
-                      textAnchor="middle" 
+                      textAnchor="start" 
                       letterSpacing="3"
                       style={{ writingMode: 'vertical-rl' }}
                     >
