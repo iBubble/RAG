@@ -17,5 +17,11 @@
 - 默认采用 Eino DAG 三角色协同流程，并将 chatMode 默认值设为 'smart'。
 - 前端新增 onPaste 多源图片读取逻辑并支持毛玻璃带删除的 Base64 预览与提交。
 - 后端多模态 Ollama 接入，剥离 Base64 协议头并将图片自动传入推理引擎。
+
+## 📅 2026-06-27 22:58
+✅ Done:
+- 前端解除 `ollamaStatus === 'offline'` 对对话框 `textarea` 及其发送按钮的 disabled 禁用限制。
+- 在组件挂载时新增全局 `window` 的 `paste` 事件拦截监听器，无论焦点在何处，按 `Cmd+V` 均可智能捕获图片。
+- 前端通过 `npm run build` 重新编译构建，并在 Docker 内成功热重载运行。
 ⏳ To-Do:
 - 进行多模态粘贴及长对话功能的回归测试与性能微调。

@@ -709,6 +709,30 @@ async def _stream_ollama_inner(
                 yield "⚠️ 大模型未生成有效回答，请尝试换一种方式提问，或切换到“深度思考”模式重试。"
             return
         except Exception as _e:
+            _err_msg = str(_e)
+            _resp_text = ""
+            try:
+                _resp = getattr(_e, "response", None)
+                if _resp is not None:
+                    _resp_text = _resp.text
+            except Exception:
+                pass
+            
+            _full_err = f"{_err_msg}\n{_resp_text}"
+            if "image input is not supported" in _full_err or "mmproj" in _full_err:
+                yield (
+                    "❌ **您当前选择的模型不支持图片多模态分析**。\n\n"
+                    f"**原因**：当前模型 `{model}` 是纯文本模型，无法处理图片输入。\n"
+                    "**解决办法**：\n"
+                    "1. 请在左下角配置中切换为支持视觉的多模态模型（如 `qwen2-vl`、`minicpm-v`、`llama3.2-vision` 等）。\n"
+                    "2. 如果本地还没有安装多模态模型，我们已在后台尝试为您下载 `qwen2-vl:2b`。您也可以在宿主机终端中手动运行：\n"
+                    "   ```bash\n"
+                    "   ollama run qwen2-vl:2b\n"
+                    "   ```\n"
+                    "   下载一个轻量级且识别能力出众的多模态视觉模型，然后刷新页面重试。"
+                )
+                return
+
             _sc = getattr(getattr(_e, "response", None), "status_code", 0)
             if _sc == 503 and _attempt < _max_retries - 1:
                 logger.warning(f"Ollama 503 (attempt {_attempt+1}), retrying...")
