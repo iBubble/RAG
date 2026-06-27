@@ -10,7 +10,7 @@ import TreeView from './components/TreeView/TreeView';
 import SavedDocumentsList from './components/SavedResults/SavedDocumentsList';
 import KnowledgeBasePanel from './components/KnowledgeBasePanel/KnowledgeBasePanel';
 import ProjectPresence from './components/ProjectPresence/ProjectPresence';
-import { useProjectStore, type PreviewFile } from './store/projectStore';
+import { useProjectStore, useChatStore, type PreviewFile } from './store/projectStore';
 import { useAuthStore } from './store/authStore';
 import LoginPage from './components/Auth/LoginPage';
 import RegisterPage from './components/Auth/RegisterPage';
@@ -490,7 +490,7 @@ function StudioLayout() {
   const activePreviewFile = useProjectStore(state => state.activePreviewFile);
   const setActivePreviewFile = useProjectStore(state => state.setActivePreviewFile);
   const { getAuthHeaders, user } = useAuthStore();
-  const isGenerating = useProjectStore(state => state.chatStreamingState.isGenerating);
+  const isGenerating = useChatStore(state => state.chatStreamingState.isGenerating);
 
   const fetchPublicSettings = useProjectStore(state => state.fetchPublicSettings);
   const publicSettings = useProjectStore(state => state.publicSettings);

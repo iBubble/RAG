@@ -560,8 +560,8 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
         if (!markdown) return markdown;
         
         const settings = useProjectStore.getState().publicSettings;
-        const contrarianName = settings?.collab_contrarian_name || '【协同】审查员';
-        const arbiterName = settings?.collab_arbiter_name || '【协同】仲裁官';
+        const contrarianName = settings?.collab_contrarian_name || '【协同】合规审查员';
+        const arbiterName = settings?.collab_arbiter_name || '【协同】公文终审员';
         const escContrarian = contrarianName.replace(/[.*+?^${}()|[\\\]]/g, '\\$&');
         const escArbiter = arbiterName.replace(/[.*+?^${}()|[\\\]]/g, '\\$&');
         
@@ -768,14 +768,14 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
                                  legal: '⚖️', legal_agent: '⚖️',
                                  service: '📝', service_agent: '📝',
                                  data: '📊', data_agent: '📊',
-                                 contrarian: '🤨', arbiter: '👑',
+                                 contrarian: '🤨', arbiter: '📝',
                                };
                                const emoji = agentEmojis[data.agent] || '🤖';
                                const settings = useProjectStore.getState().publicSettings;
                                const roleNameMap: Record<string, string> = {
-                                 supervisor: settings?.collab_supervisor_name || '【协同】文档秘书',
-                                 contrarian: settings?.collab_contrarian_name || '【协同】审查员',
-                                 arbiter: settings?.collab_arbiter_name || '【协同】仲裁官',
+                                 supervisor: settings?.collab_supervisor_name || '【协同】公文秘书',
+                                 contrarian: settings?.collab_contrarian_name || '【协同】合规审查员',
+                                 arbiter: settings?.collab_arbiter_name || '【协同】公文终审员',
                                  rag_agent: '【协同】知识检索助手',
                                  direct_answer: '【协同】直答助手',
                                };

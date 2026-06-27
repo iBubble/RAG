@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { User, Loader2, Save, Trash2, Settings as SettingsIcon, X, ArrowUp, Square, FileText } from 'lucide-react';
-import { useProjectStore } from '../../store/projectStore';
+import { useProjectStore, useChatStore } from '../../store/projectStore';
 import { useAuthStore } from '../../store/authStore';
 import type { Message } from '../../store/projectStore';
 import DataTable from './DataTable';
@@ -41,9 +41,9 @@ export default function AgentChat({ projectId }: { projectId: string }) {
   const agentMessagesByProject = useProjectStore(state => state.agentMessagesByProject);
   const setProjectMessages = useProjectStore(state => state.setProjectMessages);
   
-  const chatStreamingState = useProjectStore(state => state.chatStreamingState);
-  const sendAgentMessage = useProjectStore(state => state.sendAgentMessage);
-  const stopAgentMessage = useProjectStore(state => state.stopAgentMessage);
+  const chatStreamingState = useChatStore(state => state.chatStreamingState);
+  const sendAgentMessage = useChatStore(state => state.sendAgentMessage);
+  const stopAgentMessage = useChatStore(state => state.stopAgentMessage);
   const isGenerating = chatStreamingState.projectId === projectId && chatStreamingState.isGenerating;
 
   const publicSettings = useProjectStore(state => state.publicSettings);
@@ -65,7 +65,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
   const addChatSnippet = useProjectStore(state => state.addChatSnippet);
   const selectedModel = useProjectStore(state => state.selectedModel);
   const templateSections = useProjectStore(state => state.templateSections);
-  const { getAuthHeaders, user } = useAuthStore();
+  const { getAuthHeaders } = useAuthStore();
   
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus>('checking');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -74,7 +74,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isRecommending, setIsRecommending] = useState(false);
 
-  const [chatMode, setChatMode] = useState<string>('smart');
+  const [chatMode, setChatMode] = useState<string>('fast');
   const [pastedImage, setPastedImage] = useState<string | null>(null);
   const fetchPublicSettings = useProjectStore(state => state.fetchPublicSettings);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -187,9 +187,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
     }
   }, [publicSettings, fetchPublicSettings]);
 
-  useEffect(() => {
-    setChatMode('smart');
-  }, [user]);
+
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -241,7 +239,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
     if (!projectId) return;
 
     const localMsgs = useProjectStore.getState().agentMessagesByProject[projectId];
-    const isGeneratingThis = useProjectStore.getState().chatStreamingState?.projectId === projectId && useProjectStore.getState().chatStreamingState?.isGenerating;
+    const isGeneratingThis = useChatStore.getState().chatStreamingState?.projectId === projectId && useChatStore.getState().chatStreamingState?.isGenerating;
 
     if (isGeneratingThis || (localMsgs && localMsgs.length > 1)) {
       return;
@@ -396,7 +394,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
 
       // WHY: 数据分析模式的结果包含 Markdown 表格和 SQL 代码块，
       //      需要特殊渲染组件来展示。
-      const renderEnhancedContent = (text: string) => {
+      const renderEnhancedContent = (text: string, isStreaming?: boolean) => {
         // 拆分成段落，识别三种特殊块：Markdown表格、SQL代码块、普通文本
         const blocks: Array<{type: 'text' | 'table' | 'sql', content: string}> = [];
         const lines = text.split('\n');
@@ -469,7 +467,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
               }
 
               return (
-                <MarkdownBlock key={idx} content={block.content} />
+                <MarkdownBlock key={idx} content={block.content} isStreaming={isStreaming} />
               );
             })}
           </div>
@@ -518,8 +516,8 @@ export default function AgentChat({ projectId }: { projectId: string }) {
           <>
             {daBlock}
             {needsEnhanced
-              ? renderEnhancedContent(textContent)
-              : <MarkdownBlock content={textContent} />
+              ? renderEnhancedContent(textContent, isStreaming)
+              : <MarkdownBlock content={textContent} isStreaming={isStreaming} />
             }
             {isStreaming && (
               <span className="inline-block w-1.5 h-4 bg-indigo-500 ml-0.5 animate-pulse rounded-sm mt-1 align-middle" />
@@ -528,63 +526,54 @@ export default function AgentChat({ projectId }: { projectId: string }) {
         );
       }
 
-    const parts = content.split('<think>');
-    const firstPart = parts.shift() || '';
+    const thinkStartIdx = content.indexOf('<think>');
+    const thinkEndIdx = content.indexOf('</think>');
+    const preThinkText = content.substring(0, thinkStartIdx);
 
-    return (
-      <div className="space-y-3">
-        {firstPart && <MarkdownBlock content={firstPart} />}
-        {parts.map((p, idx) => {
-          const isLast = idx === parts.length - 1;
-          const endIdx = p.indexOf('</think>');
-          
-          if (endIdx !== -1) {
-            const thinkStr = p.substring(0, endIdx).trim();
-            const normalStr = p.substring(endIdx + 8);
-            return (
-              <div key={idx}>
-                {thinkStr && (
-                  <details className="mb-3 group">
-                    <summary className="text-xs text-indigo-400 font-medium cursor-pointer select-none hover:text-indigo-500 flex items-center gap-1.5 w-max">
-                      <span className="opacity-80 transition-transform group-open:rotate-90">▹</span>
-                      深度思考过程
-                    </summary>
-                    <div className="mt-2 p-3 bg-gray-50/80 rounded-lg text-[13px] text-gray-500 border border-gray-100 whitespace-pre-wrap leading-relaxed shadow-sm">
-                      {thinkStr}
-                    </div>
-                  </details>
-                )}
-                {normalStr && <MarkdownBlock content={normalStr} />}
-                {isLast && isStreaming && <span className="inline-block w-1.5 h-4 bg-indigo-500 ml-0.5 animate-pulse rounded-sm mt-1 align-middle" />}
+    if (thinkEndIdx !== -1) {
+      const thinkStr = content.substring(thinkStartIdx + 7, thinkEndIdx).trim();
+      const normalStr = content.substring(thinkEndIdx + 8);
+      return (
+        <div className="space-y-3">
+          {preThinkText && <MarkdownBlock content={preThinkText} isStreaming={isStreaming} />}
+          {thinkStr && (
+            <details className="mb-3 group">
+              <summary className="text-xs text-indigo-400 font-medium cursor-pointer select-none hover:text-indigo-500 flex items-center gap-1.5 w-max">
+                <span className="opacity-80 transition-transform group-open:rotate-90">▹</span>
+                深度思考过程
+              </summary>
+              <div className="mt-2 p-3 bg-gray-50/80 rounded-lg text-[13px] text-gray-500 border border-gray-100 whitespace-pre-wrap leading-relaxed shadow-sm">
+                {thinkStr}
               </div>
-            );
-          } else {
-            // Unclosed think tag: still streaming OR truncated
-            const thinkStr = p.trim();
-            const isTruncated = !isStreaming; // 流结束但标签未闭合 = 被截断
-            return (
-              <div key={idx}>
-                <details className="mb-3" open={!isTruncated}>
-                  <summary className={`text-xs font-medium cursor-pointer select-none border-b pb-1.5 flex items-center gap-1.5 w-max ${isTruncated ? 'text-amber-500 border-amber-200' : 'text-indigo-400 border-indigo-100'}`}>
-                    {isTruncated ? (
-                      <><span className="opacity-80">⚠️</span> 推理过程被截断（输出已达上限）</>
-                    ) : (
-                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> AI 正在推理思考中...</>
-                    )}
-                  </summary>
-                  <div className={`mt-2 p-3 rounded-lg text-[13px] whitespace-pre-wrap leading-relaxed border overflow-hidden relative flex flex-col justify-end max-h-[4.5rem] ${isTruncated ? 'bg-amber-50/40 text-amber-600/80 border-amber-100' : 'bg-indigo-50/40 text-indigo-500/80 border-indigo-50'}`}>
-                    <div className="opacity-80">
-                      {thinkStr.length > 150 ? '...' + thinkStr.slice(-150) : thinkStr}
-                      {isStreaming && !isTruncated && <span className="inline-block w-1.5 h-3.5 bg-indigo-400 ml-1 animate-pulse align-middle" />}
-                    </div>
-                  </div>
-                </details>
+            </details>
+          )}
+          {normalStr && <MarkdownBlock content={normalStr} isStreaming={isStreaming} />}
+        </div>
+      );
+    } else {
+      const thinkStr = content.substring(thinkStartIdx + 7).trim();
+      const isTruncated = !isStreaming;
+      return (
+        <div className="space-y-3">
+          {preThinkText && <MarkdownBlock content={preThinkText} isStreaming={isStreaming} />}
+          <div className="mb-3">
+            <div className={`text-xs font-medium pb-1.5 flex items-center gap-1.5 w-max border-b ${isTruncated ? 'text-amber-500 border-amber-200' : 'text-indigo-400 border-indigo-100'}`}>
+              {isTruncated ? (
+                <><span className="opacity-80">⚠️</span> 推理过程被截断（输出已达上限）</>
+              ) : (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> AI 正在推理思考中...</>
+              )}
+            </div>
+            <div className={`mt-2 p-3 rounded-lg text-[13px] whitespace-pre-wrap leading-relaxed border overflow-hidden relative flex flex-col justify-end max-h-[4.5rem] ${isTruncated ? 'bg-amber-50/40 text-amber-600/80 border-amber-100' : 'bg-indigo-50/40 text-indigo-500/80 border-indigo-50'}`}>
+              <div className="opacity-80">
+                {thinkStr.length > 150 ? '...' + thinkStr.slice(-150) : thinkStr}
+                {isStreaming && !isTruncated && <span className="inline-block w-1.5 h-3.5 bg-indigo-400 ml-1 animate-pulse align-middle" />}
               </div>
-            );
-          }
-        })}
-      </div>
-    );
+            </div>
+          </div>
+        </div>
+      );
+    }
   };
 
 
@@ -878,7 +867,33 @@ export default function AgentChat({ projectId }: { projectId: string }) {
       </div>
 
       <div className="p-4 border-t border-[#E0DCD5]/60 bg-transparent shrink-0">
-
+        {/* Chat Mode Switch Pills */}
+        <div className="flex items-center gap-1 mb-3 bg-[#F6F5F2] border border-[#E0DCD5] rounded-full p-0.5 w-fit select-none">
+          <button
+            type="button"
+            onClick={() => setChatMode('fast')}
+            className={`flex items-center gap-1 px-4 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition-all duration-200 ${
+              chatMode === 'fast'
+                ? 'bg-[#1F2937] text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <span>⚡</span>
+            <span>快速</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setChatMode('smart')}
+            className={`flex items-center gap-1 px-4 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition-all duration-200 ${
+              chatMode === 'smart'
+                ? 'bg-[#1F2937] text-white shadow-sm'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <span>🧠</span>
+            <span>深度思考</span>
+          </button>
+        </div>
 
         {pastedImage && (
           <div className="relative inline-block mb-3 p-1.5 bg-white/75 backdrop-blur-md border border-[#E0DCD5] rounded-2xl shadow-md shrink-0">
@@ -908,7 +923,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
                 handleSend();
               }
             }}
-            placeholder="提问或创作内容（支持 Cmd+V 粘贴图片）"
+            placeholder="提问或创作内容"
             className="w-full resize-none bg-white border border-[#C4B5A0] rounded-[28px] pr-28 pl-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#8B7355]/40 focus:border-[#8B7355] shadow-sm disabled:bg-gray-100 disabled:text-gray-400"
             rows={1}
             style={{ minHeight: '48px' }}

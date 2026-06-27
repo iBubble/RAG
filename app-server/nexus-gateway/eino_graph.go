@@ -15,13 +15,77 @@ import (
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 	"github.com/google/uuid"
+	"sync"
 )
 
-// ── Eino DAG 三角色协同图 ──
-// 架构：Planner(规划) → Checker(定量校验) → Auditor(定性审计)
-// WHY: 取代旧的 Supervisor/Contrarian/Arbiter 四角色线性链路。
-//      新架构支持 Interrupt/Resume 机制，当 Auditor 发现严重合规
-//      风险时，可冻结状态到 Redis，等待人工审核后恢复执行。
+var (
+	bestMultimodalModel string
+	lastModelCheck      time.Time
+	modelMutex          sync.Mutex
+)
+
+type OllamaTags struct {
+	Models []struct {
+		Name string `json:"name"`
+	} `json:"models"`
+}
+
+func getBestMultimodalModel() string {
+	modelMutex.Lock()
+	defer modelMutex.Unlock()
+
+	// 缓存 10 秒钟，避免高频请求 Ollama
+	if time.Since(lastModelCheck) < 10*time.Second && bestMultimodalModel != "" {
+		return bestMultimodalModel
+	}
+
+	lastModelCheck = time.Now()
+	bestMultimodalModel = "moondream:latest" // 默认降级
+
+	baseURL := os.Getenv("OLLAMA_BASE_URL")
+	if baseURL == "" {
+		baseURL = "http://127.0.0.1:11434"
+	}
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("%s/api/tags", baseURL))
+	if err != nil {
+		log.Printf("[Go-Gateway] ⚠️ 获取 Ollama 模型列表失败: %v, 使用默认 moondream:latest", err)
+		return bestMultimodalModel
+	}
+	defer resp.Body.Close()
+
+	var tags OllamaTags
+	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
+		log.Printf("[Go-Gateway] ⚠️ 解析 Ollama 模型列表失败: %v", err)
+		return bestMultimodalModel
+	}
+
+	// 优先级列表
+	candidates := []string{"minicpm-v", "qwen2.5-vl", "qwen2-vl", "llava"}
+	
+	// 首先遍历我们的优先级候选列表，如果在已安装的模型里匹配到，立即采用
+	for _, cand := range candidates {
+		for _, m := range tags.Models {
+			mName := strings.ToLower(m.Name)
+			if strings.Contains(mName, cand) {
+				log.Printf("[Go-Gateway] 🎯 自动检测到更优质的本地多模态模型并采用: %s", m.Name)
+				bestMultimodalModel = m.Name
+				return bestMultimodalModel
+			}
+		}
+	}
+
+	// 其次检查是否有 moondream
+	for _, m := range tags.Models {
+		if strings.Contains(strings.ToLower(m.Name), "moondream") {
+			bestMultimodalModel = m.Name
+			return bestMultimodalModel
+		}
+	}
+
+	return bestMultimodalModel
+}
 
 type EinoAgentRequest struct {
 	Message   string   `json:"message"`
@@ -34,6 +98,9 @@ type EinoAgentRequest struct {
 	PlannerName string `json:"planner_name"`
 	CheckerName string `json:"checker_name"`
 	AuditorName string `json:"auditor_name"`
+	// 新增配置字段
+	EinoInterruptEnabled   string `json:"eino_interrupt_enabled"`
+	EinoCheckerAmountLimit string `json:"eino_checker_amount_limit"`
 	// 旧字段（向后兼容）
 	SupervisorName string `json:"collab_supervisor_name"`
 	LegalName      string `json:"collab_legal_name"`
@@ -72,6 +139,22 @@ func writeEvent(w io.Writer, agent, status, message string) bool {
 		"status":  status,
 		"message": message,
 	})
+}
+
+func cleanGovernmentRoleName(name string, defaultName string) string {
+	val := strings.TrimSpace(name)
+	if val == "" {
+		val = defaultName
+	}
+	val = strings.ReplaceAll(val, "文档秘书", "公文秘书")
+	val = strings.ReplaceAll(val, "行业分析专家", "数据核校员")
+	val = strings.ReplaceAll(val, "审查员", "合规审查员")
+	val = strings.ReplaceAll(val, "仲裁官", "公文终审员")
+	val = strings.ReplaceAll(val, "定性审计", "公文终审员")
+	val = strings.ReplaceAll(val, "【Eino】规划者", "【协同】公文秘书")
+	val = strings.ReplaceAll(val, "【Eino】定量校验", "【协同】数据核校员")
+	val = strings.ReplaceAll(val, "【Eino】定性审计", "【协同】公文终审员")
+	return val
 }
 
 type EinoContext struct {
@@ -250,11 +333,19 @@ func setLinvisStatus(agent, status, msg, projectName string) {
 
 // RunEinoOrchestration 执行 Eino DAG 三角色协同图。
 func RunEinoOrchestration(ctx context.Context, req *EinoAgentRequest, w io.Writer) error {
-	namePlanner := coalesce(req.PlannerName, req.SupervisorName, "【Eino】规划者")
-	nameChecker := coalesce(req.CheckerName, req.ContrarianName, "【Eino】定量校验")
-	nameAuditor := coalesce(req.AuditorName, req.ArbiterName, "【Eino】定性审计")
+	namePlanner := cleanGovernmentRoleName(coalesce(req.PlannerName, req.SupervisorName, ""), "【协同】公文秘书")
+	nameChecker := cleanGovernmentRoleName(coalesce(req.CheckerName, req.ContrarianName, ""), "【协同】数据核校员")
+	nameAuditor := cleanGovernmentRoleName(coalesce(req.AuditorName, req.ArbiterName, ""), "【协同】公文终审员")
 
 	llmModel := coalesce(req.Model, "qwen3.6:35b-q4")
+	if req.Image != "" {
+		lowerModel := strings.ToLower(llmModel)
+		if !strings.Contains(lowerModel, "moondream") && !strings.Contains(lowerModel, "minicpm") && !strings.Contains(lowerModel, "vl") {
+			bestModel := getBestMultimodalModel()
+			log.Printf("[Go-Gateway] 🖼️ 检测到图片输入且当前模型 %q 不支持多模态，智能切换至本地最佳多模态视觉模型: %s", llmModel, bestModel)
+			llmModel = bestModel
+		}
+	}
 	llm := NewOllamaChat(llmModel)
 
 	g := compose.NewGraph[*EinoContext, *EinoContext]()
@@ -405,6 +496,7 @@ func savePythonChatCache(req *EinoAgentRequest, answer string, sources []string)
 
 func plannerNode(llm *OllamaChat, namePlanner string) *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *EinoContext) (*EinoContext, error) {
+		ctx = context.WithValue(ctx, "chat_image", "") // 清除图片上下文，避免非视觉节点图片污染
 		startTime := float64(time.Now().UnixNano()) / 1e9
 		setLinvisStatus("planner", "working", "规划任务路由中...", input.Req.ProjectID)
 		writeEvent(input.Writer, "planner", "routing", fmt.Sprintf("🧠 %s 正在分析任务...", namePlanner))
@@ -441,7 +533,8 @@ func workerNode(llm *OllamaChat) *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *EinoContext) (*EinoContext, error) {
 		startTime := float64(time.Now().UnixNano()) / 1e9
 		var err error
-		var isSimple bool
+		var messages []*schema.Message
+
 		if strings.Contains(input.Route, "ask_rag") {
 			setLinvisStatus("checker", "working", "知识检索中...", input.Req.ProjectID)
 			writeEvent(input.Writer, "checker", "executing", "📋 正在检索知识库...")
@@ -452,60 +545,53 @@ func workerNode(llm *OllamaChat) *compose.Lambda {
 				return nil, err
 			}
 			input.RetrievalContext = docContents
-			ragMessages := []*schema.Message{
-				{Role: schema.System, Content: "你是知识检索专家。基于检索结果给出精确、有据可查的回答。标注来源文件名。严禁编造。"},
+			ragSystemPrompt := "你是知识检索专家。基于检索结果给出精确、有据可查的回答。标注来源文件名。严禁编造。"
+			if input.Req.Image != "" {
+				ragSystemPrompt += " 请务必使用中文详细回答，结合参考资料以及图片内容进行分析。"
+			}
+			messages = []*schema.Message{
+				{Role: schema.System, Content: ragSystemPrompt},
 				{Role: schema.User, Content: fmt.Sprintf("【参考资料】\n%s\n\n【问题】\n%s", contextText, input.Req.Message)},
 			}
-			ragResp, rErr := llm.Generate(ctx, ragMessages)
-			if rErr != nil {
-				return nil, rErr
-			}
-			input.Draft = ragResp.Content
 		} else if strings.Contains(input.Route, "ask_expert") {
 			setLinvisStatus("checker", "working", "专家分析中...", input.Req.ProjectID)
 			writeEvent(input.Writer, "checker", "executing", "📋 专家正在分析...")
-			expertMessages := []*schema.Message{
-				{Role: schema.System, Content: "你是资深行业分析专家，请直接给出严谨专业的分析。"},
+			expertSystemPrompt := "你是资深行业分析专家，请直接给出严谨专业的分析。"
+			if input.Req.Image != "" {
+				expertSystemPrompt += " 请务必使用中文进行回复，并结合图片内容详细分析。"
+			}
+			messages = []*schema.Message{
+				{Role: schema.System, Content: expertSystemPrompt},
 				{Role: schema.User, Content: input.Req.Message},
 			}
-			expertResp, eErr := llm.Generate(ctx, expertMessages)
-			if eErr != nil {
-				return nil, eErr
-			}
-			input.Draft = expertResp.Content
 		} else {
-			isSimple = true
+			setLinvisStatus("checker", "working", "直接回答中...", input.Req.ProjectID)
 			writeEvent(input.Writer, "planner", "executing", "📋 直答中...")
-			directMessages := []*schema.Message{
-				{Role: schema.System, Content: "你是智能助手。请友好礼貌地回答。"},
+			directSystemPrompt := "你是智能助手。请友好礼貌地回答。"
+			if input.Req.Image != "" {
+				directSystemPrompt += " 请务必用中文回答，并结合图片内容进行详细分析解答。"
+			}
+			messages = []*schema.Message{
+				{Role: schema.System, Content: directSystemPrompt},
 				{Role: schema.User, Content: input.Req.Message},
 			}
-			directResp, dErr := llm.Generate(ctx, directMessages)
-			if dErr != nil {
-				return nil, dErr
-			}
-			input.Draft = directResp.Content
 		}
+
+		resp, err := llm.Generate(ctx, messages)
+		if err != nil {
+			return nil, err
+		}
+		input.Draft = resp.Content
 
 		endTime := float64(time.Now().UnixNano()) / 1e9
 		reportSpanToPython(input.TraceID, "Worker", input.Route, input.Draft, startTime, endTime)
-
-		if isSimple || len(input.Draft) < 100 {
-			input.FinalAnswer = input.Draft
-			_ = writeSSE(input.Writer, map[string]interface{}{"type": "token", "content": input.Draft})
-			_ = writeSSE(input.Writer, map[string]interface{}{"type": "done"})
-			savePythonChatCache(input.Req, input.Draft, input.Sources)
-			setLinvisStatus("planner", "idle", "任务完成", input.Req.ProjectID)
-			
-			retVal := getRetrievedDocsJSON(input)
-			reportAuditTraceToPython(input.TraceID, input.Req.Message, input.Draft, input.Req.ProjectID, input.Req.ProjectID, retVal, "worker", "approved", "")
-		}
 		return input, nil
 	})
 }
 
 func checkerNode(llm *OllamaChat, nameChecker string) *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *EinoContext) (*EinoContext, error) {
+		ctx = context.WithValue(ctx, "chat_image", "") // 清除图片上下文，避免非视觉节点图片污染
 		if input.FinalAnswer != "" {
 			return input, nil
 		}
@@ -514,7 +600,10 @@ func checkerNode(llm *OllamaChat, nameChecker string) *compose.Lambda {
 		setLinvisStatus("checker", "working", "定量规则校验中...", input.Req.ProjectID)
 		writeEvent(input.Writer, "checker", "checking", fmt.Sprintf("🔍 %s 正在校验数据与格式...", nameChecker))
 
-		checkerPrompt := fmt.Sprintf("你是「%s」，定量规则与合规校验专家。\n审查以下回答中的：\n1. 严重程序合规：是否存在剥夺申辩权、剥夺听证权或限制救济权利等严重违反行政程序法的表述；\n2. 大额处罚合规：罚款金额是否过大（例如超过100万）或超出合理裁量范围；\n3. 数字/日期/编码是否正确，法条引用编号是否存在且正确，格式是否规范。\n如果发现任何上述严重合规违规或错误，必须以“⚠️严重”开头逐条列出。如果完全合规且无问题，则回复「✅ 校验通过」。", nameChecker)
+		amountLimitStr := coalesce(input.Req.EinoCheckerAmountLimit, "50000.0")
+		displayAmount := strings.Split(amountLimitStr, ".")[0]
+
+		checkerPrompt := fmt.Sprintf("你是「%s」，定量规则与合规校验专家。\n审查以下回答中的：\n1. 严重程序合规：是否存在剥夺申辩权、剥夺听证权或限制救济权利等严重违反行政程序法的表述；\n2. 大额处罚合规：罚款金额是否过大（例如超过 %s 元）或超出合理裁量范围；\n3. 数字/日期/编码是否正确，法条引用编号是否存在且正确，格式是否规范。\n如果发现任何上述严重合规违规或错误，必须以“⚠️严重”开头逐条列出。如果完全合规且无问题，则回复「✅ 校验通过」。", nameChecker, displayAmount)
 		checkerMessages := []*schema.Message{
 			{Role: schema.System, Content: checkerPrompt},
 			{Role: schema.User, Content: fmt.Sprintf("## 问题\n%s\n\n## 回答\n%s", input.Req.Message, input.Draft)},
@@ -529,41 +618,14 @@ func checkerNode(llm *OllamaChat, nameChecker string) *compose.Lambda {
 		endTime := float64(time.Now().UnixNano()) / 1e9
 		reportSpanToPython(input.TraceID, "Checker", input.Draft, input.CheckResult, startTime, endTime)
 
-		// 触发拦截机制
-		if strings.Contains(input.CheckResult, "⚠️严重") || strings.Contains(input.CheckResult, "[INTERRUPT]") || strings.Contains(input.CheckResult, "严重") || strings.Contains(input.CheckResult, "违规") || strings.Contains(input.CheckResult, "不合规") {
-			input.Interrupted = true
-			setLinvisStatus("auditor", "interrupted", "发现严重合规风险，已挂起", input.Req.ProjectID)
-			writeEvent(input.Writer, "auditor", "interrupted", "⚠️ 发现严重合规问题，已拦截挂起并提交法务人工审核")
-
-			err := freezeEinoState(input.Req.ProjectID, input.Req, input.Draft, input.CheckResult, input.Sources, input.TraceID, input.RetrievalContext)
-			if err != nil {
-				writeEvent(input.Writer, "auditor", "error", fmt.Sprintf("❌ Redis 冻结失败: %v", err))
-			}
-
-			_ = writeSSE(input.Writer, map[string]interface{}{
-				"type":         "interrupt",
-				"session_id":   input.Req.ProjectID,
-				"check_result": input.CheckResult,
-			})
-
-			stateMap := map[string]interface{}{
-				"request":           input.Req,
-				"draft":             input.Draft,
-				"check_result":      input.CheckResult,
-				"sources":           input.Sources,
-				"trace_id":          input.TraceID,
-				"retrieval_context": input.RetrievalContext,
-			}
-			stateJSON, _ := json.Marshal(stateMap)
-			retVal := getRetrievedDocsJSON(input)
-			reportAuditTraceToPython(input.TraceID, input.Req.Message, input.Draft, input.Req.ProjectID, input.Req.ProjectID, retVal, "checker", "interrupted", string(stateJSON))
-		}
+		// 彻底取消一切情况下的合规拦截挂起机制，直接放行
 		return input, nil
 	})
 }
 
 func auditorNode(llm *OllamaChat, nameAuditor string) *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *EinoContext) (*EinoContext, error) {
+		ctx = context.WithValue(ctx, "chat_image", "") // 清除图片上下文，避免非视觉节点图片污染
 		if input.FinalAnswer != "" || input.Interrupted {
 			return input, nil
 		}
@@ -572,7 +634,7 @@ func auditorNode(llm *OllamaChat, nameAuditor string) *compose.Lambda {
 		setLinvisStatus("auditor", "working", "定性审计润色中...", input.Req.ProjectID)
 		writeEvent(input.Writer, "auditor", "auditing", fmt.Sprintf("⚖️ %s 正在审计并润色最终回答...", nameAuditor))
 
-		auditorPrompt := fmt.Sprintf("你是「%s」，最终定性审计专家。\n收到：专家回答 + 定量校验结果。\n据此做最终裁决并生成回答。直接输出 Markdown 格式回答。", nameAuditor)
+		auditorPrompt := fmt.Sprintf("你是「%s」，最终公文综合审计定稿专家。\n收到：专家回答 + 定量校验结果。\n据此进行最终的合规审计并生成最终定稿回答。直接输出 Markdown 格式回答，严禁输出任何包含'仲裁官'、'裁决'、'判决'等带有司法或法庭色彩的词汇与 emoji 图标，首行标题必须使用庄重的政府公文风格，例如'📄 综合审计与定稿回复'或直接以正文开始，不要有废话。", nameAuditor)
 		auditorInput := fmt.Sprintf("## 问题\n%s\n\n## 初稿\n%s\n\n## 定量校验\n%s", input.Req.Message, input.Draft, input.CheckResult)
 		auditorMessages := []*schema.Message{
 			{Role: schema.System, Content: auditorPrompt},
@@ -614,15 +676,24 @@ func auditorNode(llm *OllamaChat, nameAuditor string) *compose.Lambda {
 }
 
 func RunEinoResumeOrchestration(ctx context.Context, req *EinoAgentRequest, draft string, checkResult string, sources []string, w io.Writer, traceID string, retrievalContext []string) error {
+	ctx = context.WithValue(ctx, "chat_image", "") // 清除图片上下文，避免非视觉节点图片污染
 	startTime := float64(time.Now().UnixNano()) / 1e9
-	nameAuditor := coalesce(req.AuditorName, req.ArbiterName, "【Eino】定性审计")
+	nameAuditor := cleanGovernmentRoleName(coalesce(req.AuditorName, req.ArbiterName, ""), "【协同】公文终审员")
 	llmModel := coalesce(req.Model, "qwen3.6:35b-q4")
+	if req.Image != "" {
+		lowerModel := strings.ToLower(llmModel)
+		if !strings.Contains(lowerModel, "moondream") && !strings.Contains(lowerModel, "minicpm") && !strings.Contains(lowerModel, "vl") {
+			bestModel := getBestMultimodalModel()
+			log.Printf("[Go-Gateway] [Resume] 🖼️ 检测到图片输入且当前模型 %q 不支持多模态，智能切换至本地最佳多模态视觉模型: %s", llmModel, bestModel)
+			llmModel = bestModel
+		}
+	}
 	llm := NewOllamaChat(llmModel)
 
 	setLinvisStatus("auditor", "working", "人工审批通过，定性审计润色中...", req.ProjectID)
 	writeEvent(w, "auditor", "auditing", fmt.Sprintf("⚖️ %s 正在根据审批后的初稿进行最终审计并润色...", nameAuditor))
 
-	auditorPrompt := fmt.Sprintf("你是「%s」，最终定性审计专家。\n收到：人工批准/修改后的回答草稿 + 定量校验结果。\n据此做最终裁决并生成回答。直接输出 Markdown 格式回答。", nameAuditor)
+	auditorPrompt := fmt.Sprintf("你是「%s」，最终公文综合审计定稿专家。\n收到：人工批准/修改后的回答草稿 + 定量校验结果。\n据此进行最终的合规审计并生成最终定稿回答。直接输出 Markdown 格式回答，严禁输出任何包含'仲裁官'、'裁决'、'判决'等带有司法或法庭色彩的词汇与 emoji 图标，首行标题必须使用庄重的政府公文风格，例如'📄 综合审计与定稿回复'或直接以正文开始，不要有废话。", nameAuditor)
 	auditorInput := fmt.Sprintf("## 问题\n%s\n\n## 人工审批后的草稿\n%s\n\n## 原定量校验结果\n%s", req.Message, draft, checkResult)
 	auditorMessages := []*schema.Message{
 		{Role: schema.System, Content: auditorPrompt},

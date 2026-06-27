@@ -2833,6 +2833,136 @@ async def delete_chat_history(project_id: str, user: dict = Depends(get_current_
         
     return {"status": "success"}
 
+class EinoFreezeRequest(BaseModel):
+    session_id: str
+    request: dict
+    draft: str
+    check_result: str
+    sources: list
+    trace_id: str
+    retrieval_context: list
+
+@router.post("/internal/eino/freeze")
+async def internal_eino_freeze(req: EinoFreezeRequest):
+    """Go 网关将上下文状态冻结到 Redis/SQLite，用于拦截挂起"""
+    # 模拟冻结，并将状态写入 SQLite 审计表 audit_traces 供 Resume 调用
+    from core.audit_trace import write_audit_trace
+    import json
+    
+    frozen_str = json.dumps({
+        "request": req.request,
+        "draft": req.draft,
+        "check_result": req.check_result,
+        "sources": req.sources,
+        "trace_id": req.trace_id,
+        "retrieval_context": req.retrieval_context,
+    }, ensure_ascii=False)
+
+    write_audit_trace(
+        user_query=req.request.get("message", ""),
+        llm_response=req.draft,
+        project_id=req.session_id,
+        session_id=req.session_id,
+        retrieved_docs=",".join(req.sources),
+        dag_node="Checker",
+        audit_status="interrupted",
+        frozen_state=frozen_str,
+        trace_id=req.trace_id,
+    )
+    return {"status": "success"}
+
+
+@router.get("/eino/frozen/{project_id}")
+async def get_eino_frozen(project_id: str):
+    """获取指定项目已被拦截挂起并冻结的上下文状态"""
+    from core.database import get_db
+    import json
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT frozen_state FROM audit_traces WHERE project_id = ? AND audit_status = 'interrupted' ORDER BY id DESC LIMIT 1",
+            (project_id,)
+        ).fetchone()
+    if not row or not row["frozen_state"]:
+        raise HTTPException(status_code=404, detail="未找到对应的拦截冻结状态")
+    
+    try:
+        data = json.loads(row["frozen_state"])
+        return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"解析冻结状态 JSON 失败: {e}")
+
+
+class SetLinvisStatusRequest(BaseModel):
+    agent: str
+    status: str
+    message: str
+    project_name: str
+
+@router.post("/internal/linvis/set-status")
+async def internal_linvis_set_status(req: SetLinvisStatusRequest):
+    """设置 Linvis 看板中特定 Agent 节点的工作状态"""
+    from core.redis_client import set_agent_active
+    set_agent_active(req.agent, f"{req.status}:{req.message}", req.project_name)
+    return {"status": "success"}
+
+
+class TraceSpanRequest(BaseModel):
+    trace_id: str
+    name: str
+    input: str
+    output: str
+    start_time: float
+    end_time: float
+
+@router.post("/internal/trace/span")
+async def internal_trace_span(req: TraceSpanRequest):
+    """Go 网关上报节点子 Span 给后台 APM"""
+    try:
+        from langfuse import Langfuse
+        lf = Langfuse()
+        clean_trace_id = req.trace_id.replace("-", "")
+        lf.start_observation(
+            trace_context={"trace_id": clean_trace_id},
+            name=req.name,
+            as_type="span",
+            input=req.input,
+            output=req.output,
+            start_time=req.start_time,
+            end_time=req.end_time,
+        )
+        lf.flush()
+    except Exception as e:
+        logger.warning(f"⚠️ Langfuse trace span fail: {e}")
+    return {"status": "success"}
+
+
+class TraceAuditRequest(BaseModel):
+    trace_id: str
+    project_id: str
+    user_query: str
+    llm_response: str
+    retrieved_docs: str
+    dag_node: str
+    audit_status: str
+    auditor_comment: str
+
+@router.post("/internal/trace/audit")
+async def internal_trace_audit(req: TraceAuditRequest):
+    """Go 网关上报最终审计状态以同步落库"""
+    from core.audit_trace import write_audit_trace
+    write_audit_trace(
+        user_query=req.user_query,
+        llm_response=req.llm_response,
+        project_id=req.project_id,
+        session_id=req.project_id,
+        retrieved_docs=req.retrieved_docs,
+        dag_node=req.dag_node,
+        audit_status=req.audit_status,
+        auditor_comment=req.auditor_comment,
+        trace_id=req.trace_id,
+    )
+    return {"status": "success"}
+
 
 class InternalRagRequest(BaseModel):
     query: str

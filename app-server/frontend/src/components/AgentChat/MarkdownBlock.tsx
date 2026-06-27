@@ -1,22 +1,12 @@
-/**
- * MarkdownBlock — 将 Markdown 文本渲染为结构化 HTML。
- *
- * WHY: AgentChat 之前直接用 whitespace-pre-wrap 渲染纯文本，
- *      导致 LLM 输出的 Markdown 标记（##、**粗体**、- 列表）
- *      全部显示为原始符号，用户看到的是一坨不可读的文字墙。
- *
- * 设计决策：
- * 1. 使用 useState + useEffect + async import 模式（与 DocumentStudio 一致）
- *    以兼容 marked.parse() 可能返回 Promise 的版本。
- * 2. CSS 样式用组件内 <style> 标签注入，避免被 Tailwind v4 tree-shaking 删除。
- */
-import { useState, useEffect, useRef } from 'react';
+import { useEffect } from 'react';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 interface MarkdownBlockProps {
   content: string;
+  isStreaming?: boolean;
 }
 
-// WHY: 全局只注入一次 CSS，避免每个 MarkdownBlock 实例重复创建 <style>
 let _styleInjected = false;
 const STYLE_CSS = `
 .md-render { line-height: 1.7; word-break: break-word; }
@@ -96,71 +86,54 @@ function injectStyle() {
   _styleInjected = true;
 }
 
-export default function MarkdownBlock({ content }: MarkdownBlockProps) {
-  const [html, setHtml] = useState('');
-  const mountedRef = useRef(true);
+function normalizeMarkdown(text: string): string {
+  return text
+    .replace(/^[ 　]{1,4}(?=[^#\-\*\+\d\s])/gm, '')
+    .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
+    .replace(/([^\n])\n([-*+]\s)/g, '$1\n\n$2')
+    .replace(/([^\n])\n(\d+\.\s)/g, '$1\n\n$2')
+    .replace(/([^\n])(#{1,6})/g, '$1\n\n$2')
+    .replace(/([^\n])(\s*[-*+]\s)/g, '$1\n\n$2')
+    .replace(/([^\n])(\s*\d+\.\s)/g, '$1\n\n$2')
+    .replace(/^(#{1,6})([^\s#])/gm, '$1 $2')
+    .replace(/(\d+)\.([^\s\d])/g, '$1. $2');
+}
 
+export default function MarkdownBlock({ content, isStreaming }: MarkdownBlockProps) {
   useEffect(() => {
     injectStyle();
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
   }, []);
 
-  useEffect(() => {
-    if (!content) { setHtml(''); return; }
-
-    (async () => {
-      try {
-        const { marked } = await import('marked');
-        const DOMPurify = (await import('dompurify')).default;
-        marked.setOptions({ breaks: true, gfm: true });
-
-        // WHY: LLM 经常输出不规范 Markdown：
-        //   1. 换行符可能因 SSE 传输或模型输出不连贯导致挤在同一行
-        //   2. "##标题" 缺少 # 后的空格 → marked 不识别为标题
-        //   3. 标题、无序列表（-/*）、有序列表（1.）前缺少空行，且可能没有换行直接与前文相连
-        //   4. 有序列表点号后缺少空格（"1.标题" -> "1. 标题"）
-        //   5. 清理每段行首的冗余全角/半角空格防止与 CSS text-indent 缩进叠加
-        let normalized = content
-          // 1) 仅清除普通文本段落行首的冗余全角/半角空格，防止与 CSS text-indent 缩进叠加，不误伤列表缩进
-          .replace(/^[ 　]{1,4}(?=[^#\-\*\+\d\s])/gm, '')
-          // 2) 如果标题、列表项前只有单个换行符，自动补齐为双换行符以符合标准段落分割
-          .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
-          .replace(/([^\n])\n([-*+]\s)/g, '$1\n\n$2')
-          .replace(/([^\n])\n(\d+\.\s)/g, '$1\n\n$2')
-          // 3) 如果标题、列表项前完全没有换行符，强行补齐双换行符以实现新段落
-          .replace(/([^\n])(#{1,6})/g, '$1\n\n$2')
-          .replace(/([^\n])(\s*[-*+]\s)/g, '$1\n\n$2')
-          .replace(/([^\n])(\s*\d+\.\s)/g, '$1\n\n$2')
-          // 4) 确保标题 # 后有空格（如 "##标题" -> "## 标题"）
-          .replace(/^(#{1,6})([^\s#])/gm, '$1 $2')
-          // 5) 确保有序列表点号后有空格（如 "1.标题" -> "1. 标题"）
-          .replace(/(\d+)\.([^\s\d])/g, '$1. $2');
-
-        const rawHtml = await marked.parse(normalized);
-        if (mountedRef.current) {
-          setHtml(DOMPurify.sanitize(rawHtml));
-        }
-      } catch (err) {
-        console.error('[MarkdownBlock] 解析失败:', err);
-        if (mountedRef.current) {
-          // 降级：转义后显示纯文本
-          const escaped = content
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/\n/g, '<br/>');
-          setHtml(escaped);
-        }
-      }
-    })();
-  }, [content]);
-
-  if (!html) {
-    return <div className="whitespace-pre-wrap">{content}</div>;
+  if (!content) {
+    return <div className="whitespace-pre-wrap" />;
   }
 
-  return (
-    <div className="md-render" dangerouslySetInnerHTML={{ __html: html }} />
-  );
+  // 🌟 终极安全与性能优化：流式传输期间（生成中），直接以纯文本格式（保留换行）安全渲染。
+  //    这能绝对避免由于模型输出的一半 HTML 标签未闭合或代码格式破损传入 dangerouslySetInnerHTML 
+  //    从而导致浏览器内核为修正 DOM 树结构发生严重死循环或崩溃（STATUS_BREAKPOINT / OOM Error 5）。
+  if (isStreaming) {
+    return (
+      <div className="whitespace-pre-wrap break-words leading-relaxed text-gray-700 dark:text-stone-300 font-sans">
+        {content}
+      </div>
+    );
+  }
+
+  try {
+    marked.setOptions({ breaks: true, gfm: true });
+    const normalized = normalizeMarkdown(content);
+    const rawHtml = marked.parse(normalized) as string;
+    const cleanHtml = DOMPurify.sanitize(rawHtml);
+    return (
+      <div className="md-render" dangerouslySetInnerHTML={{ __html: cleanHtml }} />
+    );
+  } catch (err) {
+    console.error('[MarkdownBlock] 解析渲染失败:', err);
+    const escaped = content
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br/>');
+    return <div className="md-render" dangerouslySetInnerHTML={{ __html: escaped }} />;
+  }
 }

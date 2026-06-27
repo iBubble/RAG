@@ -92,7 +92,11 @@ func (o *OllamaChat) Generate(ctx context.Context, input []*schema.Message, opts
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("ollama response error: %s", string(body))
+		bodyStr := string(body)
+		if strings.Contains(bodyStr, "image input is not supported") || strings.Contains(bodyStr, "mmproj") {
+			return nil, fmt.Errorf("【模型不支持多模态】您当前选择的模型 %s 为纯文本模型，不支持图片输入。请在左下角配置中切换为支持视觉的多模态模型（如 moondream、minicpm-v），或者在宿主机运行 `ollama run moondream` 拉取后重试", o.Model)
+		}
+		return nil, fmt.Errorf("ollama response error: %s", bodyStr)
 	}
 	var chatResp OllamaChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
@@ -146,8 +150,13 @@ func (o *OllamaChat) Stream(ctx context.Context, input []*schema.Message, opts .
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("ollama status error: %d", resp.StatusCode)
+		bodyStr := string(body)
+		if strings.Contains(bodyStr, "image input is not supported") || strings.Contains(bodyStr, "mmproj") {
+			return nil, fmt.Errorf("【模型不支持多模态】您当前选择的模型 %s 为纯文本模型，不支持图片输入。请在左下角配置中切换为支持视觉的多模态模型（如 moondream、minicpm-v），或者在宿主机运行 `ollama run moondream` 拉取后重试", o.Model)
+		}
+		return nil, fmt.Errorf("ollama status error: %d, detail: %s", resp.StatusCode, bodyStr)
 	}
 	sr, sw := schema.Pipe[*schema.Message](100)
 	go func() {

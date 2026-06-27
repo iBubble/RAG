@@ -402,13 +402,13 @@ def _read_system_settings() -> dict:
             "collab_simple_threshold": "500",
             "collab_contrarian_model": "qwen3:8b",
             "collab_arbiter_model": settings.DEFAULT_LLM_MODEL,
-            "collab_supervisor_name": "【协同】文档秘书",
-            "collab_legal_name": "【协同】行业分析专家",
-            "collab_contrarian_name": "【协同】审查员",
-            "collab_arbiter_name": "【协同】仲裁官",
+            "collab_supervisor_name": "【协同】公文秘书",
+            "collab_legal_name": "【协同】数据核校员",
+            "collab_contrarian_name": "【协同】合规审查员",
+            "collab_arbiter_name": "【协同】公文终审员",
             "default_pdf_parser": "Docling",
             "mineru_concurrency": "2",
-            "eino_interrupt_enabled": "true",
+            "eino_interrupt_enabled": "false",
             "eino_checker_amount_limit": "50000.0",
             "ragas_cron_hour": "2",
             "ragas_alert_threshold": "0.85",
@@ -459,7 +459,7 @@ def _read_system_settings() -> dict:
             "collab_arbiter_name": "【协同】仲裁官",
             "default_pdf_parser": "Docling",
             "mineru_concurrency": "2",
-            "eino_interrupt_enabled": "true",
+            "eino_interrupt_enabled": "false",
             "eino_checker_amount_limit": "50000.0",
             "ragas_cron_hour": "2",
             "ragas_alert_threshold": "0.85",
@@ -732,6 +732,15 @@ async def get_public_settings():
     }
     for k, v in s.items():
         if k.startswith("agent_") or k.startswith("collab_"):
+            # 强力适配政府机关用语：过滤并改掉任何司法或个人色彩名称
+            if k == "collab_supervisor_name" and (v == "【协同】文档秘书" or not v):
+                v = "【协同】公文秘书"
+            elif k == "collab_legal_name" and (v in ("【协同】行业分析专家", "【协同】定量校验") or not v):
+                v = "【协同】数据核校员"
+            elif k == "collab_contrarian_name" and (v == "【协同】审查员" or not v):
+                v = "【协同】合规审查员"
+            elif k == "collab_arbiter_name" and (v == "【协同】仲裁官" or not v):
+                v = "【协同】公文终审员"
             res[k] = v
     return res
 

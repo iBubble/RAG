@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval';
 
+let writeTimeout: any = null;
+let pendingWrite: { name: string; value: string } | null = null;
+
 const idbStorage = {
   hasLoaded: {} as Record<string, boolean>,
   getItem: async (name: string): Promise<string | null> => {
@@ -10,9 +13,16 @@ const idbStorage = {
     return val || null;
   },
   setItem: async (name: string, value: string): Promise<void> => {
-    if (idbStorage.hasLoaded[name]) {
-      await idbSet(name, value);
-    }
+    if (!idbStorage.hasLoaded[name]) return;
+    pendingWrite = { name, value };
+    if (writeTimeout) return;
+    writeTimeout = setTimeout(async () => {
+      if (pendingWrite) {
+        await idbSet(pendingWrite.name, pendingWrite.value).catch(() => {});
+        pendingWrite = null;
+      }
+      writeTimeout = null;
+    }, 500); // 500ms 写入防抖安全保护
   },
   removeItem: async (name: string): Promise<void> => {
     await idbDel(name);
@@ -120,17 +130,6 @@ interface ProjectState {
   setCurrentDocId: (id: string | null) => void;
   refreshCounter: number;
   triggerRefresh: () => void;
-  chatStreamingState: ChatStreamingState;
-  sendAgentMessage: (
-    projectId: string,
-    input: string,
-    chatMode: string,
-    getAuthHeaders: () => Record<string, string>,
-    checkedFileIds: string[],
-    selectedModel: string,
-    image?: string
-  ) => Promise<void>;
-  stopAgentMessage: () => void;
   publicSettings: Record<string, any> | null;
   fetchPublicSettings: () => Promise<void>;
 }
@@ -139,7 +138,7 @@ interface ProjectState {
 //      让左侧树的勾选状态（checkedFileIds）可以直接贯通映射到中间的智能体请求上下文中。
 export const useProjectStore = create<ProjectState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
   checkedFileIds: [],
   checkedRefIds: [],
   templateTitle: '未命名实施方案',
@@ -271,6 +270,49 @@ export const useProjectStore = create<ProjectState>()(
     }
   },
   triggerRefresh: () => set((state) => ({ refreshCounter: state.refreshCounter + 1 })),
+
+
+
+
+
+
+
+    }),
+    {
+      name: 'shengyao-rag-storage',
+      storage: createJSONStorage(() => idbStorage),
+      // WHY: 持久化范围极简化——savedDocuments 已移除（后端有持久化，前端冗余副本是 OOM 根因）。
+      //      agentMessagesByProject 通过 setProjectMessages 已有 100 条上限。
+      //      savedChatSnippets 体积小（纯文本片段），保留。
+      partialize: (state) => ({
+        savedChatSnippets: state.savedChatSnippets,
+        // WHY: 持久化聊天记录时，截断每个项目到最近 50 条，
+        //      避免 JSON 序列化时体积过大。
+        agentMessagesByProject: Object.fromEntries(
+          Object.entries(state.agentMessagesByProject).map(
+            ([pid, msgs]) => [pid, (msgs as Message[]).slice(-50)]
+          )
+        ),
+      })
+    }
+  )
+);
+
+export interface ChatState {
+  chatStreamingState: ChatStreamingState;
+  sendAgentMessage: (
+    projectId: string,
+    input: string,
+    chatMode: string,
+    getAuthHeaders: () => Record<string, string>,
+    checkedFileIds: string[],
+    selectedModel: string,
+    image?: string
+  ) => Promise<void>;
+  stopAgentMessage: () => void;
+}
+
+export const useChatStore = create<ChatState>((set) => ({
   chatStreamingState: {
     isGenerating: false,
     projectId: null,
@@ -279,7 +321,7 @@ export const useProjectStore = create<ProjectState>()(
     abortController: null,
   },
   sendAgentMessage: async (projectId, input, chatMode, getAuthHeaders, checkedFileIds, selectedModel, image) => {
-    const currentStreaming = useProjectStore.getState().chatStreamingState;
+    const currentStreaming = useChatStore.getState().chatStreamingState;
     if (currentStreaming.isGenerating) return;
 
     const API_BASE = import.meta.env.VITE_API_BASE || '';
@@ -315,6 +357,8 @@ export const useProjectStore = create<ProjectState>()(
     });
 
     let localBufferContent = '';
+    let tokenContent = '';
+    let currentProgress = '';
     let localBufferSources: string[] = [];
     const startTime = Date.now();
 
@@ -326,22 +370,25 @@ export const useProjectStore = create<ProjectState>()(
             .filter(m => m.id !== '1')
             .map(m => ({ role: m.role, content: m.content }));
 
+      const publicSettings = useProjectStore.getState().publicSettings;
       const res = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMsg.content,
-          image: userMsg.image, // 新增：将 Base64 图片发送至后端
+          image: userMsg.image,
           file_ids: checkedFileIds,
           project_id: projectId,
           history,
           model: selectedModel,
           chat_mode: chatMode,
           stateless: isStateless,
-          collab_supervisor_name: get().publicSettings?.collab_supervisor_name,
-          collab_legal_name: get().publicSettings?.collab_legal_name,
-          collab_contrarian_name: get().publicSettings?.collab_contrarian_name,
-          collab_arbiter_name: get().publicSettings?.collab_arbiter_name,
+          collab_supervisor_name: publicSettings?.collab_supervisor_name,
+          collab_legal_name: publicSettings?.collab_legal_name,
+          collab_contrarian_name: publicSettings?.collab_contrarian_name,
+          collab_arbiter_name: publicSettings?.collab_arbiter_name,
+          eino_interrupt_enabled: publicSettings?.eino_interrupt_enabled,
+          eino_checker_amount_limit: publicSettings?.eino_checker_amount_limit,
         }),
         signal: controller.signal,
       });
@@ -361,6 +408,7 @@ export const useProjectStore = create<ProjectState>()(
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
+        let hasUpdated = false;
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           try {
@@ -368,64 +416,63 @@ export const useProjectStore = create<ProjectState>()(
             if (data.done) break;
             if (data.sources) {
               localBufferSources = data.sources;
+              hasUpdated = true;
             }
             if (data.status) {
-              const statusTranslations: Record<string, string> = {
-                routing: '任务路由中',
-                executing: '任务执行中',
-                thinking: '深度推演中',
-                critiquing: '结果审查中',
-                deciding: '最终决策中',
-                done: '执行完成'
-              };
-              const zhStatus = statusTranslations[data.status] || data.status;
-              localBufferContent += `\n\n⏳ ${zhStatus}\n\n`;
+              // 只接收状态
             }
             if (data.data_analysis) {
-              localBufferContent = localBufferContent.replace(/\n\n⏳ .*?\n\n/g, '');
               const daTag = `<!--DA_META:${JSON.stringify(data.data_analysis)}:DA_META-->\n`;
-              localBufferContent = daTag + localBufferContent;
+              tokenContent = daTag + tokenContent;
+              hasUpdated = true;
             }
-            // WHY: 多 Agent 协同模式（smart）的协作事件推送。
-            //      agent_event 携带 Agent 名称和状态，渲染为可视化状态指示器。
             if (data.type === 'agent_event') {
-              const agentEmojis: Record<string, string> = {
-                supervisor: '🧠', rag: '📚', rag_agent: '📚',
-                legal: '⚖️', legal_agent: '⚖️',
-                service: '📝', service_agent: '📝',
-                data: '📊', data_agent: '📊',
-                contrarian: '🤨', arbiter: '👑',
-              };
-              const emoji = agentEmojis[data.agent] || '🤖';
-              localBufferContent += `\n\n${emoji} *${data.message}*\n\n`;
+              const prefix = chatMode === 'smart' ? '【深度思考】模式开启：' : '';
+              if (data.status === 'routing') {
+                currentProgress = prefix + '正在分析任务……';
+              } else if (data.status === 'executing') {
+                currentProgress = prefix + '正在分析任务……正在检索知识库……';
+              } else if (data.status === 'checking') {
+                currentProgress = prefix + '正在分析任务……正在检索知识库……正在校验数据与格式……';
+              } else if (data.status === 'auditing') {
+                currentProgress = prefix + '正在分析任务……正在检索知识库……正在校验数据与格式……正在审计并润色最终回答……';
+              } else if (data.status === 'done') {
+                currentProgress = prefix + '正在分析任务……正在检索知识库……正在校验数据与格式……正在审计并润色最终回答……';
+              }
+              hasUpdated = true;
             }
             if (data.type === 'token' && data.content) {
-              // 多 Agent 模式的 token 推送（清除之前的状态行）
-              localBufferContent = localBufferContent.replace(/\n\n[🧠📚⚖️📝📊🤨👑🤖] \*.*?\*\n\n/g, '');
-              localBufferContent += data.content;
+              tokenContent += data.content;
+              hasUpdated = true;
             }
             if (data.token) {
-              localBufferContent += data.token;
+              tokenContent += data.token;
+              hasUpdated = true;
             }
-            set((state) => ({
-              chatStreamingState: {
-                ...state.chatStreamingState,
-                streamingContent: localBufferContent,
-                streamingSources: localBufferSources,
-              }
-            }));
+            localBufferContent = currentProgress ? `${currentProgress}\n\n${tokenContent}` : tokenContent;
           } catch {
             // ignore
           }
         }
+
+        if (hasUpdated) {
+          set((state) => ({
+            chatStreamingState: {
+              ...state.chatStreamingState,
+              streamingContent: localBufferContent,
+              streamingSources: localBufferSources,
+            }
+          }));
+        }
       }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        localBufferContent += '\n\n⏹️ _生成已被用户中断_';
+        tokenContent += '\n\n⏹️ _生成已被用户中断_';
       } else {
         const msg = err instanceof Error ? err.message : '未知错误';
-        localBufferContent += `\n❌ 生成失败: ${msg}`;
+        tokenContent += `\n❌ 生成失败: ${msg}`;
       }
+      localBufferContent = currentProgress ? `${currentProgress}\n\n${tokenContent}` : tokenContent;
       set((state) => ({
         chatStreamingState: {
           ...state.chatStreamingState,
@@ -474,7 +521,7 @@ export const useProjectStore = create<ProjectState>()(
     }
   },
   stopAgentMessage: () => {
-    const streamState = useProjectStore.getState().chatStreamingState;
+    const streamState = useChatStore.getState().chatStreamingState;
     streamState.abortController?.abort();
     set({
       chatStreamingState: {
@@ -486,23 +533,4 @@ export const useProjectStore = create<ProjectState>()(
       }
     });
   },
-    }),
-    {
-      name: 'shengyao-rag-storage',
-      storage: createJSONStorage(() => idbStorage),
-      // WHY: 持久化范围极简化——savedDocuments 已移除（后端有持久化，前端冗余副本是 OOM 根因）。
-      //      agentMessagesByProject 通过 setProjectMessages 已有 100 条上限。
-      //      savedChatSnippets 体积小（纯文本片段），保留。
-      partialize: (state) => ({
-        savedChatSnippets: state.savedChatSnippets,
-        // WHY: 持久化聊天记录时，截断每个项目到最近 50 条，
-        //      避免 JSON 序列化时体积过大。
-        agentMessagesByProject: Object.fromEntries(
-          Object.entries(state.agentMessagesByProject).map(
-            ([pid, msgs]) => [pid, (msgs as Message[]).slice(-50)]
-          )
-        ),
-      })
-    }
-  )
-);
+}));
