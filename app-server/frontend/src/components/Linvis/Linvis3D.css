@@ -38,8 +38,8 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  margin-bottom: 0px;
-  padding: 10px 0;
+  margin-bottom: 4px;
+  padding: 16px 0;
   gap: 16px;
   border-bottom: 1px dashed rgba(180, 160, 120, 0.15);
 }
@@ -47,45 +47,46 @@
   border-bottom: none;
 }
 
-/* ===== 3D拟物化立杆门牌 ===== */
+/* ===== 3D拟物化立杆门牌 (图二 Wayfinding 导视风格) ===== */
 .zone-signboard {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 96px; /* 竖牌比例 */
-  border-radius: 8px;
+  justify-content: flex-start;
+  width: 48px;
+  height: 145px; /* 长条竖牌 */
+  border-radius: 20px; /* 大圆角 */
   position: relative;
   flex-shrink: 0;
+  padding: 12px 0 8px 0;
   box-shadow: 
-    -5px 8px 16px rgba(0,0,0,0.22),
-    inset 0 1px 0 rgba(255,255,255,0.25);
-  margin-left: 24px;
+    -6px 10px 18px rgba(0,0,0,0.25),
+    inset 0 1px 0 rgba(255,255,255,0.3);
+  margin-left: 28px;
   margin-right: 16px;
   /* 45度角侧向3D旋转 */
-  transform: perspective(500px) rotateY(-42deg) rotateX(12deg) rotateZ(2deg);
+  transform: perspective(600px) rotateY(-40deg) rotateX(10deg) rotateZ(2deg);
   transform-style: preserve-3d;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
-  overflow: visible; /* 必须 visible 让底部的立杆显示出来 */
+  overflow: visible; /* 让底部的立杆显示 */
 }
 .zone-signboard:hover {
-  transform: perspective(500px) rotateY(-32deg) rotateX(12deg) rotateZ(2deg) scale(1.05);
+  transform: perspective(600px) rotateY(-30deg) rotateX(10deg) rotateZ(2deg) scale(1.05);
   box-shadow: 
-    -8px 12px 24px rgba(0,0,0,0.28),
-    inset 0 1px 0 rgba(255,255,255,0.35);
+    -10px 15px 26px rgba(0,0,0,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.4);
 }
 
 /* 支撑立杆 (Pole) */
 .zone-signboard::after {
   content: "";
   position: absolute;
-  bottom: -48px; /* 往外插出 */
+  bottom: -40px; /* 往下伸出 */
   left: 50%;
   transform: translateX(-50%);
   width: 4px;
-  height: 48px;
-  background: linear-gradient(90deg, #5b626e 0%, #1f252e 100%); /* 黄铜/金属立杆 */
+  height: 40px;
+  background: linear-gradient(90deg, #6b7280 0%, #374151 100%);
   box-shadow: -2px 3px 5px rgba(0,0,0,0.18);
   z-index: -1;
   border-radius: 2px;
@@ -97,39 +98,58 @@
 }
 
 .sign-icon {
-  font-size: 20px;
+  font-size: 18px;
   margin-bottom: 6px;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.2));
 }
+
 .sign-text {
   font-size: 11px;
   font-weight: 900;
-  line-height: 1.2;
+  line-height: 1.25;
   text-align: center;
-  letter-spacing: 0.5px;
-  padding: 0 4px;
+  letter-spacing: 2px;
+  writing-mode: vertical-rl; /* 垂直书写，完美对应图二指示牌格式 */
+  text-orientation: mixed;
+  color: #ffffff;
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* 1. 木质标牌 */
-.sign-wood {
-  background: linear-gradient(135deg, #a76d3f 0%, #6f4223 100%);
-  border: 3px solid #543118;
-  color: #fef3c7;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.65);
+.sign-arrow {
+  font-size: 12px;
+  color: #ffffff;
+  margin-top: 4px;
+  font-weight: bold;
+  transform: rotate(90deg); /* ➔ 旋转90度朝下指，表示指向右侧行 */
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));
 }
-/* 2. 黄铜标牌 */
-.sign-brass {
-  background: linear-gradient(135deg, #eab308 0%, #a16207 100%);
-  border: 3px solid #854d0e;
-  color: #fefcf0;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.55);
+
+/* 1. 业务处理区 (深红底, 粗白边) */
+.sign-red {
+  background: #b91c1c;
+  border: 3.5px solid #ffffff;
+  box-shadow: 
+    0 4px 12px rgba(185, 28, 28, 0.35),
+    -6px 10px 18px rgba(0,0,0,0.25);
 }
-/* 3. 钢铁标牌 */
-.sign-steel {
-  background: linear-gradient(135deg, #9ca3af 0%, #4b5563 100%);
-  border: 3px solid #374151;
-  color: #f9fafb;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.55);
+/* 2. 核心项目区 (橘色底, 粗白边) */
+.sign-orange {
+  background: #ea580c;
+  border: 3.5px solid #ffffff;
+  box-shadow: 
+    0 4px 12px rgba(234, 88, 12, 0.35),
+    -6px 10px 18px rgba(0,0,0,0.25);
+}
+/* 3. 资料工坊 (深红/褐红底, 粗白边) */
+.sign-darkred {
+  background: #851c1c;
+  border: 3.5px solid #ffffff;
+  box-shadow: 
+    0 4px 12px rgba(133, 28, 28, 0.35),
+    -6px 10px 18px rgba(0,0,0,0.25);
 }
 
 /* ===== 工位行 ===== */

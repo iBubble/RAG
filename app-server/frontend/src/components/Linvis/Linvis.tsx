@@ -262,11 +262,13 @@ export default function Linvis() {
 
           <div className="office-content">
             {/* 第一排：业务处理区 */}
+            {/* 第一排：业务处理区 */}
             {hasVisibleInZone(['chat', 'service', 'planner', 'checker', 'auditor']) && (
               <div className="office-zone">
-                <div className="zone-signboard sign-wood">
+                <div className="zone-signboard sign-red">
                   <span className="sign-icon">🛎️</span>
-                  <span className="sign-text">业务处理区</span>
+                  <span className="sign-text">业务处理</span>
+                  <span className="sign-arrow">➔</span>
                 </div>
                 <div className="desk-row">
                   {showAgent('chat') && <LinvisDesk agentKey="chat" {...getAgentProps('chat', '小智(Smart)', 'male', 'horse')} roleTitle="智能客服咨询" info={data.agents.chat} />}
@@ -292,9 +294,10 @@ export default function Linvis() {
             {/* 第二排：项目处理组 */}
             {hasVisibleInZone(['legal', 'precompute', 'service']) && (
               <div className="office-zone">
-                <div className="zone-signboard sign-brass">
+                <div className="zone-signboard sign-orange">
                   <span className="sign-icon">💡</span>
-                  <span className="sign-text">核心项目区</span>
+                  <span className="sign-text">核心项目</span>
+                  <span className="sign-arrow">➔</span>
                 </div>
                 <div className="desk-row">
                   {showAgent('service') && <LinvisDesk agentKey="service" {...getAgentProps('service', '小管 (Manager)', 'female', 'horse')} roleTitle="文书审查专家" info={data.agents.service} />}
@@ -307,9 +310,10 @@ export default function Linvis() {
             {/* 第三排：资料处理组 */}
             {hasVisibleInZone(['vectorizer', 'graph', 'summary']) && (
               <div className="office-zone">
-                <div className="zone-signboard sign-steel">
+                <div className="zone-signboard sign-darkred">
                   <span className="sign-icon">📁</span>
                   <span className="sign-text">资料工坊</span>
+                  <span className="sign-arrow">➔</span>
                 </div>
                 <div className="desk-row">
                   {showAgent('vectorizer') && <LinvisDesk agentKey="vectorizer" {...getAgentProps('vectorizer', '小向 (Vector)', 'male', 'horse')} roleTitle="后端向量化入库" info={data.agents.vectorizer} />}
