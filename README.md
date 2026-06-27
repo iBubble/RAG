@@ -101,7 +101,14 @@
                     ┌────────┴────────┐
                     │ 增强版 Prompt   │ $\rightarrow$ LLM 本地推理生成
                     └─────────────────┘
-```
+
+---
+
+## 🖼️ 多模态 RAG 检索与模型自适应路由
+
+针对图片、扫描件等非结构化证据材料，系统实现了视觉多模态 RAG 通道：
+* **本地模型自适应检测与路由**：当网关层接收到图片输入时，若默认的 35B 文本大模型不支持视觉，系统会利用 `getBestMultimodalModel` 算法探测宿主机可用模型，并自适应将流量路由给本地最佳的多模态视觉大模型（如 `minicpm-v` / `moondream`），实现图文识别直答。
+* **非视觉节点图片物理隔离**：在 Go Eino DAG 工作流中，将大体积图片数据从 `Planner`、`Checker` 和 `Auditor` 等文本节点的 Context 中显式擦除清空，只保留在 `Worker` 视觉节点中加载，实现零拷贝数据安全物理隔离，防范大包传输带来的网络和显存 OOM。
 
 ---
 
@@ -115,9 +122,10 @@
 *   **Pydantic Schema 模型规约**：在 [market_supervision.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/schemas/market_supervision.py) 中，将市场监督表单（统一社会信用代码、法定处罚种类、裁量金额范围）抽象为标准的 Pydantic 校验模型。
 *   **Ollama 掩码解码约束**：在 [constrained_decode.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/constrained_decode.py#L35-L44) 中，直接提取模型的 JSON Schema 并透传给本地 Ollama 推理服务的 `format` 字段，使模型大类 Token 的输出概率在推理层受状态机强控制，避免输出非 JSON 杂质。若校验失败，系统会自动捕获 `ValidationError` 堆栈，作为上下文提示词发回大模型，在毫秒级内自动闭环修正生成。
 
-### 3. Eino 三角色 DAG 协同图与人机审核中断机制 (Interrupt/Resume)
-*   **Go Eino 拓扑编排**：由 Gin 重写了高性能网关流量接管，核心对话流基于 [eino_graph.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/eino_graph.go) 编排成 Planner (任务路由) -> Checker (定量校验) -> Auditor (定性裁决) 的有向无环图，利用 Goroutine 极小内存开销避免并发堵塞。
-*   **中断与恢复 (Interrupt & Resume)**：当 Auditor 判定当前的文书草案触发严重合规预警（如程序违规或大额惩罚）时，Eino 流执行中断，通过 [generate.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/api/generate.py#L2858) 底层路由将有向图快照冻结至 Redis `eino:frozen_state:{project_id}`（TTL 24小时），前台看板琥珀色报警并拉起法务控制台。法务主管人工批改后，通过 [chat_handler.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/chat_handler.go#L154) 接收合规修改，拉起 `Resume` 恢复执行后续图流程。
+### 3. Eino Multi-Agent 协同图与深度思考 (Smart) 模式编排
+*   **Go Eino 拓扑编排（Smart 模式核心）**：核心对话流基于 [eino_graph.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/eino_graph.go) 编排成 Planner (公文秘书) -> Worker (定量数据校验) -> Checker (合规审查员) -> Auditor (公文终审员) 的有向图，利用 Goroutine 极小内存开销避免高并发拥堵。在 System Prompt 中加入刚性规则，绝对屏蔽司法裁决色彩和 `🏛️` 等图形，严格使用庄重的政府公文风格。
+*   **林维斯协同状态流式监视（Linvis）**：在有向图每个 Lambda 节点状态流转时，通过 `setLinvisStatus` 实时向后台大屏异步推送最新的状态详情，支持了智能体圆桌会议大屏的实时展示。
+*   **中断与恢复 (Interrupt & Resume)**：当公文终审员判定当前的文书草案触发严重合规预警（如程序违规或大额惩罚）时，Eino 流执行中断，通过 [generate.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/api/generate.py#L2858) 底层路由将有向图快照冻结至 Redis `eino:frozen_state:{project_id}`（TTL 24小时），前台看板琥珀色报警并拉起法务控制台。法务主管人工批改后，通过 [chat_handler.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/chat_handler.go#L154) 接收合规修改，拉起 `Resume` 恢复执行后续图流程。
 
 ### 4. 向量级 Redis 语义缓存网络 (L2 Answer Cache)
 *   **高维语义相似度命中**：在 [semantic_cache.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/semantic_cache.py) 中，对用户的提问进行 BGE-M3 稠密向量转换并归一化，通过 `np.dot` 与 Redis Hash 结构中历史提问向量计算余弦相似度。若大于匹配阈值 `0.96`，直接从缓存获取最终文书，返回时间从大模型推理的 2分多钟骤降至 **0.37s**，配置 1 小时过期 TTL 自动释放空闲哈希。
@@ -180,6 +188,15 @@
 2. **原生 `<w:del>` / `<w:ins>` 注入**：编写专有正则表达式，扫描正文中的 `[修改前: A -> 修改后: B]` 语法块，将其精准转写为符合微软标准的原生 OpenXML 修订标记。
 3. **修订追踪强制激活锁**：在 `word/settings.xml` 配置文件中强行注入并闭合 `<w:trackRevisions/>` 标签，使导出的 Word 文档在被 Microsoft Word、WPS 或 Pages 打开时，**默认自动开启并锁定“修订模式”**，红线留痕及侧边修改批注能够 100% 完美呈现。
 
+
+---
+
+## ⚡ 前端高频重绘防爆与 I/O 写入防抖安全盾
+
+针对深度思考模式下高频流式 SSE 推理的极端场景，前端设计了高性能防护架构：
+* **无持久化内存 Store 隔离**：将长文流式生成状态 `chatStreamingState` 彻底剥离至不带持久化（persist）中间件的独立 `useChatStore` 内存容器中，避免了每次大模型吐出 Token 时 Zustand 频繁进行序列化深度克隆以及对 IndexedDB 写入导致的磁盘 I/O 线程阻塞。
+* **磁盘持久化 500ms 写入防抖安全盾**：针对 `useProjectStore` 等需要写盘的常规操作，在底座 `idbStorage.setItem` 增加 500ms 防抖限制。不论状态更新频率多高，500ms 内向物理磁盘写入的次数强行合并为至多 1 次，消除了高频数据库锁死导致的浏览器标签页崩溃（STATUS_BREAKPOINT / Error 5）。
+* **渲染 Batching 与 Markdown 纯文本降级防护**：在 SSE 字符解析读取循环中仅累加状态，在循环结束后单次批量触发 `set` 重绘，使渲染频率降低 95%。并在流式打字生成期间采用纯文本降级容器渲染，防止大模型未闭合的残缺 HTML 代码块引起剧烈的 DOM 树回流，待生成彻底结束后无缝切换为完整 Markdown AST 呈现。
 
 ---
 
