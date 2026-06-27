@@ -39,7 +39,7 @@
   align-items: center;
   justify-content: flex-start;
   margin-bottom: 4px;
-  padding: 16px 0;
+  padding: 8px 0;
   gap: 16px;
   border-bottom: 1px dashed rgba(180, 160, 120, 0.15);
 }
@@ -47,94 +47,20 @@
   border-bottom: none;
 }
 
-/* ===== 极简扁平化导视指示牌 (图二 Wayfinding 导视风格) ===== */
-.zone-signboard {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  width: 44px;
-  height: 125px; /* 长条竖牌 */
-  border-radius: 18px; /* 圆润大圆角 */
-  position: relative;
+/* ===== 极简扁平折弯导视牌 (图三 SVG 箭头风格) ===== */
+.zone-sign-arrow-container {
+  display: block;
   flex-shrink: 0;
-  padding: 10px 0 6px 0;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.12);
-  margin-left: 20px;
-  margin-right: 12px;
-  /* 取消 3D 偏转，保持扁平 */
-  transform: none;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  overflow: hidden;
+  margin-left: 12px;
+  margin-right: 8px;
+  transition: transform 0.2s ease;
 }
-.zone-signboard:hover {
-  transform: scale(1.04);
-  box-shadow: 0 6px 12px rgba(0,0,0,0.18);
+.zone-sign-arrow-container:hover {
+  transform: translateY(-2px) scale(1.02);
 }
-
-/* 移除立杆 */
-.zone-signboard::after {
-  display: none;
-}
-
-/* 移除原先的顶部吊挂挂绳 */
-.zone-signboard::before {
-  display: none;
-}
-
-.sign-icon {
-  font-size: 16px;
-  margin-bottom: 4px;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.15));
-}
-
-.sign-text {
-  font-size: 11px;
-  font-weight: 900;
-  line-height: 1.2;
-  text-align: center;
-  letter-spacing: 2.5px;
-  writing-mode: vertical-rl; /* 垂直书写 */
-  text-orientation: mixed;
-  color: #ffffff;
-  flex-grow: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.sign-arrow {
-  font-size: 11px;
-  color: #ffffff;
-  margin-top: 2px;
-  font-weight: bold;
-  transform: rotate(90deg); /* ➔ 旋转90度朝下指，表示指向右侧行 */
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.15));
-}
-
-/* 1. 业务处理区 (深红底, 粗白边) */
-.sign-red {
-  background: #b91c1c;
-  border: 3px solid #ffffff;
-  box-shadow: 
-    0 3px 8px rgba(185, 28, 28, 0.25),
-    0 4px 8px rgba(0,0,0,0.12);
-}
-/* 2. 核心项目区 (橘色底, 粗白边) */
-.sign-orange {
-  background: #ea580c;
-  border: 3px solid #ffffff;
-  box-shadow: 
-    0 3px 8px rgba(234, 88, 12, 0.25),
-    0 4px 8px rgba(0,0,0,0.12);
-}
-/* 3. 资料工坊 (深红/褐红底, 粗白边) */
-.sign-darkred {
-  background: #851c1c;
-  border: 3px solid #ffffff;
-  box-shadow: 
-    0 3px 8px rgba(133, 28, 28, 0.25),
-    0 4px 8px rgba(0,0,0,0.12);
+.zone-arrow-svg {
+  display: block;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.12));
 }
 
 /* ===== 工位行 ===== */
