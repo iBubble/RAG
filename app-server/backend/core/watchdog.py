@@ -8,9 +8,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger(__name__)
 
+from core.config import settings, STORAGE_ROOT
+
 # 全局状态：指示系统是否处于只读模式（即检测到磁盘离线）
 SYSTEM_READ_ONLY = False
-TARGET_RAID_PATH = "/Volumes/SYRAID/RAG_Files"
+TARGET_RAID_PATH = STORAGE_ROOT
 
 def _watchdog_worker():
     global SYSTEM_READ_ONLY

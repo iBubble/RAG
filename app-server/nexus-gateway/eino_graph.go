@@ -6,23 +6,38 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
+	"github.com/google/uuid"
 )
 
+// ── Eino DAG 三角色协同图 ──
+// 架构：Planner(规划) → Checker(定量校验) → Auditor(定性审计)
+// WHY: 取代旧的 Supervisor/Contrarian/Arbiter 四角色线性链路。
+//      新架构支持 Interrupt/Resume 机制，当 Auditor 发现严重合规
+//      风险时，可冻结状态到 Redis，等待人工审核后恢复执行。
+
 type EinoAgentRequest struct {
-	Message        string   `json:"message"`
-	ProjectID      string   `json:"project_id"`
-	FileIDs        []string `json:"file_ids"`
-	Model          string   `json:"model"`
-	ChatMode       string   `json:"chat_mode"`
-	SupervisorName string   `json:"collab_supervisor_name"`
-	LegalName      string   `json:"collab_legal_name"`
-	ContrarianName string   `json:"collab_contrarian_name"`
-	ArbiterName    string   `json:"collab_arbiter_name"`
+	Message   string   `json:"message"`
+	ProjectID string   `json:"project_id"`
+	FileIDs   []string `json:"file_ids"`
+	Model     string   `json:"model"`
+	ChatMode  string   `json:"chat_mode"`
+	// 新角色名（Go Eino DAG）
+	PlannerName string `json:"planner_name"`
+	CheckerName string `json:"checker_name"`
+	AuditorName string `json:"auditor_name"`
+	// 旧字段（向后兼容）
+	SupervisorName string `json:"collab_supervisor_name"`
+	LegalName      string `json:"collab_legal_name"`
+	ContrarianName string `json:"collab_contrarian_name"`
+	ArbiterName    string `json:"collab_arbiter_name"`
 }
 
 type InternalRagItem struct {
@@ -58,207 +73,227 @@ func writeEvent(w io.Writer, agent, status, message string) bool {
 	})
 }
 
+type EinoContext struct {
+	Req              *EinoAgentRequest
+	Route            string
+	Draft            string
+	Sources          []string
+	RetrievalContext []string // 新增：保存真实检索出的文本分片内容
+	CheckResult      string
+	FinalAnswer      string
+	Interrupted      bool
+	Writer           io.Writer
+	TraceID          string
+}
 
-func RunEinoOrchestration(ctx context.Context, req *EinoAgentRequest, w io.Writer) error {
-	nameSupervisor := req.SupervisorName
-	if nameSupervisor == "" {
-		nameSupervisor = "【协同】文档秘书"
-	}
-	nameLegal := req.LegalName
-	if nameLegal == "" {
-		nameLegal = "【协同】行业分析专家"
-	}
-	nameContrarian := req.ContrarianName
-	if nameContrarian == "" {
-		nameContrarian = "【协同】审查员"
-	}
-	nameArbiter := req.ArbiterName
-	if nameArbiter == "" {
-		nameArbiter = "【协同】仲裁官"
-	}
-
-	llmModel := req.Model
-	if llmModel == "" {
-		llmModel = "qwen3.6:35b-q4"
-	}
-	llm35b := NewOllamaChat(llmModel)
-	llm8b := llm35b // 统一使用 35B 大模型进行决策，避免混用 8B 导致显存碎片与 CPU 降级
-
-	writeEvent(w, "supervisor", "routing", fmt.Sprintf("🧠 %s 正在分析任务...", nameSupervisor))
-
-	enrichedMessage := req.Message
-	if len(req.FileIDs) > 0 {
-		enrichedMessage = fmt.Sprintf("【系统背景】\n当前已勾选关联以下文档作为知识库参考，如果问题与这些文档、内容或专业主题相关，请调用 ask_rag_agent 以检索文档内容。\n【用户问题】\n%s", req.Message)
-	}
-
-	supSysPrompt := "你名任务编排专家（Supervisor），负责分析用户请求并分配给最合适的专家。\n" +
-		"你不直接回答用户的问题，而是通过调用工具将任务委派给专业 Agent。\n\n" +
-		"可用的专家 Agent：\n" +
-		"- ask_rag_agent: 知识检索专家，擅长从文档库中检索事实信息\n" +
-		"- ask_legal_agent: 行业分析专家，擅长行业检索、知识分析、文档起草\n" +
-		"- ask_service_agent: 文档审查专家，擅长文件审查、规范合规性检查\n" +
-		"- ask_data_agent: 数据分析专家，擅长 SQL 统计、表格聚合计算\n" +
-		"- direct_answer: 简单问题直接回答（问候、闲聊、常识）\n\n" +
-		"路由与工作流规则：\n" +
-		"1. 问文档/资料内容 → ask_rag_agent\n" +
-		"2. 问专业知识/政策/行业标准/文档起草 → ask_legal_agent\n" +
-		"3. 问文档审查/规范合规 → ask_service_agent\n" +
-		"4. 问数据统计/多少/合计/占比 → ask_data_agent\n" +
-		"5. 简单问候/闲聊 → direct_answer\n" +
-		"你的回答应该只包含分配的专家名字，严禁做任何多余阐述，只输出以下专家名之一：ask_rag_agent, ask_legal_agent, ask_service_agent, ask_data_agent, direct_answer。"
-
-	messages := []*schema.Message{
-		{Role: schema.System, Content: supSysPrompt},
-		{Role: schema.User, Content: enrichedMessage},
-	}
-
-	supResp, err := llm8b.Generate(ctx, messages)
-	if err != nil {
-		return fmt.Errorf("supervisor error: %v", err)
-	}
-
-	decision := strings.TrimSpace(supResp.Content)
-	fmt.Printf("[Eino-Gateway] Supervisor routing decision: %s\n", decision)
-
-	var workerAnswer string
-	isSimple := true
-	workerAgentName := "【协同】直答助手"
-	var sources []string
-
-	if strings.Contains(decision, "ask_rag_agent") {
-		isSimple = false
-		workerAgentName = "【协同】知识检索助手"
-		writeEvent(w, "rag_agent", "executing", "📋 正在调用知识检索专家进行事实检索...")
-
-		var rErr error
-		var contextText string
-		contextText, sources, rErr = callPythonInternalRag(ctx, req.Message, req.ProjectID, req.FileIDs)
-		if rErr != nil {
-			return rErr
+// getRetrievedDocsJSON 序列化真实检索切片或回退到文件名列表
+func getRetrievedDocsJSON(input *EinoContext) string {
+	if len(input.RetrievalContext) > 0 {
+		b, err := json.Marshal(input.RetrievalContext)
+		if err == nil {
+			return string(b)
 		}
-
-		ragSysPrompt := "你是一名专业的知识检索与事实问答专家。基于检索结果，给出精确、有据可查的回答。回答中必须标注信息来源文件名。如果检索结果不足以回答，如实告知。严禁编造数据。"
-		ragUserPrompt := fmt.Sprintf("【参考资料】\n%s\n\n【用户问题】\n%s", contextText, req.Message)
-
-		ragMessages := []*schema.Message{
-			{Role: schema.System, Content: ragSysPrompt},
-			{Role: schema.User, Content: ragUserPrompt},
-		}
-
-		ragResp, err := llm35b.Generate(ctx, ragMessages)
-		if err != nil {
-			return err
-		}
-		workerAnswer = ragResp.Content
-
-	} else if strings.Contains(decision, "ask_legal_agent") || strings.Contains(decision, "ask_service_agent") || strings.Contains(decision, "ask_data_agent") {
-		isSimple = false
-		workerAgentName = nameLegal
-		writeEvent(w, "legal_agent", "executing", fmt.Sprintf("📋 正在调用%s起草章节...", nameLegal))
-
-		expertSysPrompt := "你是一个数十年工作经验的资深行业分析专家。请直接给出严谨、专业的分析。"
-		expertMessages := []*schema.Message{
-			{Role: schema.System, Content: expertSysPrompt},
-			{Role: schema.User, Content: req.Message},
-		}
-		expertResp, err := llm35b.Generate(ctx, expertMessages)
-		if err != nil {
-			return err
-		}
-		workerAnswer = expertResp.Content
-	} else {
-		writeEvent(w, "direct_answer", "executing", "📋 正在由直答助手生成回答...")
-		directSysPrompt := "你是一名智能助手。对于用户的日常闲聊、简单问候或基础常识，请给予友好、礼貌的回答。"
-		directMessages := []*schema.Message{
-			{Role: schema.System, Content: directSysPrompt},
-			{Role: schema.User, Content: req.Message},
-		}
-		directResp, err := llm8b.Generate(ctx, directMessages)
-		if err != nil {
-			return err
-		}
-		workerAnswer = directResp.Content
 	}
-
-	// 如果属于简单问题，或者初稿太短，跳过质疑和仲裁
-	if isSimple || len(workerAnswer) < 100 {
-		_ = writeSSE(w, map[string]interface{}{
-			"type":    "token",
-			"content": workerAnswer,
-		})
-		_ = writeSSE(w, map[string]interface{}{
-			"type": "done",
-		})
-		savePythonChatCache(req, workerAnswer, sources)
-		return nil
+	b, err := json.Marshal(input.Sources)
+	if err == nil {
+		return string(b)
 	}
+	return "[]"
+}
 
-	// 4. 小杠质疑
-	writeEvent(w, "contrarian", "critiquing", fmt.Sprintf("🤨 %s 正在审查回答中引用的依据和逻辑...", nameContrarian))
-	contrarianSysPrompt := fmt.Sprintf("你是「%s」，一名专业的批判性审查专家。请审查专家回答中引用的依据、数据或争议事实。如果发现问题，逐条列出质疑意见，标注严重程度（⚠️严重/⚡一般/💡建议）。如果回答质量良好无明显问题，回复：「✅ 审查通过，回答质量良好。」每条不超过2句话。", nameContrarian)
-	contrarianUserPrompt := fmt.Sprintf("## 用户问题\n%s\n\n## 专家回答\n%s", req.Message, workerAnswer)
-
-	contrarianMessages := []*schema.Message{
-		{Role: schema.System, Content: contrarianSysPrompt},
-		{Role: schema.User, Content: contrarianUserPrompt},
+// freezeEinoState 将上下文状态冻结到 Redis（通过 Python API）
+func freezeEinoState(sessionID string, req *EinoAgentRequest, draft string, checkResult string, sources []string, traceID string, retrievalContext []string) error {
+	if sources == nil {
+		sources = make([]string, 0)
 	}
-
-	contrarianResp, err := llm8b.Generate(ctx, contrarianMessages)
-	if err != nil {
-		return err
+	if retrievalContext == nil {
+		retrievalContext = make([]string, 0)
 	}
-	critique := contrarianResp.Content
-
-	critiqueStatus := "⚠️ 发现逻辑漏洞"
-	if strings.Contains(critique, "审查通过") {
-		critiqueStatus = "✅ 审查通过"
+	backendURL := os.Getenv("PYTHON_BACKEND_URL")
+	if backendURL == "" {
+		backendURL = "http://127.0.0.1:8002"
 	}
-	writeEvent(w, "contrarian", "done", critiqueStatus)
-
-	// 5. 大BOSS 仲裁（流式）
-	writeEvent(w, "arbiter", "deciding", fmt.Sprintf("👑 %s 正在进行决策并流式润色回答...", nameArbiter))
-
-	arbiterSysPrompt := fmt.Sprintf("你是「%s」，团队的最终决策者。\n你将收到：专家回答 + 审查员的质疑。根据审查员的质疑是否成立，做出最终裁决并生成回答。直接输出最终回答，使用 Markdown 格式，不要提及内部审查过程。", nameArbiter)
-	arbitrationPrompt := fmt.Sprintf("## 用户问题\n%s\n\n## %s的回答\n%s\n\n## %s的质疑意见\n%s", req.Message, workerAgentName, workerAnswer, nameContrarian, critique)
-
-	arbiterMessages := []*schema.Message{
-		{Role: schema.System, Content: arbiterSysPrompt},
-		{Role: schema.User, Content: arbitrationPrompt},
-	}
-
-	streamReader, err := llm35b.Stream(ctx, arbiterMessages)
-	if err != nil {
-		return err
-	}
-	defer streamReader.Close()
-
-	var finalAnswerBuilder strings.Builder
-	for {
-		msg, rErr := streamReader.Recv()
-		if rErr != nil {
-			if rErr == io.EOF {
-				break
-			}
-			return rErr
-		}
-		_ = writeSSE(w, map[string]interface{}{
-			"type":    "token",
-			"content": msg.Content,
-		})
-		finalAnswerBuilder.WriteString(msg.Content)
-	}
-
-	writeEvent(w, "arbiter", "done", "👑 决策完成")
-	_ = writeSSE(w, map[string]interface{}{
-		"type": "done",
+	url := fmt.Sprintf("%s/api/internal/eino/freeze", backendURL)
+	payload, err := json.Marshal(map[string]interface{}{
+		"session_id":        sessionID,
+		"request":           req,
+		"draft":             draft,
+		"check_result":      checkResult,
+		"sources":           sources,
+		"trace_id":          traceID,
+		"retrieval_context": retrievalContext,
 	})
-
-	savePythonChatCache(req, finalAnswerBuilder.String(), sources)
-
+	if err != nil {
+		return err
+	}
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("freeze error, status: %d, body: %s", resp.StatusCode, string(body))
+	}
 	return nil
 }
 
-func callPythonInternalRag(ctx context.Context, query, projectID string, fileIDs []string) (string, []string, error) {
+// getFrozenState 从 Redis 中恢复已冻结的上下文（通过 Python API）
+func getFrozenState(projectID string) (map[string]interface{}, error) {
+	backendURL := os.Getenv("PYTHON_BACKEND_URL")
+	if backendURL == "" {
+		backendURL = "http://127.0.0.1:8002"
+	}
+	url := fmt.Sprintf("%s/api/eino/frozen/%s", backendURL, projectID)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("get frozen status failed: %d", resp.StatusCode)
+	}
+	var res map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+	if status, ok := res["status"].(string); !ok || status != "success" {
+		return nil, fmt.Errorf("get frozen state fail: %v", res["message"])
+	}
+	data, ok := res["data"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid data format")
+	}
+	return data, nil
+}
+
+// reportSpanToPython 向 Python 内部接口异步上报有向图节点性能及输入输出
+func reportSpanToPython(traceID, nodeName, input, output string, startTime, endTime float64) {
+	backendURL := os.Getenv("PYTHON_BACKEND_URL")
+	if backendURL == "" {
+		backendURL = "http://127.0.0.1:8002"
+	}
+	url := fmt.Sprintf("%s/api/internal/trace/span", backendURL)
+	payload, err := json.Marshal(map[string]interface{}{
+		"trace_id":   traceID,
+		"name":       nodeName,
+		"input":      input,
+		"output":     output,
+		"start_time": startTime,
+		"end_time":   endTime,
+	})
+	if err != nil {
+		return
+	}
+	// 在后台 goroutine 中发送请求，绝对不阻塞 DAG 主逻辑
+	go func() {
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
+		if err == nil {
+			resp.Body.Close()
+		}
+	}()
+}
+
+// reportAuditTraceToPython 向 Python 内部接口异步上报 RAG 最终审计状态
+func reportAuditTraceToPython(traceID, userQuery, llmResponse, projectID, sessionID, retrievedDocs, dagNode, auditStatus, frozenState string) {
+	backendURL := os.Getenv("PYTHON_BACKEND_URL")
+	if backendURL == "" {
+		backendURL = "http://127.0.0.1:8002"
+	}
+	url := fmt.Sprintf("%s/api/internal/trace/audit", backendURL)
+	payload, err := json.Marshal(map[string]interface{}{
+		"trace_id":       traceID,
+		"user_query":     userQuery,
+		"llm_response":    llmResponse,
+		"project_id":     projectID,
+		"session_id":     sessionID,
+		"retrieved_docs": retrievedDocs,
+		"dag_node":       dagNode,
+		"audit_status":   auditStatus,
+		"frozen_state":   frozenState,
+	})
+	if err != nil {
+		return
+	}
+	go func() {
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
+		if err == nil {
+			resp.Body.Close()
+		}
+	}()
+}
+
+
+// setLinvisStatus 通过 Python 后端将 DAG 节点状态写入 Redis
+// WHY: Linvis 看板从 Redis 读取各节点状态，Go 端通过 HTTP 调用
+//      Python 端的内部 API 写入，避免在 Go 端引入 Redis 客户端。
+func setLinvisStatus(agent, status, msg, projectName string) {
+	backendURL := os.Getenv("PYTHON_BACKEND_URL")
+	if backendURL == "" {
+		backendURL = "http://127.0.0.1:8002"
+	}
+	url := fmt.Sprintf("%s/api/internal/linvis/set-status", backendURL)
+	payload, _ := json.Marshal(map[string]string{
+		"agent":        agent,
+		"status":       status,
+		"message":      msg,
+		"project_name": projectName,
+	})
+	go func() {
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
+		if err == nil {
+			resp.Body.Close()
+		}
+	}()
+}
+
+// RunEinoOrchestration 执行 Eino DAG 三角色协同图。
+func RunEinoOrchestration(ctx context.Context, req *EinoAgentRequest, w io.Writer) error {
+	namePlanner := coalesce(req.PlannerName, req.SupervisorName, "【Eino】规划者")
+	nameChecker := coalesce(req.CheckerName, req.ContrarianName, "【Eino】定量校验")
+	nameAuditor := coalesce(req.AuditorName, req.ArbiterName, "【Eino】定性审计")
+
+	llmModel := coalesce(req.Model, "qwen3.6:35b-q4")
+	llm := NewOllamaChat(llmModel)
+
+	g := compose.NewGraph[*EinoContext, *EinoContext]()
+
+	_ = g.AddLambdaNode("planner", plannerNode(llm, namePlanner))
+	_ = g.AddLambdaNode("worker", workerNode(llm))
+	_ = g.AddLambdaNode("checker", checkerNode(llm, nameChecker))
+	_ = g.AddLambdaNode("auditor", auditorNode(llm, nameAuditor))
+
+	_ = g.AddEdge(compose.START, "planner")
+	_ = g.AddEdge("planner", "worker")
+	_ = g.AddEdge("worker", "checker")
+	_ = g.AddEdge("checker", "auditor")
+	_ = g.AddEdge("auditor", compose.END)
+
+	r, err := g.Compile(ctx)
+	if err != nil {
+		return fmt.Errorf("compile graph error: %v", err)
+	}
+
+	initCtx := &EinoContext{
+		Req:     req,
+		Writer:  w,
+		TraceID: uuid.NewString(),
+	}
+
+	_, err = r.Invoke(ctx, initCtx)
+	return err
+}
+
+func coalesce(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func callPythonInternalRag(ctx context.Context, query, projectID string, fileIDs []string) (string, []string, []string, error) {
 	pythonURL := os.Getenv("PYTHON_BACKEND_URL")
 	if pythonURL == "" {
 		pythonURL = "http://127.0.0.1:8002"
@@ -272,42 +307,44 @@ func callPythonInternalRag(ctx context.Context, query, projectID string, fileIDs
 	}
 	jsonBytes, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 
 	url := fmt.Sprintf("%s/api/internal/rag", pythonURL)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBytes))
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", nil, fmt.Errorf("python internal rag error status: %d", resp.StatusCode)
+		return "", nil, nil, fmt.Errorf("python internal rag error: %d", resp.StatusCode)
 	}
 
 	var ragResp InternalRagResponse
 	if err := json.NewDecoder(resp.Body).Decode(&ragResp); err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 
 	var parts []string
 	seen := make(map[string]bool)
 	var filenames []string
+	var docContents []string
 	for i, doc := range ragResp.Docs {
-		parts = append(parts, fmt.Sprintf("【文档 #{%d}】来源: %s\n%s", i+1, doc.Filename, doc.Content))
+		parts = append(parts, fmt.Sprintf("【文档 #%d】来源: %s\n%s", i+1, doc.Filename, doc.Content))
 		if doc.Filename != "" && !seen[doc.Filename] {
 			seen[doc.Filename] = true
 			filenames = append(filenames, doc.Filename)
 		}
+		docContents = append(docContents, doc.Content)
 	}
-	return strings.Join(parts, "\n\n"), filenames, nil
+	return strings.Join(parts, "\n\n"), filenames, docContents, nil
 }
 
 type InternalCacheSetRequest struct {
@@ -320,6 +357,9 @@ type InternalCacheSetRequest struct {
 }
 
 func savePythonChatCache(req *EinoAgentRequest, answer string, sources []string) {
+	if sources == nil {
+		sources = make([]string, 0)
+	}
 	backendURL := os.Getenv("PYTHON_BACKEND_URL")
 	if backendURL == "" {
 		backendURL = "http://127.0.0.1:8002"
@@ -342,9 +382,293 @@ func savePythonChatCache(req *EinoAgentRequest, answer string, sources []string)
 
 	go func() {
 		resp, err := http.Post(url, "application/json", bytes.NewBuffer(bodyBytes))
-		if err == nil {
-			resp.Body.Close()
+		if err != nil {
+			log.Printf("[Go-Gateway] ⚠️ 异步保存 Python 缓存 HTTP 失败: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			log.Printf("[Go-Gateway] ⚠️ 异步保存 Python 缓存失败，状态码: %d, 返回: %s", resp.StatusCode, string(body))
+		} else {
+			log.Printf("[Go-Gateway] 💾 异步保存 Python 缓存请求成功发送")
 		}
 	}()
 }
+
+// ── Eino 节点 Lambda 辅助函数 ──
+
+func plannerNode(llm *OllamaChat, namePlanner string) *compose.Lambda {
+	return compose.InvokableLambda(func(ctx context.Context, input *EinoContext) (*EinoContext, error) {
+		startTime := float64(time.Now().UnixNano()) / 1e9
+		setLinvisStatus("planner", "working", "规划任务路由中...", input.Req.ProjectID)
+		writeEvent(input.Writer, "planner", "routing", fmt.Sprintf("🧠 %s 正在分析任务...", namePlanner))
+
+		enrichedMessage := input.Req.Message
+		if len(input.Req.FileIDs) > 0 {
+			enrichedMessage = fmt.Sprintf("【系统背景】\n已关联文档库作为参考。\n【用户问题】\n%s", input.Req.Message)
+		}
+
+		plannerPrompt := "你是任务规划专家（Planner），负责分析用户请求并选择执行路径。\n" +
+			"可用路径：\n" +
+			"- ask_rag: 知识检索（问文档/资料内容）\n" +
+			"- ask_expert: 专业分析（政策/法规/文档起草）\n" +
+			"- direct: 简单问答（问候/闲聊/常识）\n" +
+			"只输出路径名，不做任何阐述。"
+
+		plannerMessages := []*schema.Message{
+			{Role: schema.System, Content: plannerPrompt},
+			{Role: schema.User, Content: enrichedMessage},
+		}
+		planResp, err := llm.Generate(ctx, plannerMessages)
+		if err != nil {
+			return nil, err
+		}
+		input.Route = strings.TrimSpace(planResp.Content)
+		setLinvisStatus("planner", "idle", "规划完成: "+input.Route, input.Req.ProjectID)
+		endTime := float64(time.Now().UnixNano()) / 1e9
+		reportSpanToPython(input.TraceID, "Planner", input.Req.Message, input.Route, startTime, endTime)
+		return input, nil
+	})
+}
+
+func workerNode(llm *OllamaChat) *compose.Lambda {
+	return compose.InvokableLambda(func(ctx context.Context, input *EinoContext) (*EinoContext, error) {
+		startTime := float64(time.Now().UnixNano()) / 1e9
+		var err error
+		var isSimple bool
+		if strings.Contains(input.Route, "ask_rag") {
+			setLinvisStatus("checker", "working", "知识检索中...", input.Req.ProjectID)
+			writeEvent(input.Writer, "checker", "executing", "📋 正在检索知识库...")
+			var contextText string
+			var docContents []string
+			contextText, input.Sources, docContents, err = callPythonInternalRag(ctx, input.Req.Message, input.Req.ProjectID, input.Req.FileIDs)
+			if err != nil {
+				return nil, err
+			}
+			input.RetrievalContext = docContents
+			ragMessages := []*schema.Message{
+				{Role: schema.System, Content: "你是知识检索专家。基于检索结果给出精确、有据可查的回答。标注来源文件名。严禁编造。"},
+				{Role: schema.User, Content: fmt.Sprintf("【参考资料】\n%s\n\n【问题】\n%s", contextText, input.Req.Message)},
+			}
+			ragResp, rErr := llm.Generate(ctx, ragMessages)
+			if rErr != nil {
+				return nil, rErr
+			}
+			input.Draft = ragResp.Content
+		} else if strings.Contains(input.Route, "ask_expert") {
+			setLinvisStatus("checker", "working", "专家分析中...", input.Req.ProjectID)
+			writeEvent(input.Writer, "checker", "executing", "📋 专家正在分析...")
+			expertMessages := []*schema.Message{
+				{Role: schema.System, Content: "你是资深行业分析专家，请直接给出严谨专业的分析。"},
+				{Role: schema.User, Content: input.Req.Message},
+			}
+			expertResp, eErr := llm.Generate(ctx, expertMessages)
+			if eErr != nil {
+				return nil, eErr
+			}
+			input.Draft = expertResp.Content
+		} else {
+			isSimple = true
+			writeEvent(input.Writer, "planner", "executing", "📋 直答中...")
+			directMessages := []*schema.Message{
+				{Role: schema.System, Content: "你是智能助手。请友好礼貌地回答。"},
+				{Role: schema.User, Content: input.Req.Message},
+			}
+			directResp, dErr := llm.Generate(ctx, directMessages)
+			if dErr != nil {
+				return nil, dErr
+			}
+			input.Draft = directResp.Content
+		}
+
+		endTime := float64(time.Now().UnixNano()) / 1e9
+		reportSpanToPython(input.TraceID, "Worker", input.Route, input.Draft, startTime, endTime)
+
+		if isSimple || len(input.Draft) < 100 {
+			input.FinalAnswer = input.Draft
+			_ = writeSSE(input.Writer, map[string]interface{}{"type": "token", "content": input.Draft})
+			_ = writeSSE(input.Writer, map[string]interface{}{"type": "done"})
+			savePythonChatCache(input.Req, input.Draft, input.Sources)
+			setLinvisStatus("planner", "idle", "任务完成", input.Req.ProjectID)
+			
+			retVal := getRetrievedDocsJSON(input)
+			reportAuditTraceToPython(input.TraceID, input.Req.Message, input.Draft, input.Req.ProjectID, input.Req.ProjectID, retVal, "worker", "approved", "")
+		}
+		return input, nil
+	})
+}
+
+func checkerNode(llm *OllamaChat, nameChecker string) *compose.Lambda {
+	return compose.InvokableLambda(func(ctx context.Context, input *EinoContext) (*EinoContext, error) {
+		if input.FinalAnswer != "" {
+			return input, nil
+		}
+
+		startTime := float64(time.Now().UnixNano()) / 1e9
+		setLinvisStatus("checker", "working", "定量规则校验中...", input.Req.ProjectID)
+		writeEvent(input.Writer, "checker", "checking", fmt.Sprintf("🔍 %s 正在校验数据与格式...", nameChecker))
+
+		checkerPrompt := fmt.Sprintf("你是「%s」，定量规则与合规校验专家。\n审查以下回答中的：\n1. 严重程序合规：是否存在剥夺申辩权、剥夺听证权或限制救济权利等严重违反行政程序法的表述；\n2. 大额处罚合规：罚款金额是否过大（例如超过100万）或超出合理裁量范围；\n3. 数字/日期/编码是否正确，法条引用编号是否存在且正确，格式是否规范。\n如果发现任何上述严重合规违规或错误，必须以“⚠️严重”开头逐条列出。如果完全合规且无问题，则回复「✅ 校验通过」。", nameChecker)
+		checkerMessages := []*schema.Message{
+			{Role: schema.System, Content: checkerPrompt},
+			{Role: schema.User, Content: fmt.Sprintf("## 问题\n%s\n\n## 回答\n%s", input.Req.Message, input.Draft)},
+		}
+		checkResp, cErr := llm.Generate(ctx, checkerMessages)
+		if cErr != nil {
+			return nil, cErr
+		}
+		input.CheckResult = checkResp.Content
+		fmt.Printf("[Go-Gateway] 🔍 Checker 校验输出内容为: %s\n", input.CheckResult)
+		setLinvisStatus("checker", "idle", "校验完成", input.Req.ProjectID)
+		endTime := float64(time.Now().UnixNano()) / 1e9
+		reportSpanToPython(input.TraceID, "Checker", input.Draft, input.CheckResult, startTime, endTime)
+
+		// 触发拦截机制
+		if strings.Contains(input.CheckResult, "⚠️严重") || strings.Contains(input.CheckResult, "[INTERRUPT]") || strings.Contains(input.CheckResult, "严重") || strings.Contains(input.CheckResult, "违规") || strings.Contains(input.CheckResult, "不合规") {
+			input.Interrupted = true
+			setLinvisStatus("auditor", "interrupted", "发现严重合规风险，已挂起", input.Req.ProjectID)
+			writeEvent(input.Writer, "auditor", "interrupted", "⚠️ 发现严重合规问题，已拦截挂起并提交法务人工审核")
+
+			err := freezeEinoState(input.Req.ProjectID, input.Req, input.Draft, input.CheckResult, input.Sources, input.TraceID, input.RetrievalContext)
+			if err != nil {
+				writeEvent(input.Writer, "auditor", "error", fmt.Sprintf("❌ Redis 冻结失败: %v", err))
+			}
+
+			_ = writeSSE(input.Writer, map[string]interface{}{
+				"type":         "interrupt",
+				"session_id":   input.Req.ProjectID,
+				"check_result": input.CheckResult,
+			})
+
+			stateMap := map[string]interface{}{
+				"request":           input.Req,
+				"draft":             input.Draft,
+				"check_result":      input.CheckResult,
+				"sources":           input.Sources,
+				"trace_id":          input.TraceID,
+				"retrieval_context": input.RetrievalContext,
+			}
+			stateJSON, _ := json.Marshal(stateMap)
+			retVal := getRetrievedDocsJSON(input)
+			reportAuditTraceToPython(input.TraceID, input.Req.Message, input.Draft, input.Req.ProjectID, input.Req.ProjectID, retVal, "checker", "interrupted", string(stateJSON))
+		}
+		return input, nil
+	})
+}
+
+func auditorNode(llm *OllamaChat, nameAuditor string) *compose.Lambda {
+	return compose.InvokableLambda(func(ctx context.Context, input *EinoContext) (*EinoContext, error) {
+		if input.FinalAnswer != "" || input.Interrupted {
+			return input, nil
+		}
+
+		startTime := float64(time.Now().UnixNano()) / 1e9
+		setLinvisStatus("auditor", "working", "定性审计润色中...", input.Req.ProjectID)
+		writeEvent(input.Writer, "auditor", "auditing", fmt.Sprintf("⚖️ %s 正在审计并润色最终回答...", nameAuditor))
+
+		auditorPrompt := fmt.Sprintf("你是「%s」，最终定性审计专家。\n收到：专家回答 + 定量校验结果。\n据此做最终裁决并生成回答。直接输出 Markdown 格式回答。", nameAuditor)
+		auditorInput := fmt.Sprintf("## 问题\n%s\n\n## 初稿\n%s\n\n## 定量校验\n%s", input.Req.Message, input.Draft, input.CheckResult)
+		auditorMessages := []*schema.Message{
+			{Role: schema.System, Content: auditorPrompt},
+			{Role: schema.User, Content: auditorInput},
+		}
+
+		streamReader, sErr := llm.Stream(ctx, auditorMessages)
+		if sErr != nil {
+			return nil, sErr
+		}
+		defer streamReader.Close()
+
+		var finalBuilder strings.Builder
+		for {
+			msg, rErr := streamReader.Recv()
+			if rErr != nil {
+				if rErr == io.EOF {
+					break
+				}
+				return nil, rErr
+			}
+			_ = writeSSE(input.Writer, map[string]interface{}{"type": "token", "content": msg.Content})
+			finalBuilder.WriteString(msg.Content)
+		}
+
+		input.FinalAnswer = finalBuilder.String()
+		setLinvisStatus("auditor", "idle", "审计完成", input.Req.ProjectID)
+		writeEvent(input.Writer, "auditor", "done", "⚖️ 审计完成")
+		_ = writeSSE(input.Writer, map[string]interface{}{"type": "done"})
+
+		endTime := float64(time.Now().UnixNano()) / 1e9
+		reportSpanToPython(input.TraceID, "Auditor", auditorInput, input.FinalAnswer, startTime, endTime)
+
+		savePythonChatCache(input.Req, input.FinalAnswer, input.Sources)
+		retVal := getRetrievedDocsJSON(input)
+		reportAuditTraceToPython(input.TraceID, input.Req.Message, input.FinalAnswer, input.Req.ProjectID, input.Req.ProjectID, retVal, "auditor", "pending", "")
+		return input, nil
+	})
+}
+
+func RunEinoResumeOrchestration(ctx context.Context, req *EinoAgentRequest, draft string, checkResult string, sources []string, w io.Writer, traceID string, retrievalContext []string) error {
+	startTime := float64(time.Now().UnixNano()) / 1e9
+	nameAuditor := coalesce(req.AuditorName, req.ArbiterName, "【Eino】定性审计")
+	llmModel := coalesce(req.Model, "qwen3.6:35b-q4")
+	llm := NewOllamaChat(llmModel)
+
+	setLinvisStatus("auditor", "working", "人工审批通过，定性审计润色中...", req.ProjectID)
+	writeEvent(w, "auditor", "auditing", fmt.Sprintf("⚖️ %s 正在根据审批后的初稿进行最终审计并润色...", nameAuditor))
+
+	auditorPrompt := fmt.Sprintf("你是「%s」，最终定性审计专家。\n收到：人工批准/修改后的回答草稿 + 定量校验结果。\n据此做最终裁决并生成回答。直接输出 Markdown 格式回答。", nameAuditor)
+	auditorInput := fmt.Sprintf("## 问题\n%s\n\n## 人工审批后的草稿\n%s\n\n## 原定量校验结果\n%s", req.Message, draft, checkResult)
+	auditorMessages := []*schema.Message{
+		{Role: schema.System, Content: auditorPrompt},
+		{Role: schema.User, Content: auditorInput},
+	}
+
+	streamReader, sErr := llm.Stream(ctx, auditorMessages)
+	if sErr != nil {
+		return sErr
+	}
+	defer streamReader.Close()
+
+	var finalBuilder strings.Builder
+	for {
+		msg, rErr := streamReader.Recv()
+		if rErr != nil {
+			if rErr == io.EOF {
+				break
+			}
+			return rErr
+		}
+		_ = writeSSE(w, map[string]interface{}{"type": "token", "content": msg.Content})
+		finalBuilder.WriteString(msg.Content)
+	}
+
+	setLinvisStatus("auditor", "idle", "审计完成", req.ProjectID)
+	writeEvent(w, "auditor", "done", "⚖️ 审计完成")
+	_ = writeSSE(w, map[string]interface{}{"type": "done"})
+
+	endTime := float64(time.Now().UnixNano()) / 1e9
+	reportSpanToPython(traceID, "Auditor_Resume", auditorInput, finalBuilder.String(), startTime, endTime)
+
+	savePythonChatCache(req, finalBuilder.String(), sources)
+
+	var retVal string
+	if len(retrievalContext) > 0 {
+		b, err := json.Marshal(retrievalContext)
+		if err == nil {
+			retVal = string(b)
+		}
+	}
+	if retVal == "" {
+		b, err := json.Marshal(sources)
+		if err == nil {
+			retVal = string(b)
+		} else {
+			retVal = "[]"
+		}
+	}
+	reportAuditTraceToPython(traceID, req.Message, finalBuilder.String(), req.ProjectID, req.ProjectID, retVal, "auditor_resume", "pending", "")
+	return nil
+}
+
 

@@ -8,19 +8,21 @@ import SystemSettings from './SystemSettings';
 import LearningProgress from './LearningProgress';
 import ServiceStatus from './ServiceStatus';
 import LinvisSettings from './LinvisSettings';
-import AgentSettings from './AgentSettings';
+import RagasEvaluation from './RagasEvaluation';
+// AgentSettings 已移除 — 旧 Agent 配置已被 Go Eino 替代
 import AITemplateManagement from './AITemplateManagement';
-import { Users, FolderKanban, ScrollText, Settings, ArrowLeft, ShieldCheck, ActivitySquare, Activity, Sparkles, FileSpreadsheet } from 'lucide-react';
+import { Users, FolderKanban, ScrollText, Settings, ArrowLeft, ShieldCheck, ActivitySquare, Activity, FileSpreadsheet, LineChart } from 'lucide-react';
 
 const navItems = [
   { path: '/admin', label: '用户管理', icon: Users, end: true },
-  { path: '/admin/projects', label: '案件管理', icon: FolderKanban },
+  { path: '/admin/projects', label: '项目管理', icon: FolderKanban },
   { path: '/admin/logs', label: '日志管理', icon: ScrollText },
   { path: '/admin/ai-templates', label: 'AI模板管理', icon: FileSpreadsheet },
   { path: '/admin/learning-progress', label: '学习进度', icon: ActivitySquare },
   { path: '/admin/service-status', label: '系统状态', icon: Activity },
+  { path: '/admin/ragas-eval', label: '质量评测', icon: LineChart },
   { path: '/admin/linvis', label: '可视化看板', icon: FolderKanban },
-  { path: '/admin/agents', label: '多Agent协同', icon: Sparkles },
+  // { path: '/admin/agents', label: '多Agent协同', icon: Sparkles }, // 已移除，Go Eino 替代
   { path: '/admin/settings', label: '系统设置', icon: Settings },
 ];
 
@@ -88,7 +90,8 @@ export default function AdminLayout() {
           <Route path="service-status" element={<ServiceStatus />} />
           <Route path="settings" element={<SystemSettings />} />
           <Route path="linvis" element={<LinvisSettings />} />
-          <Route path="agents" element={<AgentSettings />} />
+          <Route path="ragas-eval" element={<RagasEvaluation />} />
+          {/* agents 路由已移除 — 旧 Agent 配置已被 Go Eino 替代 */}
           <Route path="ai-templates" element={<AITemplateManagement />} />
         </Routes>
       </main>

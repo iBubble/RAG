@@ -374,14 +374,13 @@ def _read_system_settings() -> dict:
         default_agents_info = {
             "chat": {"name": "小智 (Agent)", "gender": "male", "avatar": "horse"},
             "service": {"name": "小管 (Manager)", "gender": "female", "avatar": "horse"},
-            "legal": {"name": "行业知识专家", "gender": "male", "avatar": "horse"},
+            "planner": {"name": "小划 (Planner)", "gender": "male", "avatar": "robot"},
+            "checker": {"name": "小定量 (Checker)", "gender": "female", "avatar": "robot"},
+            "auditor": {"name": "小定性 (Auditor)", "gender": "male", "avatar": "robot"},
             "precompute": {"name": "小预 (Precalc)", "gender": "male", "avatar": "horse"},
             "vectorizer": {"name": "小向 (Vector)", "gender": "male", "avatar": "horse"},
             "graph": {"name": "小图 (Graphy)", "gender": "female", "avatar": "horse"},
             "summary": {"name": "小聚 (Communer)", "gender": "male", "avatar": "horse"},
-            "supervisor": {"name": "【协同】文档秘书", "gender": "male", "avatar": "robot"},
-            "contrarian": {"name": "【协同】审查员", "gender": "male", "avatar": "horse"},
-            "arbiter": {"name": "【协同】仲裁官", "gender": "male", "avatar": "ox"},
         }
         
         # 兜底默认返回值字典
@@ -393,7 +392,7 @@ def _read_system_settings() -> dict:
             "active_level": "low",
             "linvis_name": "麟维斯",
             "whiteboard_items": "total_projects,completed_percent,total_chunks,total_entities,queue_tasks",
-            "visible_agents": "vectorizer,graph,summary,precompute,chat,legal,service",
+            "visible_agents": "vectorizer,graph,summary,precompute,chat,planner,checker,auditor",
             "collab_pleading_enabled": "false",
             "collab_contract_enabled": "false",
             "collab_document_enabled": "false",
@@ -407,6 +406,12 @@ def _read_system_settings() -> dict:
             "collab_legal_name": "【协同】行业分析专家",
             "collab_contrarian_name": "【协同】审查员",
             "collab_arbiter_name": "【协同】仲裁官",
+            "default_pdf_parser": "Docling",
+            "mineru_concurrency": "2",
+            "eino_interrupt_enabled": "true",
+            "eino_checker_amount_limit": "50000.0",
+            "ragas_cron_hour": "2",
+            "ragas_alert_threshold": "0.85",
         }
         for a_key, a_val in default_agents_info.items():
             for prop in ("name", "gender", "avatar"):
@@ -436,7 +441,7 @@ def _read_system_settings() -> dict:
         if "whiteboard_items" not in res:
             res["whiteboard_items"] = "total_projects,completed_percent,total_chunks,total_entities,queue_tasks"
         if "visible_agents" not in res:
-            res["visible_agents"] = "vectorizer,graph,summary,precompute,chat,legal,service"
+            res["visible_agents"] = "vectorizer,graph,summary,precompute,chat,planner,checker,auditor"
             
         collab_defaults = {
             "collab_pleading_enabled": "false",
@@ -452,6 +457,12 @@ def _read_system_settings() -> dict:
             "collab_legal_name": "【协同】行业分析专家",
             "collab_contrarian_name": "【协同】审查员",
             "collab_arbiter_name": "【协同】仲裁官",
+            "default_pdf_parser": "Docling",
+            "mineru_concurrency": "2",
+            "eino_interrupt_enabled": "true",
+            "eino_checker_amount_limit": "50000.0",
+            "ragas_cron_hour": "2",
+            "ragas_alert_threshold": "0.85",
         }
         for k_col, v_col in collab_defaults.items():
             if k_col not in res:
@@ -476,7 +487,7 @@ def _read_system_settings() -> dict:
                 "active_level": "low",
                 "linvis_name": "麟维斯",
                 "whiteboard_items": "total_projects,completed_percent,total_chunks,total_entities,queue_tasks",
-                "visible_agents": "vectorizer,graph,summary,precompute,chat,legal,service",
+                "visible_agents": "vectorizer,graph,summary,precompute,chat,planner,checker,auditor",
                 "collab_supervisor_name": "【协同】文档秘书",
                 "collab_legal_name": "【协同】行业分析专家",
                 "collab_contrarian_name": "【协同】审查员",
@@ -515,6 +526,12 @@ class UpdateSystemSettingsRequest(BaseModel):
     collab_legal_name: str | None = None
     collab_contrarian_name: str | None = None
     collab_arbiter_name: str | None = None
+    default_pdf_parser: str | None = None
+    mineru_concurrency: int | None = None
+    eino_interrupt_enabled: bool | None = None
+    eino_checker_amount_limit: float | None = None
+    ragas_cron_hour: int | None = None
+    ragas_alert_threshold: float | None = None
 
 
 @router.put("/settings")
@@ -654,6 +671,25 @@ async def update_system_settings(req: UpdateSystemSettingsRequest, admin: dict =
                 ("visible_agents", req.visible_agents),
             )
 
+    # 写入 Docs 升级相关的设置项
+    upgrade_fields = [
+        "default_pdf_parser",
+        "mineru_concurrency",
+        "eino_interrupt_enabled",
+        "eino_checker_amount_limit",
+        "ragas_cron_hour",
+        "ragas_alert_threshold"
+    ]
+    with get_db() as conn:
+        for field in upgrade_fields:
+            val = getattr(req, field)
+            if val is not None:
+                str_val = "true" if val is True else ("false" if val is False else str(val))
+                conn.execute(
+                    "INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)",
+                    (field, str_val),
+                )
+
     # 修改管理员登录名或密码
     if req.admin_login_name or req.admin_password:
         with get_db() as conn:
@@ -698,6 +734,45 @@ async def get_public_settings():
         if k.startswith("agent_") or k.startswith("collab_"):
             res[k] = v
     return res
+
+
+@router.get("/ragas-reports")
+async def get_ragas_reports(admin: dict = Depends(require_admin)):
+    """获取 Ragas 质量评测历史记录。"""
+    try:
+        with get_db() as conn:
+            # 自动确保表存在以防由于首次运行还没跑定时任务时表不存在报错
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ragas_daily_reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    report_date TEXT UNIQUE,
+                    faithfulness_avg REAL,
+                    context_relevance_avg REAL,
+                    answer_relevance_avg REAL,
+                    total_evaluated INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            rows = conn.execute(
+                "SELECT report_date, faithfulness_avg, context_relevance_avg, answer_relevance_avg, total_evaluated FROM ragas_daily_reports ORDER BY report_date DESC LIMIT 30"
+            ).fetchall()
+            reports = []
+            for r in rows:
+                reports.append({
+                    "report_date": r["report_date"],
+                    "faithfulness": r["faithfulness_avg"] if r["faithfulness_avg"] is not None else 0.0,
+                    "context_relevance": r["context_relevance_avg"] if r["context_relevance_avg"] is not None else 0.0,
+                    "answer_relevance": r["answer_relevance_avg"] if r["answer_relevance_avg"] is not None else 0.0,
+                    "total_evaluated": r["total_evaluated"] if r["total_evaluated"] is not None else 0
+                })
+            # 日期反转以按时间正序返回给前端图表
+            reports.reverse()
+            return reports
+    except Exception as e:
+        logger.error(f"获取 Ragas 报表失败: {e}")
+        return []
 
 
 def _is_stale_task(updated_at: str, threshold: int = 1800) -> bool:
@@ -1413,6 +1488,24 @@ async def get_service_status(admin: dict = Depends(require_admin)):
         "controllable": True, "metrics": {},
     })
 
+    # 7. Go Eino Gateway 核心网关
+    gateway_online = False
+    gateway_detail = "未就绪 (连接失败)"
+    try:
+        async with httpx.AsyncClient(timeout=1.5) as c:
+            resp = await c.get("http://127.0.0.1:8001/api/chat")
+            if resp.status_code in (200, 401, 404, 405):
+                gateway_online = True
+                gateway_detail = "正常监听中 · Eino DAG 图流引擎就绪"
+    except Exception:
+        pass
+    results.append({
+        "id": "gateway", "name": "Eino 智能体网关 (Go Gateway)",
+        "online": gateway_online,
+        "detail": gateway_detail,
+        "controllable": False, "metrics": {},
+    })
+
     _SERVICE_STATUS_CACHE = results
     _SERVICE_STATUS_CACHE_TIME = now
     return results
@@ -1437,10 +1530,20 @@ async def toggle_service(service_id: str, req: ServiceToggleRequest, admin: dict
     if service_id == "ollama":
         from core.llm_engine import warmup_model, unload_model
         if req.action == "start":
-            asyncio.create_task(warmup_model())
+            with get_db() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)",
+                    ("heartbeat_enabled", "true"),
+                )
+            asyncio.create_task(warmup_model(force=True))
             _log_operation(admin["id"], "service_start", "手动启动大模型推理引擎")
             return {"success": True, "message": "大模型加载指令已发送，正在预热中"}
         elif req.action == "stop":
+            with get_db() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)",
+                    ("heartbeat_enabled", "false"),
+                )
             asyncio.create_task(unload_model())
             _log_operation(admin["id"], "service_stop", "手动停止大模型推理引擎")
             return {"success": True, "message": "大模型卸载指令已发送，显存正在释放"}

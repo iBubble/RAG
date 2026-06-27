@@ -806,14 +806,14 @@ async def unload_model(model: str = DEFAULT_WARMUP_MODEL):
         logger.warning(f"⚠️ 卸载模型失败: {e}")
 
 
-async def warmup_model(model: str = DEFAULT_WARMUP_MODEL) -> bool:
+async def warmup_model(model: str = DEFAULT_WARMUP_MODEL, force: bool = False) -> bool:
     """
     模型预热：向 Ollama 发送空 prompt + keep_alive=-1，
     强制将模型从硬盘加载到 GPU 内存（若尚未加载）。
     WHY: 空 prompt 不会触发推理计算，但会触发模型加载流程，
          约耗时 10-30 秒（取决于模型大小），远快于首次真实推理的 85 秒。
     """
-    if not is_heartbeat_enabled():
+    if not force and not is_heartbeat_enabled():
         logger.info(f"🔥 大模型心跳已被禁用，跳过本次预热 ({model})")
         return False
         
@@ -829,7 +829,7 @@ async def warmup_model(model: str = DEFAULT_WARMUP_MODEL) -> bool:
     try:
         client = get_client()
         logger.info(f"🔥 模型预热启动: {model}")
-        resp = await client.post(url, json=payload)
+        resp = await client.post(url, json=payload, timeout=300.0)
         resp.raise_for_status()
         logger.info(f"✅ 模型预热完成: {model} 已常驻 GPU 内存")
         return True

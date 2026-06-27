@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.1.0] - 2026-06-27
+
+### Added
+- **全链路集成与冒烟测试 (D10)**：编写并跑通了 `test_d10_e2e.py` 自动化集成测试脚本，覆盖了用户违规公文输入、网关合规审计拦截、Redis 上下文冻结、法务主管审批恢复 (Resume) 及最终文书输出、Ragas 自动化度量跑批等全闭环流程。
+
+### Fixed
+- **修复 Go 网关拦截序列化 Bug**：解决了 Go 端在合规拦截时，由于 `sources` 或 `retrievalContext` 为 `nil` 导致序列化成 JSON 中的 `null` 并触发 Python 校验端 422 错误的问题，确保了 Redis 冻结状态的 100% 成功写入。
+- **修复 Ragas 后台打分任务连接泄漏与执行错误**：修改了 `worker.py` 中对 GeneratorContextManager 的错误调用，实现了正确的生命周期托管，使得离线打分与 `ragas_daily_reports` 日报数据顺利落地 SQLite。
+
+### Removed
+- **彻底清理废弃的法律工作台与遗留逻辑**：
+  - 物理删除了前端完全未引用、未挂载的 `LegalWorkbench`（法律工作台组件）与 `CaseManagement`（案件管理组件）目录。
+  - 物理删除了后端已废弃、无前端调用的接口文件 `backend/api/legal.py` 及其依赖的核心逻辑 `core/legal_assistant.py` 与 `core/legal_prompts.py`，并从 `main.py` 中彻底注销了 `legal_router` 的挂载。
+  - 清理了项目根目录下大体积的历史备份压缩包（`.tar.gz` 物理文件）及容器内累积的临时调试测试 `.py`、`.txt` 和 `.png` 文件。
+
+
+## [4.0.0] - 2026-06-26
+
+### Added
+- **Docling 视觉感知文档解析**：引入 Docling 引擎优先策略提取 PDF/DOCX 视觉板式信息，并在不可用时平滑降级到 PyMuPDF。
+- **Pydantic 100% 确定性约束解码**：市监表单填表接口全面采用 Pydantic v2 Schema 校验，通过 `format` 下发至 Ollama 实现 Next-Token 强制约束生成。
+- **Eino 三角色 DAG 协同流 (Planner → Checker → Auditor)**：重写 Go `nexus-gateway`，告别旧版多 Agent 并发竞争，实现定量校验与定性审计的有向无环图串行工作流。
+- **SQLite 审计表与 Ragas 离线评估**：新增 `audit_traces` 表记录完整会话快照与大模型执行路径，支持凌晨 Celery Beat 定时调用 Ragas 计算三元组得分。
+- **Redis 语义缓存网络**：L2 Answer Cache 升级为高维向量余弦相似度（Cosine ≥ 0.96）语义匹配引擎，降低大模型重复推理成本。
+- **Linvis 仪表盘 Eino 适配**：前端看板角色图例全面同步至 Eino DAG 三角色，并新增任务中断 (`interrupted`) 反馈动画。
+
+### Removed
+- **废弃旧版多 Agent 对抗框架**：彻底清理原有后端 `core/agents/` 目录与前端 `AgentSettings.tsx` 控件，历史协同指令完全交由 Go Eino Graph 统一接管。
+
 ## [3.6.1] - 2026-06-25
 
 ### Changed

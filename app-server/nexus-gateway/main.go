@@ -41,6 +41,7 @@ func main() {
 
 	// 核心对话流式接口：由 Go 本地 Eino.Graph 编排处理
 	r.POST("/api/chat", AuthMiddleware(), ChatHandler())
+	r.POST("/api/eino/resume", AuthMiddleware(), ResumeHandler())
 
 	// 针对前端资源和 API 分流代理
 	frontendURL := "http://127.0.0.1:2028"

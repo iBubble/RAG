@@ -10,14 +10,24 @@ logger = logging.getLogger(__name__)
 
 from .plain import _extract_txt
 from .pdf import _extract_pdf, _extract_tables_pdf
+from .pdf_parser import _extract_pdf_smart
 from .office import _extract_unstructured, _extract_doc, _extract_docx, _extract_xlsx, _extract_xls, _extract_pptx, _extract_tables_xlsx, _extract_tables_docx, _extract_tables_xls, _extract_tables_pptx
 from .image import _extract_image
-from .cad import _extract_cad
 from .caj import _extract_caj
 from .gis import _extract_shp, _extract_shp_dbf, _extract_gdb, _extract_mdb, _GIS_FIELD_MAP, _GIS_LAYER_MAP
 from .audio_video import _extract_audio_video
+from .docling_parser import extract_with_docling, is_docling_available
 
-def extract_text(file_path: str) -> Optional[str]:
+
+def _extract_docx_smart(file_path: str) -> str:
+    """DOCX 智能提取：Docling 优先 → _extract_unstructured 回退。"""
+    if is_docling_available():
+        result = extract_with_docling(file_path)
+        if result:
+            return result
+    return _extract_unstructured(file_path)
+
+def extract_text(file_path: str, is_slow_queue: bool = False) -> Optional[str]:
     """
     根据文件扩展名自动选择合适的提取器，返回纯文本。
     返回 None 表示不支持该格式。
@@ -34,15 +44,13 @@ def extract_text(file_path: str) -> Optional[str]:
         ".xml": _extract_txt,
         ".html": _extract_txt,
         ".htm": _extract_txt,
-        ".pdf": _extract_pdf,
+        ".pdf": _extract_pdf_smart,
         ".doc": _extract_doc,
-        ".docx": _extract_unstructured,
+        ".docx": _extract_docx_smart,
         ".xlsx": _extract_xlsx,
         ".xls": _extract_xls,
         ".pptx": _extract_unstructured,
         ".caj": _extract_caj,
-        ".dwg": _extract_cad,
-        ".dxf": _extract_cad,
         ".shp": _extract_shp,
         ".dbf": _extract_shp_dbf,
         ".gdb": _extract_gdb,
@@ -68,7 +76,10 @@ def extract_text(file_path: str) -> Optional[str]:
         return None
 
     try:
-        text = extractor(str(path))
+        if suffix == ".pdf":
+            text = extractor(str(path), is_slow_queue=is_slow_queue)
+        else:
+            text = extractor(str(path))
         logger.info(f"成功提取 {path.name}：{len(text)} 字符")
         return text
     except Exception as e:

@@ -19,14 +19,18 @@ Key 策略：
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from typing import Optional
 
 import xxhash
+import numpy as np
 
 from core.redis_client import get_redis
 from core.config import settings
+from core.vector_store import _get_dense_model
+from core.semantic_cache import get_semantic_cache, set_semantic_cache
 
 logger = logging.getLogger(__name__)
 
@@ -153,9 +157,8 @@ def get_answer_cache(
     file_ids: list[str],
 ) -> Optional[dict]:
     """
-    查询 L2 回答缓存。
-    返回 {"answer": str, "source_files": list, "data_analysis_meta": dict}
-    未命中返回 None。
+    查询 L2 回答缓存 (含语义缓存)。
+    优先精确匹配，如果未命中，则进行语义匹配 (Cosine >= 0.96)。
     """
     if not settings.CHAT_CACHE_ENABLED:
         return None
@@ -163,11 +166,20 @@ def get_answer_cache(
     if not r:
         return None
     try:
-        key = _l2_key(project_id, message, chat_mode, file_ids)
-        val = r.get(key)
+        # 1. 尝试精确匹配 (速度最快)
+        exact_key = _l2_key(project_id, message, chat_mode, file_ids)
+        val = r.get(exact_key)
         if val:
-            logger.info(f"🎯 Chat L2 缓存命中: {key[:30]}...")
+            logger.info(f"🎯 Chat L2 缓存命中 (精确): {exact_key[:30]}...")
             return json.loads(val)
+        
+        # 2. 尝试语义缓存匹配 (通过通用 semantic_cache 模块)
+        semantic_key_hit = get_semantic_cache(project_id, message, chat_mode, file_ids)
+        if semantic_key_hit:
+            val = r.get(semantic_key_hit)
+            if val:
+                logger.info(f"🎯 Chat L2 语义缓存命中: {semantic_key_hit[:30]}...")
+                return json.loads(val)
         return None
     except Exception as e:
         logger.warning(f"Chat L2 缓存读取失败（降级跳过）: {e}")
@@ -205,11 +217,21 @@ def set_answer_cache(
             ensure_ascii=False,
         )
         r.setex(key, settings.CHAT_ANSWER_CACHE_TTL, payload)
-        # 记录 key 到项目索引
+        
+        # 将 key 加入 project 的集合，用于后续按项目批量失效
         r.sadd(_project_pattern(project_id), key)
-        logger.debug(f"💾 Chat L2 缓存写入: {key[:30]}...")
+        
+        # ── 写入语义缓存 ──
+        set_semantic_cache(
+            project_id=project_id,
+            message=message,
+            chat_mode=chat_mode,
+            file_ids=file_ids,
+            exact_key=key,
+            ttl=settings.CHAT_ANSWER_CACHE_TTL
+        )
     except Exception as e:
-        logger.warning(f"Chat L2 缓存写入失败（降级跳过）: {e}")
+        logger.warning(f"写入 Chat L2 缓存失败: {e}")
 
 
 # ── 缓存失效 ────────────────────────────────────────────

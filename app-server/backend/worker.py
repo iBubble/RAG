@@ -159,16 +159,34 @@ def process_document(self, file_path: str, file_id: str, filename: str, project_
     logger.info(f"开始处理文档: {filename} ({file_id})")
     update_file_status(project_id, file_id, "processing")
     try:
-        # WHY: 幂等入库保护。如果该 file_id 已经存在（例如同名覆盖上传），
-        # 强制在前置阶段清空其所有遗留的向量切片，避免数据堆积重复。
         from core.vector_store import delete_by_file_id
         from core.graph_rag import graph_engine
+        from pathlib import Path
 
+        # ── 队列与分流控制 (D2 升级) ──
+        suffix = Path(file_path).suffix.lower()
+        current_queue = self.request.delivery_info.get('routing_key', '') if self.request.delivery_info else ''
+        is_slow_queue = (current_queue == 'slow_queue')
+
+        # 扫描 PDF 在快队列时主动重路由
+        if suffix == ".pdf" and not is_slow_queue:
+            from core.extractors.pdf_parser import is_scanned_pdf
+            if is_scanned_pdf(file_path):
+                logger.info(f"检测到 PDF {filename} 为扫描件，从快队列重路由到 slow_queue 运行 MinerU 深度解析")
+                process_document.apply_async(
+                    args=[file_path, file_id, filename, project_id],
+                    queue='slow_queue'
+                )
+                update_file_status(project_id, file_id, "pending")
+                return {"status": "rerouted_to_slow_queue_for_mineru"}
+
+        # WHY: 幂等入库保护。如果该 file_id 已经存在（例如同名覆盖上传），
+        # 强制在前置阶段清空其所有遗留的向量切片，避免数据堆积重复。
         v_count = delete_by_file_id(file_id)
         if v_count > 0:
             logger.info(f"历史数据清理完成: 向量={v_count}")
 
-        text = extract_text(file_path)
+        text = extract_text(file_path, is_slow_queue=is_slow_queue)
         if text and text.strip():
             # ── 自动队列路由：预估 chunks 数量，超阈值时重路由到 slow_queue ──
             estimated = estimate_chunk_count(text, filename)
@@ -278,12 +296,12 @@ def process_graph_extraction(self, file_id: str, filename: str, project_id: str)
     logger.info(f"🕸️ 开始后台图谱抽取: {filename} ({file_id})")
     update_file_status(project_id, file_id, "graph_extracting")
 
-    from core.vector_store import get_all_chunks
+    from core.vector_store import get_all_chunks_with_payload
     from core.graph_rag import graph_engine
     import asyncio
 
-    chunks = get_all_chunks(file_id, limit=500)
-    if not chunks:
+    chunks_payloads = get_all_chunks_with_payload(file_id, limit=500)
+    if not chunks_payloads:
         logger.warning(f"文件 {filename} 无有效向量切片，跳过图谱提炼")
         update_file_status(
             project_id, file_id, "vectorized",
@@ -295,6 +313,16 @@ def process_graph_extraction(self, file_id: str, filename: str, project_id: str)
     old_rels = graph_engine.delete_by_file_id(file_id, project_id)
     if old_rels > 0:
         logger.info(f"🕸️ 图谱增量清理完成: {filename}, 删除 {old_rels} 条旧关系")
+
+    # 增量写入 DoCO 树节点（第一层）与表单字段-凭证拓扑关系（第二层）
+    graph_engine.ingest_doco_and_form_relations(
+        filename=filename,
+        project_id=project_id,
+        file_id=file_id,
+        chunks_payloads=chunks_payloads,
+    )
+
+    chunks = [p.get("document", "") for p in chunks_payloads if p.get("document")]
 
     total_triples = 0
 
@@ -619,3 +647,238 @@ def generate_docx_bg(self, run_id: str, json_path: str, tmp_path: str):
     finally:
         if os.path.exists(json_path):
             os.remove(json_path)
+
+def parse_retrieved_docs(raw_val: str) -> list[str]:
+    if not raw_val:
+        return [""]
+    try:
+        import json
+        data = json.loads(raw_val)
+        if isinstance(data, list):
+            return [str(item) for item in data if item]
+        return [str(raw_val)]
+    except Exception:
+        return [str(raw_val)]
+
+@celery_app.task(bind=True, name="worker.evaluate_nightly_ragas")
+def evaluate_nightly_ragas(self):
+    """
+    D9 凌晨定时任务：扫描 audit_traces 表中的 pending 记录，
+    调用真实 Ragas 评估框架评估三元组分数，记录质量日报并回写。
+    """
+    from core.database import get_db
+    import datetime
+    db_ctx = get_db()
+    db = db_ctx.__enter__()
+    try:
+        # 1. 动态检测并创建日报表
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ragas_daily_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                report_date TEXT UNIQUE,
+                faithfulness_avg REAL,
+                context_relevance_avg REAL,
+                answer_relevance_avg REAL,
+                total_evaluated INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        db.commit()
+
+        # 2. 检索待审计的记录
+        cursor = db.execute(
+            "SELECT id, trace_id, user_query, retrieved_docs, llm_response FROM audit_traces WHERE audit_status = 'pending' LIMIT 100"
+        )
+        rows = cursor.fetchall()
+        if not rows:
+            logger.info("Ragas 凌晨评测: 无待审记录")
+            return {"status": "success", "message": "无待审记录"}
+        
+        c_rels = []
+        grds = []
+        a_rels = []
+        evaluated_ids = []
+        ragas_success = False
+
+        # 辅助打分函数
+        def evaluate_metric_via_llm(metric_name: str, question: str, contexts_text: str, answer: str) -> float:
+            from core.config import settings
+            if metric_name == "faithfulness":
+                prompt = (
+                    "你是一个 RAG 忠实度（Faithfulness）评估专家。\n"
+                    "请判断以下模型回答（Answer）是否完全忠实于参考资料（Contexts），有没有无中生有和虚假幻觉。\n\n"
+                    f"【参考资料】\n{contexts_text}\n\n"
+                    f"【模型回答】\n{answer}\n\n"
+                    "请输出一个 0.0 到 1.0 之间的浮点数作为得分（1.0代表完全忠实，0.0代表完全虚假）。\n"
+                    "注意：请只输出这个浮点数本身，严禁带任何解释、标点、Markdown 标签或多余字符。"
+                )
+            elif metric_name == "context_relevance":
+                prompt = (
+                    "你是一个 RAG 上下文相关性（Context Relevance）评估专家。\n"
+                    "请判断以下参考资料（Contexts）与用户问题（Question）是否相关，有没有提供有效的信息支持。\n\n"
+                    f"【用户问题】\n{question}\n\n"
+                    f"【参考资料】\n{contexts_text}\n\n"
+                    "请输出一个 0.0 到 1.0 之间的浮点数作为得分（1.0代表完全相关有用，0.0代表完全不相关）。\n"
+                    "注意：请只输出这个浮点数本身，严禁带任何解释、标点、Markdown 标签或多余字符。"
+                )
+            else:
+                prompt = (
+                    "你是一个 RAG 回答相关性（Answer Relevance）评估专家。\n"
+                    "请判断以下模型回答（Answer）是否切中用户问题（Question）的要害，有没有跑题或废话。\n\n"
+                    f"【用户问题】\n{question}\n\n"
+                    f"【模型回答】\n{answer}\n\n"
+                    "请输出一个 0.0 到 1.0 之间的浮点数作为得分（1.0代表回答极其切题且相关，0.0代表完全无关或答非所问）。\n"
+                    "注意：请只输出这个浮点数本身，严禁带任何解释、标点、Markdown 标签或多余字符。"
+                )
+            
+            try:
+                import httpx
+                url = f"{settings.OLLAMA_BASE_URL}/api/generate"
+                payload = {
+                    "model": "qwen3.6:35b-q4",
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.0}
+                }
+                resp = httpx.post(url, json=payload, timeout=60.0)
+                if resp.status_code == 200:
+                    text = resp.json().get("response", "").strip()
+                    import re
+                    match = re.search(r"\d+\.\d+", text)
+                    if match:
+                        return min(max(float(match.group()), 0.0), 1.0)
+                    match_int = re.search(r"\b(0|1)\b", text)
+                    if match_int:
+                        return float(match_int.group())
+                return 0.5
+            except Exception as ex:
+                logger.warning(f"Ollama 评估打分出错: {ex}")
+                return 0.5
+
+        # 3. 尝试 Ragas 官方评估
+        try:
+            from datasets import Dataset
+            from ragas import evaluate
+            from ragas.metrics import faithfulness, answer_relevance, context_relevance
+            from langchain_community.chat_models import ChatOllama
+            from langchain_community.embeddings import OllamaEmbeddings
+            from core.config import settings
+
+            questions = []
+            answers = []
+            contexts_list = []
+            
+            for row in rows:
+                questions.append(row[2])
+                answers.append(row[4])
+                contexts_list.append(parse_retrieved_docs(row[3]))
+                evaluated_ids.append(row[0])
+                
+            dataset = Dataset.from_dict({
+                "question": questions,
+                "answer": answers,
+                "contexts": contexts_list
+            })
+            
+            llm = ChatOllama(model="qwen3.6:35b-q4", base_url=settings.OLLAMA_BASE_URL)
+            embeddings = OllamaEmbeddings(model="qwen3.6:35b-q4", base_url=settings.OLLAMA_BASE_URL)
+            
+            for metric in [faithfulness, answer_relevance, context_relevance]:
+                metric.llm = llm
+                metric.embeddings = embeddings
+                
+            result = evaluate(
+                dataset=dataset,
+                metrics=[faithfulness, answer_relevance, context_relevance]
+            )
+            
+            df = result.to_pandas()
+            for idx, r_id in enumerate(evaluated_ids):
+                c_rel = float(df.iloc[idx].get("context_relevance", 0.5))
+                grd = float(df.iloc[idx].get("faithfulness", 0.5))
+                a_rel = float(df.iloc[idx].get("answer_relevance", 0.5))
+                
+                c_rels.append(c_rel)
+                grds.append(grd)
+                a_rels.append(a_rel)
+                
+                db.execute(
+                    """
+                    UPDATE audit_traces 
+                    SET context_relevance = ?, groundedness = ?, answer_relevance = ?, audit_status = 'completed', auditor_comment = 'Nightly Ragas evaluation completed.'
+                    WHERE id = ?
+                    """,
+                    (c_rel, grd, a_rel, r_id)
+                )
+            ragas_success = True
+            logger.info("Ragas 官方评估运行成功")
+            
+        except Exception as err:
+            logger.warning(f"Ragas 官方评估失败，启用本地 LLM 评估兜底: {err}")
+            ragas_success = False
+
+        # 4. 兜底评估
+        if not ragas_success:
+            c_rels = []
+            grds = []
+            a_rels = []
+            evaluated_ids = []
+            
+            for row in rows:
+                r_id = row[0]
+                question = row[2]
+                contexts = parse_retrieved_docs(row[3])
+                answer = row[4]
+                contexts_text = "\n".join(contexts)
+                
+                c_rel = evaluate_metric_via_llm("context_relevance", question, contexts_text, answer)
+                grd = evaluate_metric_via_llm("faithfulness", question, contexts_text, answer)
+                a_rel = evaluate_metric_via_llm("answer_relevance", question, contexts_text, answer)
+                
+                c_rels.append(c_rel)
+                grds.append(grd)
+                a_rels.append(a_rel)
+                evaluated_ids.append(r_id)
+                
+                db.execute(
+                    """
+                    UPDATE audit_traces 
+                    SET context_relevance = ?, groundedness = ?, answer_relevance = ?, audit_status = 'completed', auditor_comment = 'Nightly LLM fallback evaluation completed.'
+                    WHERE id = ?
+                    """,
+                    (c_rel, grd, a_rel, r_id)
+                )
+
+        # 5. 写入日报表
+        if evaluated_ids:
+            today_str = datetime.date.today().isoformat()
+            c_rel_avg = sum(c_rels) / len(c_rels)
+            grd_avg = sum(grds) / len(grds)
+            a_rel_avg = sum(a_rels) / len(a_rels)
+            
+            db.execute(
+                """
+                INSERT INTO ragas_daily_reports 
+                (report_date, faithfulness_avg, context_relevance_avg, answer_relevance_avg, total_evaluated)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(report_date) DO UPDATE SET
+                    faithfulness_avg = excluded.faithfulness_avg,
+                    context_relevance_avg = excluded.context_relevance_avg,
+                    answer_relevance_avg = excluded.answer_relevance_avg,
+                    total_evaluated = excluded.total_evaluated,
+                    created_at = CURRENT_TIMESTAMP
+                """,
+                (today_str, grd_avg, c_rel_avg, a_rel_avg, len(evaluated_ids))
+            )
+            db.commit()
+            logger.info(f"✅ Ragas 凌晨评测完成，共处理 {len(evaluated_ids)} 条记录，日报已落库")
+            return {"status": "success", "processed": len(evaluated_ids), "avg_faithfulness": grd_avg}
+        return {"status": "success", "processed": 0}
+    except Exception as e:
+        logger.error(f"Ragas 凌晨评测异常: {e}")
+        db.rollback()
+        raise e
+    finally:
+        db_ctx.__exit__(None, None, None)

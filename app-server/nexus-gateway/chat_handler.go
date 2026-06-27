@@ -144,3 +144,86 @@ func streamCachedResponse(w io.Writer, res *InternalCacheGetResponse) {
 
 	_ = writeSSE(w, map[string]interface{}{"done": true})
 }
+
+type EinoResumeRequest struct {
+	ProjectID string `json:"project_id"`
+	Draft     string `json:"draft"`
+}
+
+// ResumeHandler 处理 /api/eino/resume 的人工审核通过恢复请求
+func ResumeHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req EinoResumeRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"detail": "解析请求 JSON 失败"})
+			return
+		}
+
+		log.Printf("[Go-Gateway] 📌 收到 /api/eino/resume 请求: ProjectID=%q", req.ProjectID)
+
+		// 1. 从 Python 侧获取 Redis 冻结的 Context
+		frozenData, err := getFrozenState(req.ProjectID)
+		if err != nil {
+			log.Printf("[Go-Gateway] 获取冻结状态失败: %v", err)
+			c.JSON(http.StatusNotFound, gin.H{"detail": fmt.Sprintf("未找到或获取冻结状态失败: %v", err)})
+			return
+		}
+
+		requestMap, _ := frozenData["request"].(map[string]interface{})
+		checkResult, _ := frozenData["check_result"].(string)
+		traceID, _ := frozenData["trace_id"].(string)
+		if traceID == "" {
+			traceID = req.ProjectID
+		}
+
+		var sources []string
+		if rawSources, ok := frozenData["sources"].([]interface{}); ok {
+			for _, s := range rawSources {
+				if str, ok := s.(string); ok {
+					sources = append(sources, str)
+				}
+			}
+		}
+
+		var retrievalContext []string
+		if rawRetrieval, ok := frozenData["retrieval_context"].([]interface{}); ok {
+			for _, s := range rawRetrieval {
+				if str, ok := s.(string); ok {
+					retrievalContext = append(retrievalContext, str)
+				}
+			}
+		}
+
+		requestBytes, err := json.Marshal(requestMap)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"detail": "反序列化原始请求失败"})
+			return
+		}
+		var originReq EinoAgentRequest
+		if err := json.Unmarshal(requestBytes, &originReq); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"detail": "解析原始请求失败"})
+			return
+		}
+
+		// 2. 设置响应为 SSE 格式以流式输出 Auditor 结果
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.Header().Set("Transfer-Encoding", "chunked")
+		c.Writer.Header().Set("X-Accel-Buffering", "no")
+
+		// 3. 执行流式恢复，直接启动 Stage 4 (Auditor) 审计润色
+		ctx := c.Request.Context()
+		err = RunEinoResumeOrchestration(ctx, &originReq, req.Draft, checkResult, sources, c.Writer, traceID, retrievalContext)
+		if err != nil {
+			log.Printf("[Go-Gateway] RunEinoResumeOrchestration error: %v", err)
+			_ = writeSSE(c.Writer, map[string]interface{}{
+				"type":    "token",
+				"content": fmt.Sprintf("\n❌ 系统恢复协同异常: %v", err),
+			})
+			_ = writeSSE(c.Writer, map[string]interface{}{
+				"type": "done",
+			})
+		}
+	}
+}

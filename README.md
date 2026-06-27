@@ -1,7 +1,7 @@
 # 智能体通用知识库 RAG (AgentRAG)
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-iBubble/RAG-181717?logo=github)](https://github.com/iBubble/RAG)
-![Version](https://img.shields.io/badge/Version-1.0.0-blue)
+![Version](https://img.shields.io/badge/Version-4.1.0-blue)
 ![Go](https://img.shields.io/badge/Go-1.18+-00ADD8?logo=go&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128+-009688?logo=fastapi&logoColor=white)
@@ -103,17 +103,32 @@
                     └─────────────────┘
 ```
 
-### 1. 多模态文件智能提取器
-- **CAJ 格式自适应还原**：采用后端 `caj2pdf` 高清渲染机制，支持对中国知网等专有 CAJ 文献的无损 PDF 转换和前端高保真 iframe 预览。
-- **音频/视频转写 (ASR)**：内置本地 `Whisper-Base` 模型，通过 `ffmpeg` 自动分离音视频流，将庭审录音、谈话录音或监控视频音轨转化为高精度文本。
-- **图像光学字符识别 (OCR)**：利用中英双语 Tesseract 引擎对当事人提交的纸质物证、欠条等照片进行降噪和结构化文本提取。
+---
 
-### 2. 企业级 RAG 优化机制
-- **语义切片与表格原子保护**：文本分块器采用“段落 $\rightarrow$ 章节大纲 $\rightarrow$ 标点符号”三级回退分割算法；同时针对 Markdown 表格实施**原子级保护**，确保复杂数据表格行不可拆分，完整进入单个知识块。
-- **Cross-Project 双路检索与地名正字**：支持项目内部文档精查与外部国家法典库的跨库联合检索。从检索到的事实块中动态提取地名、面积、金额等专有名词进行强地名正字比对，防止模型产生同音字笔误。
-- **基于硬件特征的 RRF 融合去噪**：针对本地统一内存（Unified Memory）架构深度优化，放弃使用外部重排（Reranker）模型以节省显存并避免与大模型（35B）抢占 CPU 内存带宽。采用 Qdrant 原生 Dense（向量）与 SQLite FTS5（全文）双路 RRF（倒数排名融合）混合打分，将 `vector_top_k` 最优值收紧为 `6 ~ 8`，实现极佳的去噪、防幻觉与生成提速效果。
-- **一键引用全系统公共文档库**：重构了文件侧边栏与引用系统，彻底隐藏去除原有的分类 Tabs 选项卡。增加“引用所有公共文档”联动复选按钮，系统支持动态自动汇总并关联加载全系统所有的公共文档库（当前共 561 个文件），摆脱了每个案件需要手动一一映射引用的繁琐流程。
+## 🌟 核心系统功能与技术实现方式
 
+### 1. 多源文档解析管线与 DoCO 语义归一
+*   **多源智能分流**：重构了文件解析入口，自适应识别文档版式。数字化原生文档通过 [docling_parser.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/extractors/docling_parser.py) 极速清洗；手写图片、复杂扫描件或多维表格重路由至慢任务队列，在 [pdf_parser.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/extractors/pdf_parser.py#L47) 中调用 `MinerU` 进行视觉布局识别与 OCR 提取，配置 4 线程硬限制，并在结束后清空 MPS / CUDA 显存。
+*   **DoCO 节点语义表征**：使用 DoCO 本体将不同解析器的输出映射为标准化节点（`section_header` 标题, `table` 表格, `list_item` 列表, `text_block` 普通文本），空间坐标与逻辑层级在切片时与 Qdrant Point Payload 及 Neo4j 拓扑无缝绑定，实现精准的段落物理位置回溯与前端高亮。
+
+### 2. 100% 确定性约束填表与自纠错
+*   **Pydantic Schema 模型规约**：在 [market_supervision.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/schemas/market_supervision.py) 中，将市场监督表单（统一社会信用代码、法定处罚种类、裁量金额范围）抽象为标准的 Pydantic 校验模型。
+*   **Ollama 掩码解码约束**：在 [constrained_decode.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/constrained_decode.py#L35-L44) 中，直接提取模型的 JSON Schema 并透传给本地 Ollama 推理服务的 `format` 字段，使模型大类 Token 的输出概率在推理层受状态机强控制，避免输出非 JSON 杂质。若校验失败，系统会自动捕获 `ValidationError` 堆栈，作为上下文提示词发回大模型，在毫秒级内自动闭环修正生成。
+
+### 3. Eino 三角色 DAG 协同图与人机审核中断机制 (Interrupt/Resume)
+*   **Go Eino 拓扑编排**：由 Gin 重写了高性能网关流量接管，核心对话流基于 [eino_graph.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/eino_graph.go) 编排成 Planner (任务路由) -> Checker (定量校验) -> Auditor (定性裁决) 的有向无环图，利用 Goroutine 极小内存开销避免并发堵塞。
+*   **中断与恢复 (Interrupt & Resume)**：当 Auditor 判定当前的文书草案触发严重合规预警（如程序违规或大额惩罚）时，Eino 流执行中断，通过 [generate.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/api/generate.py#L2858) 底层路由将有向图快照冻结至 Redis `eino:frozen_state:{project_id}`（TTL 24小时），前台看板琥珀色报警并拉起法务控制台。法务主管人工批改后，通过 [chat_handler.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/chat_handler.go#L154) 接收合规修改，拉起 `Resume` 恢复执行后续图流程。
+
+### 4. 向量级 Redis 语义缓存网络 (L2 Answer Cache)
+*   **高维语义相似度命中**：在 [semantic_cache.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/semantic_cache.py) 中，对用户的提问进行 BGE-M3 稠密向量转换并归一化，通过 `np.dot` 与 Redis Hash 结构中历史提问向量计算余弦相似度。若大于匹配阈值 `0.96`，直接从缓存获取最终文书，返回时间从大模型推理的 2分多钟骤降至 **0.37s**，配置 1 小时过期 TTL 自动释放空闲哈希。
+
+### 5. 双层 Neo4j 拓扑关系图谱
+*   **第一层：DoCO 文档物理树**：基于 Document 节点层层分级建立 `(:Document)→[:HAS_ELEMENT]→(:EvidenceUnit)`，维护切片物理坐标。
+*   **第二层：FormField-EvidenceUnit 拓扑关系网**：通过正则与实体识别，在 [graph_rag.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/graph_rag.py#L740-L764) 中提取营业执照统一信用代码、当事人企业名称等关键表单字段，自动生成 `(:FormField)-[:EVIDENCE_BY]->(:EvidenceUnit)` 的指向，实现行政审计的全链路事实一致性交叉追溯。
+
+### 6. 异步 OTel 追踪与 Ragas 错峰离线评测
+*   **Langfuse 分布式链路监控**：利用异步线程上报 OTel 规范的 Trace ID (32位十六进制小写) 及节点 Span，主请求线程无任何网络等待损耗，实时渲染 Eino 拓扑链。
+*   **Ragas 离线跑批打分**：在 [worker.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/worker.py#L155) 中配置 Celery 凌晨定时打分任务，废除随机数 Mock，使用 Ragas 框架计算上下文相关性、回答相关性及忠实度指标，并将计算平均值回写至 SQLite 的 `ragas_daily_reports` 日报表中，保障系统生成公文与决策的严肃质量。
 
 ---
 

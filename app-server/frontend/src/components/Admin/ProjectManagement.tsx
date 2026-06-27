@@ -43,7 +43,7 @@ export default function ProjectManagement() {
   };
 
   const deleteProject = async (pid: string, name: string) => {
-    if (!confirm(`确定要彻底删除案件「${name}」及其所有数据？`)) return;
+    if (!confirm(`确定要彻底删除项目「${name}」及其所有数据？`)) return;
     try {
       const res = await fetch(`${API_BASE}/api/admin/projects/${pid}`, {
         method: 'DELETE',
@@ -60,8 +60,8 @@ export default function ProjectManagement() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-xl font-bold text-gray-800">案件管理</h2>
-        <p className="text-sm text-gray-500 mt-1">共 {projects.length} 个案件</p>
+        <h2 className="text-xl font-bold text-gray-800">项目管理</h2>
+        <p className="text-sm text-gray-500 mt-1">共 {projects.length} 个项目</p>
       </div>
 
       {loading ? (
@@ -71,7 +71,7 @@ export default function ProjectManagement() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">案件名称</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">项目名称</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">所有者</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">可见性</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">创建时间</th>
@@ -97,7 +97,7 @@ export default function ProjectManagement() {
                   </td>
                   <td className="px-4 py-3 text-gray-400 text-xs">{new Date(p.createdAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3 text-right">
-                    <button onClick={(e) => { e.stopPropagation(); deleteProject(p.id, p.name); }} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg" title="删除案件">
+                    <button onClick={(e) => { e.stopPropagation(); deleteProject(p.id, p.name); }} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg" title="删除项目">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </td>
@@ -105,7 +105,7 @@ export default function ProjectManagement() {
               ))}
             </tbody>
           </table>
-          {projects.length === 0 && <div className="text-center py-8 text-gray-400">暂无案件</div>}
+          {projects.length === 0 && <div className="text-center py-8 text-gray-400">暂无项目</div>}
         </div>
       )}
     </div>

@@ -447,8 +447,8 @@ async def get_linvis_status(user: dict = Depends(get_current_user)):
         },
         "graph": {
             "low": ["绘制实体连接线", "消除同义实体", "整理关系网络"],
-            "medium": ["偷偷织一张蜘蛛网挂在法老头上", "八卦小貔和小律的暗恋关系", "试图用三元组表达午饭吃什么"],
-            "high": ["被关系连线缠住动弹不得", "正在计划把所有人连成同义实体", "在 Neo4j 里偷偷种菜", "抽取了'法老-属于-摸鱼界'的三元组"]
+            "medium": ["偷偷织一张蜘蛛网挂在局长头上", "八卦小貔和小理的暗恋关系", "试图用三元组表达午饭吃什么"],
+            "high": ["被关系连线缠住动弹不得", "正在计划把所有企业连成同义实体", "在 Neo4j 里偷偷种菜", "抽取了'局长-属于-加班界'的三元组"]
         },
         "summary": {
             "low": ["进行社区发现聚类", "撰写社区摘要", "分析网络拓扑"],
@@ -458,32 +458,37 @@ async def get_linvis_status(user: dict = Depends(get_current_user)):
         "precompute": {
             "low": ["预热深度学习模型", "预计算全文大纲", "缓存常见法条"],
             "medium": ["提前猜测小律下一步想查什么", "用预计算能力预测彩票中", "给明天的天气做一次预推理"],
-            "high": ["正在强行用算盘加速 GPU", "预计算今晚几点下班能不被法老抓住", "脑补自己升职加薪的场景", "算得太快系统有些发烧"]
+            "high": ["正在强行用算盘加速 GPU", "预计算今晚几点下班能不被局长抓住", "脑补自己评上先进工作者的场景", "算得太快系统有些发烧"]
         },
         "chat": {
-            "low": ["接待在线法律咨询", "查询案例库", "翻阅大清律例"],
-            "medium": ["偷偷往水杯里加红枸杞", "偷偷照镜子梳理毛发", "模仿法老的威严表情"],
-            "high": ["正在用 Ollama 写请假条", "对客户发出'喵喵'的声音", "在草稿纸上画法老的简笔画", "被连珠炮般的问题问得直翻白眼"]
+            "low": ["接待消费维权咨询", "查询市监法规库", "翻阅陈年执法卷宗"],
+            "medium": ["偷偷往水杯里加红枸杞", "整理市场巡查制服", "模仿局长的威严表情"],
+            "high": ["正在用 Ollama 写执法报告", "对投诉人发出'喵喵'的声音", "在草稿纸上画局长的简笔画", "被连珠炮般的投诉问得直翻白眼"]
         },
         "legal": {
-            "low": ["起草项目文档", "审阅项目资料", "拟定项目方案"],
-            "medium": ["痛斥对方律师瞎编乱造", "在起诉状里偷偷加入错别字", "用茶杯盖敲桌子维持秩序"],
-            "high": ["把原告和被告的名字写反了", "正在拍桌子大喊'退庭！'", "用大模型生成了一份起诉大模型的大纲", "被复杂案情逼得想去出家"]
+            "low": ["起草行政处罚决定", "审阅案件线索资料", "拟定专项整治方案"],
+            "medium": ["痛斥违规企业瞎编乱造", "在处罚决定书里偷偷加入错别字", "用茶杯盖敲桌子维持听证会秩序"],
+            "high": ["把投诉人和被投诉人的名字写反了", "正在拍桌子大喊'停业整顿！'", "用大模型生成了一份罚款依据", "被复杂案情逼得想去出家"]
         },
         "service": {
-            "low": ["进行合同风险审查", "匹配常年法律顾问服务", "审查劳动合同免责条款"],
-            "medium": ["在合同里寻找错别字和标点符号问题", "试图说服小向买一份防脱发保险", "帮大家拟定免责声明"],
-            "high": ["在合同里偷偷加上'最终解释权归小律所有'", "正对着一份奇葩合同目瞪口呆", "正偷偷上网看如何跳槽到红圈所", "在审查'周扒皮劳动合同'时血压飙升"]
+            "low": ["进行食品安全风险排查", "匹配特种设备检验服务", "审查霸王条款"],
+            "medium": ["在整改报告里寻找错别字和标点符号问题", "试图说服小向买一份防脱发保险", "帮大家拟定消费提示"],
+            "high": ["在提示里偷偷加上'最终解释权归市监局所有'", "正对着一份奇葩投诉目瞪口呆", "正偷偷上网看如何跳槽到大厂", "在审查'地沟油作坊'时血压飙升"]
         },
-        "contrarian": {
-            "low": ["正在挑剔报告里的标点符号", "对起草草稿提出逻辑质疑", "审查论据的严密性"],
-            "medium": ["痛斥其他智能体的逻辑漏洞", "试图驳倒大BOSS的英明决策", "给小向的流程图画了个大叉"],
-            "high": ["拍着桌子跟所有人唱反调", "大喊'我不赞成！'", "因为找不到逻辑漏洞气得直跺脚", "正在计划写一篇反驳人类的论文"]
+        "planner": {
+            "low": ["正在分析投诉举报类型", "规划最优核查路径", "评估证据关联度"],
+            "medium": ["在白板上画了一棵超大的执法决策树", "试图用甘特图管理所有案件的进度", "给每个案件贴上优先级小红旗"],
+            "high": ["大喊'此案我来督办！'", "正在用彩色粉笔在白板上画突击检查图", "因为投诉太多而开始头脑风暴", "把待办案件写满了整面墙"]
         },
-        "arbiter": {
+        "checker": {
+            "low": ["正在校验罚款金额准确性", "核实法条编号是否适用", "检查执法日期合规性"],
+            "medium": ["对数据精确到小数点后第5位表示不满", "发现了一个可疑的统计数字正在追查", "试图验证报告里引用的每一个百分比"],
+            "high": ["拍着桌子说'这数字不对！'", "大喊'我不信！让我再算一遍！'", "因为找到计算错误而兴奋得跳起来", "正在用计算器验证大模型的加减乘除"]
+        },
+        "auditor": {
             "low": ["主持智能体圆桌会议", "对争议条款进行最终裁决", "润色终稿措辞"],
-            "medium": ["给小杠倒一杯咖啡安抚情绪", "试图在各智能体之间和稀泥", "修改最终报告的字体排版"],
-            "high": ["大手一挥高喊'就这么定了！'", "正在戴上法官假发准备宣判", "因为批改智能体作业太多头晕眼花", "正在给优秀智能体发小红花"]
+            "medium": ["给校验员倒一杯咖啡安抚情绪", "试图在各智能体之间和稀泥", "修改最终报告的字体排版"],
+            "high": ["大手一挥高喊'就这么定了！'", "正在戴上法官假发准备宣判", "因为审计报告太多头晕眼花", "正在给优秀智能体发小红花"]
         }
     }
 
@@ -536,8 +541,9 @@ async def get_linvis_status(user: dict = Depends(get_current_user)):
     active_chat = get_agent_active("chat")
     active_legal = get_agent_active("legal")
     active_service = get_agent_active("service")
-    active_contrarian = get_agent_active("contrarian")
-    active_arbiter = get_agent_active("arbiter")
+    active_planner = get_agent_active("planner")
+    active_checker = get_agent_active("checker")
+    active_auditor = get_agent_active("auditor")
 
     agents = {
         "vectorizer": get_agent_status("vectorizer", active_vectorizer),
@@ -547,8 +553,9 @@ async def get_linvis_status(user: dict = Depends(get_current_user)):
         "chat": get_agent_status("chat", active_chat),
         "legal": get_agent_status("legal", active_legal),
         "service": get_agent_status("service", active_service),
-        "contrarian": get_agent_status("contrarian", active_contrarian),
-        "arbiter": get_agent_status("arbiter", active_arbiter)
+        "planner": get_agent_status("planner", active_planner),
+        "checker": get_agent_status("checker", active_checker),
+        "auditor": get_agent_status("auditor", active_auditor)
     }
 
     system_status = {

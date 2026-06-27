@@ -7,183 +7,6 @@ logger = logging.getLogger(__name__)
 from .image import _extract_image
 from .utils import _table_to_markdown
 
-def _is_garbled_cad_text(text: str, page_count: int = 1, filename: str = "") -> bool:
-    """
-    检测 PyMuPDF 提取的文本是否为 CAD 图纸乱码。
-    WHY: CAD 图纸的文字是离散定位的标注，PyMuPDF 提取后产生大量
-         单字符碎片、ASCII 噪声、无意义短行。检测到乱码后应回退到
-         Vision LLM 解析以获取高质量文本。
-
-    混合触发策略：
-      1. 自动检测基于文本统计特征（短行比、ASCII比、中文覆盖率等）
-      2. 文件名增强：含图纸/设计图等关键词时降低检测阈值
-    """
-    if not text or len(text) < 50:
-        return False
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
-    if not lines:
-        return False
-    # 指标1: 短行占比（CAD 乱码中 >70% 的行不到 10 个字符）
-    short_lines = sum(1 for l in lines if len(l) < 10)
-    short_ratio = short_lines / len(lines)
-    # 指标2: ASCII 噪声占比（正常中文文档 < 30%，CAD 乱码 > 50%）
-    ascii_chars = sum(1 for c in text if ord(c) < 128 and not c.isspace())
-    total_chars = sum(1 for c in text if not c.isspace())
-    ascii_ratio = ascii_chars / max(total_chars, 1)
-    # 指标3: 连续中文词组（>=3个连续中文字符）的覆盖率
-    import re
-    chinese_runs = re.findall(r'[\u4e00-\u9fff]{3,}', text)
-    chinese_coverage = sum(len(r) for r in chinese_runs) / max(total_chars, 1)
-    # 指标4: 文字密度（字符数/页面数）。CAD 工程图文字密度远低于正常文档。
-    char_density = total_chars / max(page_count, 1)
-    # 指标5: 单字符行占比（CAD 标注常产生大量只有 1-2 个字符的行）
-    single_char_lines = sum(1 for l in lines if len(l) <= 2)
-    single_char_ratio = single_char_lines / len(lines)
-
-    # ── 文件名增强信号 ──
-    # WHY: 文件名中包含 CAD 工程图关键词时，降低检测阈值。
-    #      混合触发策略：自动检测为主，文件名匹配为增强信号。
-    _CAD_FILENAME_KEYWORDS = [
-        '图纸', '设计图', '施工图', '大样图', '平面图', '剖面图',
-        '立面图', '结构图', '配筋图', '布置图', '详图', '纵断面',
-        '横断面', '地形图', '规划图', '示意图', '系统图',
-        '等值线', '图册', '等值线图', '分区图', '等降雨量',
-    ]
-    _filename_boost = any(
-        kw in (filename or '') for kw in _CAD_FILENAME_KEYWORDS
-    )
-
-    # 综合判定
-    is_garbled = (
-        (short_ratio > 0.6 and ascii_ratio > 0.35 and chinese_coverage < 0.25)
-        or chinese_coverage < 0.10
-        or (char_density < 150 and short_ratio > 0.5 and chinese_coverage < 0.25)
-        or (single_char_ratio > 0.4 and char_density < 200)
-        # ── 条件5: 混合型CAD——有可读中文但短行/单字行占比极高 ──
-        # WHY: CAD 图纸的"说明"文本块提供了一定的中文覆盖率，
-        #      但坐标标注数字产生大量短行和单字行。
-        #      本案: short=66%, single=58%, zh_cov=40% → 触发
-        #      文件名增强时降低阈值，防止边缘案例漏检。
-        or (
-            single_char_ratio > (0.15 if _filename_boost else 0.25)
-            and short_ratio > (0.35 if _filename_boost else 0.50)
-            and total_chars < 2000
-        )
-    )
-    if is_garbled:
-        boost_tag = " [文件名增强]" if _filename_boost else ""
-        logger.info(
-            f"CAD 乱码检测: short={short_ratio:.0%} ascii={ascii_ratio:.0%} "
-            f"zh_cov={chinese_coverage:.0%} density={char_density:.0f}c/p "
-            f"single={single_char_ratio:.0%}{boost_tag} -> 触发 Vision 回退"
-        )
-    return is_garbled
-
-
-def _is_cad_pdf(file_path: str, page_count: int = 1, filename: str = "") -> bool:
-    """
-    多层信号综合判定 PDF 是否为 CAD 工程图纸（结构级检测）。
-
-    WHY: _is_garbled_cad_text() 只能检测文本乱码型 CAD，
-         对含有可读中文说明但夹杂坐标噪音的混合型 CAD 图纸漏检。
-         本函数通过 PyMuPDF 页面结构特征（矢量绘图密度、文本块分散度、
-         文字密度）实现更全面的 CAD 识别。
-
-    信号:
-      1. 矢量绘图密度 — CAD 每页 100~1000+ 条路径，文档 PDF < 10 条
-      2. 文本块分散度 — CAD 标注分散在 30+ 个小块，文档集中在少数大段落
-      3. 文本密度 — CAD < 2000 字/页，文档 > 2000 字/页
-      4. 文件名关键词增强 — 含"施工图"等降低阈值
-
-    采样前 3 页控制性能，每页约 1~5ms。
-    """
-    import fitz
-
-    _SAMPLED_PAGES = 3
-    _DRAWINGS_THRESHOLD = 50
-    _BLOCKS_THRESHOLD = 30
-    _BLOCK_AVG_TEXT_THRESHOLD = 20
-    _DENSITY_THRESHOLD = 2000
-
-    # ── 信号 4: 文件名关键词 ──
-    _CAD_FILENAME_KEYWORDS = [
-        '图纸', '设计图', '施工图', '大样图', '平面图', '剖面图',
-        '立面图', '结构图', '配筋图', '布置图', '详图', '纵断面',
-        '横断面', '地形图', '规划图', '示意图', '系统图',
-        '等值线', '图册', '等值线图', '分区图', '等降雨量',
-    ]
-    filename_boost = any(kw in (filename or '') for kw in _CAD_FILENAME_KEYWORDS)
-
-    try:
-        doc = fitz.open(file_path)
-        actual_pages = len(doc)
-        sample_pages = min(actual_pages, _SAMPLED_PAGES)
-
-        total_drawings = 0
-        total_blocks = 0
-        total_text_len = 0
-        has_high_drawings = False
-        avg_blocks = 0.0
-
-        for page_idx in range(sample_pages):
-            page = doc[page_idx]
-            drawings = len(page.get_drawings())
-            blocks = page.get_text("blocks")
-            text_len = len(page.get_text("text"))
-
-            total_drawings += drawings
-            total_blocks += len(blocks)
-            total_text_len += text_len
-
-            if drawings > _DRAWINGS_THRESHOLD:
-                has_high_drawings = True
-
-        doc.close()
-
-        avg_blocks = total_blocks / sample_pages
-        avg_text_per_block = total_text_len / max(total_blocks, 1)
-        density = total_text_len / max(sample_pages, 1)
-
-        drawings_high = has_high_drawings
-        blocks_scattered = (
-            avg_blocks > _BLOCKS_THRESHOLD
-            and avg_text_per_block < _BLOCK_AVG_TEXT_THRESHOLD
-        )
-        density_low = density < _DENSITY_THRESHOLD
-
-        # ── 综合判定（优先级递减）──
-        if drawings_high and blocks_scattered:
-            logger.info(
-                f"CAD 检测 (绘图+文本分散): {filename} "
-                f"drawings={total_drawings} blocks={avg_blocks:.0f} "
-                f"avg_txt={avg_text_per_block:.0f}"
-            )
-            return True
-        if drawings_high and density_low:
-            logger.info(
-                f"CAD 检测 (绘图+低密度): {filename} "
-                f"drawings={total_drawings} density={density:.0f}c/p"
-            )
-            return True
-        if blocks_scattered and density_low:
-            logger.info(
-                f"CAD 检测 (文本分散+低密度): {filename} "
-                f"blocks={avg_blocks:.0f} density={density:.0f}c/p"
-            )
-            return True
-        if filename_boost:
-            # 文件名含关键词时降低阈值
-            if drawings_high or blocks_scattered or density_low or avg_blocks > 15:
-                logger.info(
-                    f"CAD 检测 (文件名增强): {filename} "
-                    f"drawings={total_drawings} blocks={avg_blocks:.0f} density={density:.0f}"
-                )
-                return True
-
-    except Exception as e:
-        logger.warning(f"CAD 结构检测失败，跳过: {filename}, {e}")
-
-    return False
 
 
 def _filter_dimension_noise(text: str) -> str:
@@ -460,52 +283,19 @@ def _do_extract_pdf(file_path: str) -> str:
 
     full_text = "\n\n".join(texts).strip()
 
-    # ── CAD 图纸检测 ──
-    # WHY: 传入 filename 以启用混合触发策略（自动检测 + 文件名增强）
-    is_cad = _is_garbled_cad_text(
-        full_text, page_count=total_pages, filename=_filename
-    )
-
-    # 🔗 回退逻辑：文本过短或检测到 CAD 图纸特征
-    # WHY: _is_cad_pdf() 通过结构信号（绘图密度、文本块分散度）
-    #      补充 _is_garbled_cad_text() 无法覆盖的混合型 CAD 图纸
-    is_cad_by_structure = _is_cad_pdf(file_path, total_pages, _filename)
-    if len(full_text) < 50 or is_cad or is_cad_by_structure:
-        reason = (
-            "文本过短" if len(full_text) < 50
-            else "CAD 结构检测" if is_cad_by_structure and not is_cad
-            else "CAD 图纸检测"
-        )
-        logger.info(
-            f"PDF {reason} ({len(full_text)}字)，启动增强解析: {_filename}"
-        )
+    # ── 策略 2: PyMuPDF 原生渲染 + Tesseract OCR ──
+    if len(full_text) < 50:
+        logger.info(f"PDF 文本过短 ({len(full_text)}字)，启动增强解析: {_filename}")
 
         # ── 策略 1: Vision LLM 深度语义解析（优先）──
-        # WHY: Vision 模型能理解等值线、图表等空间信息，远超传统 OCR
-        #      对 CAD 图纸强制使用 Vision LLM，避免坐标噪音污染向量库
         try:
             from .vision_extractor import extract_pdf_vision
             vision_text = extract_pdf_vision(file_path)
             if vision_text and len(vision_text) > 50:
-                logger.info(
-                    f"Vision LLM 解析成功: {_filename}, "
-                    f"{len(vision_text)} 字"
-                )
+                logger.info(f"Vision LLM 解析成功: {_filename}, {len(vision_text)} 字")
                 return vision_text
         except Exception as vision_err:
             logger.warning(f"Vision LLM 解析异常（降级）: {vision_err}")
-
-        # ── CAD 图纸 Vision 失败时的降级：噪音过滤 ──
-        # WHY: Vision 不可用时，对 PyMuPDF 结果做坐标噪音过滤再返回，
-        #      至少比原始噪音文本好
-        if is_cad or is_cad_by_structure:
-            filtered = _filter_dimension_noise(full_text)
-            if filtered.strip():
-                logger.info(
-                    f"CAD 图纸噪音过滤降级: {_filename}, "
-                    f"{len(full_text)} -> {len(filtered)} 字符"
-                )
-                return filtered
 
         # ── 策略 2: PyMuPDF 原生渲染 + Tesseract OCR ──
         # WHY: 不依赖 pdf2image/poppler，使用 PyMuPDF 原生 get_pixmap()

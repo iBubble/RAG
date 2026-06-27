@@ -371,7 +371,7 @@ export default function LearningProgress() {
       <div className="mb-6">
         <h2 className="text-xl font-bold text-gray-800">学习进度看板</h2>
         <p className="text-sm text-gray-500 mt-1">
-          全局监控所有案件的向量化入库、知识图谱提取与智能学习预计算状态
+          全局监控所有项目的向量化入库、知识图谱提取与智能学习预计算状态
         </p>
       </div>
 
@@ -475,7 +475,7 @@ export default function LearningProgress() {
           <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-100">
             <span className="text-lg">📊</span>
             <h3 className="font-bold text-gray-850 text-base">全局综合学习状态</h3>
-            <span className="ml-auto text-xs text-gray-400 font-medium">共监控 {summaryData.totalProjects} 个活跃案件</span>
+            <span className="ml-auto text-xs text-gray-400 font-medium">共监控 {summaryData.totalProjects} 个活跃项目</span>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
@@ -608,7 +608,7 @@ export default function LearningProgress() {
       {sortedProjects.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-500">
           <Database className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-          <p>当前没有正在处理或包含有效文档的案件。</p>
+          <p>当前没有正在处理或包含有效文档的项目。</p>
         </div>
       ) : (
         <div className="flex flex-col gap-6">

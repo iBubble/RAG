@@ -129,6 +129,27 @@ CREATE TABLE IF NOT EXISTS metrics_history (
     redis_keys  INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_mh_time ON metrics_history(recorded_at);
+
+CREATE TABLE IF NOT EXISTS audit_traces (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    trace_id        TEXT NOT NULL UNIQUE,
+    session_id      TEXT,
+    project_id      TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    user_query      TEXT NOT NULL,
+    retrieved_docs   TEXT,
+    llm_response    TEXT,
+    dag_node        TEXT,
+    context_relevance REAL,
+    groundedness      REAL,
+    answer_relevance  REAL,
+    audit_status    TEXT DEFAULT 'pending',
+    auditor_comment TEXT,
+    frozen_state    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_at_project ON audit_traces(project_id);
+CREATE INDEX IF NOT EXISTS idx_at_session ON audit_traces(session_id);
+CREATE INDEX IF NOT EXISTS idx_at_status ON audit_traces(audit_status);
 """
 
 

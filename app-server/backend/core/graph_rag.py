@@ -386,26 +386,51 @@ class GraphRAGEngine:
             return 0
         try:
             with self._driver.session() as s:
-                # 第 1 步：删除该 file_id 来源的所有关系
+                # 第 1 步：删除该 file_id 来源的所有 RELATES_TO 关系
                 res = s.run(
                     "MATCH ()-[r:RELATES_TO {file_id: $fid}]-() DELETE r",
                     fid=file_id,
                 )
                 rels_deleted = res.consume().counters.relationships_deleted
 
-                # 第 2 步：清理孤立节点（无任何关系的实体）
+                # 第 2 步：删除属于该 file_id 的所有 EvidenceUnit 节点
+                res2 = s.run(
+                    "MATCH (eu:EvidenceUnit {file_id: $fid}) DETACH DELETE eu",
+                    fid=file_id,
+                )
+                eu_deleted = res2.consume().counters.nodes_deleted
+
+                # 第 3 步：如果对应的 Document 没有其他关系，删除 Document 节点
+                res3 = s.run(
+                    "MATCH (d:Document {id: $fid}) WHERE NOT (d)--() DELETE d",
+                    fid=file_id,
+                )
+                doc_deleted = res3.consume().counters.nodes_deleted
+
+                # 第 4 步：清理孤立节点（无任何关系的实体 Entity）
                 nodes_deleted = 0
                 if project_id:
-                    res2 = s.run(
+                    res4 = s.run(
                         "MATCH (e:Entity {project_id: $pid}) "
                         "WHERE NOT (e)--() DELETE e",
                         pid=project_id,
                     )
-                    nodes_deleted = res2.consume().counters.nodes_deleted
+                    nodes_deleted = res4.consume().counters.nodes_deleted
+
+                # 第 5 步：清理孤立的 FormField 节点
+                ff_deleted = 0
+                if project_id:
+                    res5 = s.run(
+                        "MATCH (ff:FormField {project_id: $pid}) "
+                        "WHERE NOT (ff)--() DELETE ff",
+                        pid=project_id,
+                    )
+                    ff_deleted = res5.consume().counters.nodes_deleted
 
             logger.info(
                 f"🗑️ 图谱增量清理: file_id={file_id}, "
-                f"删除 {rels_deleted} 关系, {nodes_deleted} 孤立节点"
+                f"删除 {rels_deleted} RELATES_TO 关系, {eu_deleted} EvidenceUnit 节点, "
+                f"{doc_deleted} Document 节点, {nodes_deleted} 孤立 Entity 节点, {ff_deleted} 孤立 FormField"
             )
             self._entity_cache = None
             return rels_deleted
@@ -651,6 +676,109 @@ class GraphRAGEngine:
         except Exception as e:
             logger.error(f"🕸️ [GraphRAG] ❌ 检索失败: {e}")
             return {"graph_context": "", "paths": []}
+
+    def ingest_doco_and_form_relations(
+        self,
+        filename: str,
+        project_id: str,
+        file_id: str,
+        chunks_payloads: list[dict]
+    ):
+        """
+        增量写入 DoCO 树节点（第一层：Document -> EvidenceUnit）
+        与表单字段-凭证拓扑关系（第二层：FormField -> EvidenceUnit）
+        """
+        if not chunks_payloads:
+            return
+        if not self._ensure_connection():
+            logger.warning("Neo4j 未连接，跳过 DoCO 与表单字段入库")
+            return
+
+        evidence_units = []
+        form_field_relations = []
+        
+        for payload in chunks_payloads:
+            text = payload.get("document", "")
+            chunk_index = payload.get("chunk_index", 0)
+            page_number = payload.get("page_number", 0)
+            semantic_role = payload.get("semantic_role", "text_block")
+            
+            chunk_id = f"{file_id}_{chunk_index}"
+            
+            evidence_units.append({
+                "id": chunk_id,
+                "text": text,
+                "chunk_index": chunk_index,
+                "page_number": page_number,
+                "semantic_role": semantic_role
+            })
+            
+            # 检测 FormField 关联
+            fields = []
+            # 信用代码
+            if re.search(r'\b[0-9A-HJ-NP-RT-UW-XY]{18}\b', text) or re.search(r'信用代码|统一社会信用代码', text):
+                fields.append("credit_code")
+            # 企业名称
+            if any(kw in text for kw in ["有限责任公司", "有限公司", "商行", "合作社", "经营部", "制品厂", "当事人", "被处罚人"]):
+                fields.append("company_name")
+            # 处罚类型
+            if any(kw in text for kw in ["罚款", "警告", "暂扣", "吊销"]):
+                fields.append("penalty_type")
+            # 罚款金额
+            if any(kw in text for kw in ["罚款", "元", "万元"]):
+                fields.append("fine_amount_yuan")
+            # 法律依据
+            if any(kw in text for kw in ["依据", "根据", "违反", "触犯", "条", "款", "项", "法规"]):
+                fields.append("legal_basis")
+                
+            for field in fields:
+                form_field_relations.append({
+                    "field_name": field,
+                    "chunk_id": chunk_id
+                })
+
+        cypher = """
+        // 1. 创建/更新 Document 节点
+        MERGE (d:Document {id: $fid, project_id: $pid})
+        ON CREATE SET d.name = $filename
+        ON MATCH SET d.name = $filename
+        
+        // 2. 批量创建 EvidenceUnit 节点并建立 HAS_ELEMENT 关系
+        WITH d
+        UNWIND $units AS u
+        MERGE (eu:EvidenceUnit {id: u.id, project_id: $pid})
+        SET eu.text = u.text,
+            eu.chunk_index = u.chunk_index,
+            eu.page_number = u.page_number,
+            eu.semantic_role = u.semantic_role,
+            eu.file_id = $fid
+        MERGE (d)-[:HAS_ELEMENT]->(eu)
+        
+        // 3. 批量建立 FormField 关系
+        WITH d
+        UNWIND $field_rels AS fr
+        MERGE (ff:FormField {name: fr.field_name, project_id: $pid})
+        WITH ff, fr
+        MATCH (eu:EvidenceUnit {id: fr.chunk_id, project_id: $pid})
+        MERGE (ff)-[:EVIDENCE_BY]->(eu)
+        """
+        
+        try:
+            with self._driver.session() as s:
+                s.run(
+                    cypher,
+                    pid=project_id,
+                    fid=file_id,
+                    filename=filename,
+                    units=evidence_units,
+                    field_rels=form_field_relations
+                )
+            logger.info(
+                f"🕸️ DoCO 与 FormField 关系入库完成: {len(evidence_units)} units, "
+                f"{len(form_field_relations)} field relations (project={project_id})"
+            )
+        except Exception as e:
+            logger.error(f"DoCO 与 FormField 关系入库失败: {e}")
 
     def get_stats(self, project_id: str = "") -> dict:
         """返回图谱统计信息。"""

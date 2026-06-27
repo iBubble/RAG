@@ -22,10 +22,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# WHY: 7B Vision 模型在复杂 CAD 工程图纸上使用分析型 Prompt 会产生
-#      严重的重复幻觉（如 200+ 行重复"比例尺：1:25"）。
-#      OCR-focused Prompt 更简洁、更精准，28s 内可提取完整的"说明"文本块，
-#      包括关键的钢筋保护层、混凝土标号等参数。
+
 # WHY: 2026-05-22 重大修正 — qwen2.5vl:7b 在中文密集等值线图上产生严重重复幻觉。
 #      经过多轮实验，以下策略最有效：
 #      1) 使用英文 Prompt（模型幻觉率显著降低）
@@ -42,13 +39,7 @@ Rules:
 - Do NOT hallucinate, guess, or repeat
 - Include the map title in Chinese if visible
 - Include legend items in Chinese"""
-_VISION_PROMPT_TECH = """请完整准确地识别这张工程图纸中的所有文字内容。
-特别注意：
-1. 图纸角落的"说明"文字块（通常包含材料规格、钢筋保护层、施工要求等）
-2. 表格中的所有数据
-3. 标题栏信息（设计单位、审核人、图号等）
-4. 所有标注的数值参数和单位
-5. 如果图纸方向不正（横向、倒置或旋转），请先在心中将其旋转到正确方向后再识别
+_VISION_PROMPT_GENERAL = """请完整准确地识别这张图片中的所有文字内容。
 保持原文的段落结构，如有表格用 Markdown 表格格式输出。"""
 
 
@@ -256,14 +247,14 @@ def extract_pdf_vision(
     如果 Vision 模型未配置或调用失败，返回空字符串。
     """
     from core.config import settings
-
-    _model = model or settings.VISION_MODEL
+    
+    _model = model or getattr(settings, "VISION_MODEL", None)
     if not _model:
         logger.debug("Vision 模型未配置，跳过视觉解析")
         return ""
 
-    _max_pages = max_pages or settings.VISION_MAX_PAGES
-    _dpi = dpi or settings.VISION_DPI
+    _max_pages = max_pages or getattr(settings, "VISION_MAX_PAGES", 30)
+    _dpi = dpi or getattr(settings, "VISION_DPI", 300)
     _timeout = timeout or settings.VISION_TIMEOUT
     _ollama_url = settings.OLLAMA_BASE_URL
     filename = Path(file_path).name
@@ -304,7 +295,7 @@ def extract_pdf_vision(
     # WHY: 等值线图使用英文 prompt + temperature=0 以减少重复幻觉，
     #      技术图纸使用中文 prompt 以保留工程细节。
     _is_contour = any(kw in filename for kw in ('等值线', '等高线', '等降雨量', 'isoline', 'contour'))
-    _vision_prompt = _VISION_PROMPT_ISOLINE if _is_contour else _VISION_PROMPT_TECH
+    _vision_prompt = _VISION_PROMPT_ISOLINE if _is_contour else _VISION_PROMPT_GENERAL
     _vision_temp = 0.0 if _is_contour else 0.1
 
     if _is_contour:
@@ -444,7 +435,7 @@ def extract_image_vision(
 
     # WHY: 等值线图使用专用 prompt 减少幻觉
     _is_contour_img = any(kw in filename for kw in ('等值线', '等高线', '等降雨量', 'isoline', 'contour'))
-    _vision_prompt_img = _VISION_PROMPT_ISOLINE if _is_contour_img else _VISION_PROMPT_TECH
+    _vision_prompt_img = _VISION_PROMPT_ISOLINE if _is_contour_img else _VISION_PROMPT_GENERAL
     _vision_temp_img = 0.0 if _is_contour_img else 0.1
 
     text = _call_vision_llm(

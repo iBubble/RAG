@@ -26,6 +26,14 @@ export default function SystemSettings() {
   const [switching, setSwitching] = useState(false);
   const [modelMessage, setModelMessage] = useState('');
 
+  // 升级板块配置状态
+  const [defaultPdfParser, setDefaultPdfParser] = useState('Docling');
+  const [mineruConcurrency, setMineruConcurrency] = useState(2);
+  const [einoInterruptEnabled, setEinoInterruptEnabled] = useState(true);
+  const [einoCheckerAmountLimit, setEinoCheckerAmountLimit] = useState(50000);
+  const [ragasCronHour, setRagasCronHour] = useState(2);
+  const [ragasAlertThreshold, setRagasAlertThreshold] = useState(0.85);
+
   useEffect(() => {
     const fetchSettings = async () => {
       try {
@@ -35,6 +43,12 @@ export default function SystemSettings() {
           setSystemName(data.system_name || '');
           setHeartbeatEnabled(data.heartbeat_enabled !== false);
           setSystemRunMode(data.system_run_mode || 'full');
+          setDefaultPdfParser(data.default_pdf_parser || 'Docling');
+          setMineruConcurrency(parseInt(data.mineru_concurrency) || 2);
+          setEinoInterruptEnabled(data.eino_interrupt_enabled !== 'false');
+          setEinoCheckerAmountLimit(parseFloat(data.eino_checker_amount_limit) || 50000);
+          setRagasCronHour(parseInt(data.ragas_cron_hour) || 2);
+          setRagasAlertThreshold(parseFloat(data.ragas_alert_threshold) || 0.85);
         }
       } catch { }
       setLoading(false);
@@ -91,6 +105,12 @@ export default function SystemSettings() {
       if (adminPassword) body.admin_password = adminPassword;
       body.heartbeat_enabled = heartbeatEnabled;
       body.system_run_mode = systemRunMode;
+      body.default_pdf_parser = defaultPdfParser;
+      body.mineru_concurrency = mineruConcurrency;
+      body.eino_interrupt_enabled = einoInterruptEnabled;
+      body.eino_checker_amount_limit = einoCheckerAmountLimit;
+      body.ragas_cron_hour = ragasCronHour;
+      body.ragas_alert_threshold = ragasAlertThreshold;
       
       const res = await fetch(`${API_BASE}/api/admin/settings`, {
         method: 'PUT',
@@ -221,7 +241,7 @@ export default function SystemSettings() {
                 <span className="text-sm font-semibold text-gray-800">全速学习模式 (Full Speed)</span>
               </div>
               <p className="text-xs text-gray-500 pl-6 leading-relaxed">
-                同时启用文本向量化与知识图谱构建。本地大模型保持常驻并满负荷运行，以最快速度完成所有法律文档的学习。
+                同时启用文本向量化与知识图谱构建。本地大模型保持常驻并满负荷运行，以最快速度完成所有业务文档的学习。
               </p>
             </div>
 
@@ -293,6 +313,108 @@ export default function SystemSettings() {
             />
           </button>
         </div>
+
+        <hr className="border-gray-100" />
+
+        {/* 升级高级配置选项 */}
+        <div className="space-y-4">
+          <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">⚡ 高级升级特性配置</h3>
+
+          {/* 1. 多源文档解析管线 */}
+          <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100 space-y-3">
+            <span className="text-xs font-bold text-gray-700 block">🗂️ 多源文档解析管线 (Parser Pipeline)</span>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">默认原生 PDF 解析器</label>
+                <select
+                  value={defaultPdfParser}
+                  onChange={e => setDefaultPdfParser(e.target.value)}
+                  className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none"
+                >
+                  <option value="Docling">Docling (高速通用解析)</option>
+                  <option value="MinerU">MinerU (高精表格识别)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">MinerU 慢队列并发上限</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="4"
+                  value={mineruConcurrency}
+                  onChange={e => setMineruConcurrency(parseInt(e.target.value) || 2)}
+                  className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Eino 多 Agent 审批拦截 */}
+          <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100 space-y-3">
+            <span className="text-xs font-bold text-gray-700 block">🤖 Eino 协同流程控制 (Eino Controls)</span>
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs text-gray-600 block font-medium">启用人工合规审批拦截 (Interrupt-Resume)</span>
+                <p className="text-[10px] text-gray-400">判定越权或条款不符时自动挂起并弹窗警示主管</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEinoInterruptEnabled(!einoInterruptEnabled)}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  einoInterruptEnabled ? 'bg-indigo-500' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                    einoInterruptEnabled ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">硬规则金额校验预警红线 (元)</label>
+              <input
+                type="number"
+                value={einoCheckerAmountLimit}
+                onChange={e => setEinoCheckerAmountLimit(parseFloat(e.target.value) || 0)}
+                className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none"
+              />
+            </div>
+          </div>
+
+          {/* 3. Ragas 定时评测打分 */}
+          <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100 space-y-3">
+            <span className="text-xs font-bold text-gray-700 block">📊 Ragas 质量自动评测 (Ragas Evaluation)</span>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">凌晨跑批开始时间 (Hour)</label>
+                <select
+                  value={ragasCronHour}
+                  onChange={e => setRagasCronHour(parseInt(e.target.value) || 2)}
+                  className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none"
+                >
+                  {Array.from({ length: 24 }).map((_, h) => (
+                    <option key={h} value={h}>{h < 10 ? `0${h}` : h}:00</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">质量健康报警阈值 (得分红线)</label>
+                <input
+                  type="number"
+                  step="0.05"
+                  min="0.1"
+                  max="1.0"
+                  value={ragasAlertThreshold}
+                  onChange={e => setRagasAlertThreshold(parseFloat(e.target.value) || 0.85)}
+                  className="w-full px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs outline-none"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <hr className="border-gray-100" />
 
         <hr className="border-gray-100" />
 

@@ -17,13 +17,18 @@ services:
       - NO_PROXY=localhost,127.0.0.1,genrag-redis,genrag-database,genrag-graphdb,host.docker.internal
       # 宿主机 M4 Max 真实统一内存总量
       - HOST_MEMORY_GB=48
+      - LANGFUSE_PUBLIC_KEY=pk-lf-123456
+      - LANGFUSE_SECRET_KEY=sk-lf-123456
+      - LANGFUSE_HOST=http://langfuse:3000
     volumes:
       - ./app-server:/app
       - /app/frontend/node_modules
       - /app/backend/docx_builder/bin
       - /app/backend/docx_builder/obj
-      # 将本地 macData/GenRAG_Files 路径挂载，与 LawRAG 隔离
-      - /Volumes/macData/GenRAG_Files:/Volumes/SYRAID/RAG_Files
+      # 将本地 macData/RAG_Files 路径挂载，与 LawRAG 隔离
+      - /Volumes/macData/GenRAG_Files:/Volumes/macData/RAG_Files
+      # 挂载宿主机共享的 MinerU 模型权重（只读）
+      - /Volumes/macData/RAG_Files/models:/root/resources/models:ro
       # SSH 公钥持久化
       - ./persistent/ssh/authorized_keys:/root/.ssh/authorized_keys
       # Antigravity Remote Server 持久化
@@ -69,4 +74,34 @@ services:
       - "7688:7687" # 映射端口 (原 7687)
     volumes:
       - ./data/neo4j_data:/data
+
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: GenRAG-Langfuse-DB
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: GenRAG-Langfuse
+    restart: always
+    depends_on:
+      - langfuse-db
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@langfuse-db:5432/postgres
+      - NEXTAUTH_SECRET=mysecret-nextauth-needs-to-be-32-chars-long-1234
+      - NEXTAUTH_URL=http://localhost:3000
+      - TELEMETRY_ENABLED=false
+      - ENCRYPTION_KEY=c39178bf71e16f3d1b82e8f176b6e4e844a49c63bfa2b879c94b72ef7cb3bd89
+      - SALT=mydefaultsalt1234567890
+
 

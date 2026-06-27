@@ -11,9 +11,11 @@ const ALL_WB_ITEMS = [
 ];
 
 const ALL_AGENTS = [
-  { id: 'chat', label: '智能前台接待' },
-  { id: 'service', label: '企业管理顾问' },
-  { id: 'legal', label: '行业知识专家' },
+  { id: 'chat', label: '智能前台接待 (Chat)' },
+  { id: 'service', label: '企业管理顾问 (Service)' },
+  { id: 'planner', label: 'Eino任务规划 (Planner)' },
+  { id: 'checker', label: 'Eino定量校验 (Checker)' },
+  { id: 'auditor', label: 'Eino定性审计 (Auditor)' },
   { id: 'precompute', label: '智能学习预计算' },
   { id: 'vectorizer', label: '后端向量化入库' },
   { id: 'graph', label: '知识图谱提炼' },

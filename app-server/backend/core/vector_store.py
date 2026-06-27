@@ -377,6 +377,21 @@ def ensure_collection():
             field_schema=models.PayloadSchemaType.KEYWORD,
         )
 
+    # ── 升级扩展：业务字段与 EU 空间元数据索引 ──
+    # WHY: 支持按科室/案件类型零衰减硬预过滤，以及按页码/语义角色精确定位
+    for field in ("department", "case_type", "semantic_role"):
+        client.create_payload_index(
+            collection_name=_collection_name,
+            field_name=field,
+            field_schema=models.PayloadSchemaType.KEYWORD,
+        )
+    # page_number 为整数类型索引，支持范围过滤
+    client.create_payload_index(
+        collection_name=_collection_name,
+        field_name="page_number",
+        field_schema=models.PayloadSchemaType.INTEGER,
+    )
+
     logger.info(
         f"Collection '{_collection_name}' 创建完成: "
         f"dense={_DENSE_DIM}d(cosine) + sparse + payload索引"
@@ -488,12 +503,6 @@ def _compute_chunk_confidence(chunk: str, filename: str) -> float:
     elif hits >= 2:
         score += 0.1
 
-    # ── 文件名启发 ──
-    # WHY: CAD 分页图纸（如 _42.pdf）通常是扫描件，基准可信度略低
-    fn_lower = filename.lower()
-    if fn_lower.endswith('.pdf') and '_' in fn_lower:
-        # 可能是 CAD 分页图纸
-        score -= 0.05
 
     return round(max(0.0, min(1.0, score)), 2)
 
@@ -624,6 +633,11 @@ def ingest_text(
     file_id: str,
     filename: str,
     project_id: str = "default",
+    # ── EU 空间与业务元数据 (D1 升级) ──
+    page_numbers: list[int] | None = None,
+    semantic_roles: list[str] | None = None,
+    departments: list[str] | None = None,
+    case_types: list[str] | None = None,
 ) -> int:
     """
     将纯文本切片后通过 BGE-M3 编码（Dense + Sparse）写入 Qdrant。
@@ -716,6 +730,17 @@ def ingest_text(
         zip(chunks, dense_vecs, sparse_vecs)
     ):
         point_id = _string_to_uuid(f"{file_id}__chunk_{i}")
+        
+        # 动态读取并安全防越界
+        p_num = page_numbers[i] if (page_numbers and i < len(page_numbers)) else 0
+        if semantic_roles and i < len(semantic_roles):
+            s_role = semantic_roles[i]
+        else:
+            from core.extractors.pdf_parser import get_standard_semantic_role
+            s_role = get_standard_semantic_role(chunk)
+        dept = departments[i] if (departments and i < len(departments)) else ""
+        c_type = case_types[i] if (case_types and i < len(case_types)) else ""
+
         points.append(
             models.PointStruct(
                 id=point_id,
@@ -732,6 +757,11 @@ def ingest_text(
                     "chunk_index": i,
                     "total_chunks": total_chunks,
                     "confidence": confidences[i],  # P3: 可信度分数 0.0~1.0
+                    # ── EU 空间元数据（动态写入）──
+                    "page_number": p_num,
+                    "semantic_role": s_role,
+                    "department": dept,
+                    "case_type": c_type,
                 },
             )
         )
@@ -1213,8 +1243,8 @@ def query_by_file_ids(
         file_ids and len(file_ids) > 20 and project_id
     )
     if _need_prefilter:
-        # WHY: 8->12，531 个文件只取 8 个容错窗口太窄，
-        #      边缘相关文件（如同系列图纸 _5/_6/_9）易被误杀。
+        # WHY: 当文件数量巨大（>50）时，将预筛选目标扩大到 12，
+        #      防止边缘相关文件被错误过滤掉。
         _prefilter_top_k = 12 if file_ids and len(file_ids) > 50 else 8
         prefiltered_ids = _hierarchical_prefilter(
             query_text, project_id, top_k=_prefilter_top_k
@@ -1732,6 +1762,41 @@ def get_all_chunks(file_id: str, limit: int = 500) -> List[str]:
     except Exception as e:
         logger.error(f"提取全部 chunk 失败 (file_id={file_id}): {e}")
         return []
+
+
+def get_all_chunks_with_payload(file_id: str, limit: int = 500) -> List[dict]:
+    """
+    提取指定 file_id 的全部 chunk 及其完整 payload，按 chunk_index 排序。
+    """
+    try:
+        client = _get_client()
+        scroll_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="file_id",
+                    match=models.MatchValue(value=file_id),
+                )
+            ]
+        )
+        results, _next = client.scroll(
+            collection_name=_collection_name,
+            scroll_filter=scroll_filter,
+            limit=limit,
+            with_payload=True,
+        )
+
+        chunks = []
+        for point in results:
+            payload = point.payload or {}
+            idx = payload.get("chunk_index", 999)
+            chunks.append((idx, payload))
+
+        chunks.sort(key=lambda x: x[0])
+        return [payload for _, payload in chunks]
+    except Exception as e:
+        logger.error(f"提取全部 chunk payload 失败 (file_id={file_id}): {e}")
+        return []
+
 
 
 def verify_numbers(

@@ -46,3 +46,12 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     worker_max_tasks_per_child=500,
 )
+
+from celery.schedules import crontab
+
+celery_app.conf.beat_schedule = {
+    'nightly-ragas-audit': {
+        'task': 'worker.evaluate_nightly_ragas',
+        'schedule': crontab(hour=3, minute=0),  # 每天凌晨 3:00 执行
+    },
+}

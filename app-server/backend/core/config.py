@@ -9,31 +9,10 @@ for _k in list(os.environ.keys()):
     if "proxy" in _k.lower() and _k.lower() not in ("no_proxy",):
         del os.environ[_k]
         
-# WHY: 所有持久化数据统一存放在外置 RAID 卷上
-_RAID_ROOT = "/Volumes/SYRAID/RAG_Files"
-_LOCAL_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "local_data")
-
-def _detect_storage_root() -> tuple[str, bool]:
-    # WHY: 使用 PID 唯一化测试文件名，防止多进程同时重启时
-    #      竞态条件导致部分进程误判 RAID 不可用而降级到 local_data。
-    test_file = os.path.join(_RAID_ROOT, f".write_test_{os.getpid()}")
-    try:
-        os.makedirs(_RAID_ROOT, exist_ok=True)
-        with open(test_file, "w") as f:
-            f.write("ok")
-        os.remove(test_file)
-        return _RAID_ROOT, True
-    except (PermissionError, OSError):
-        # 清理可能残留的测试文件
-        try:
-            os.remove(test_file)
-        except OSError:
-            pass
-        logging.getLogger(__name__).warning(f"RAID不可用，降级到: {_LOCAL_ROOT}")
-        os.makedirs(_LOCAL_ROOT, exist_ok=True)
-        return _LOCAL_ROOT, False
-
-STORAGE_ROOT, IS_RAID_ACTIVE = _detect_storage_root()
+_LOCAL_ROOT = "/Volumes/macData/RAG_Files"
+os.makedirs(_LOCAL_ROOT, exist_ok=True)
+STORAGE_ROOT = _LOCAL_ROOT
+IS_RAID_ACTIVE = False
 
 class Settings(BaseSettings):
     # Pydantic v2 config
@@ -64,10 +43,7 @@ class Settings(BaseSettings):
     CHAT_RAG_CACHE_TTL: int = 1800      # L1 检索缓存 TTL（秒），30分钟
     CHAT_ANSWER_CACHE_TTL: int = 3600   # L2 回答缓存 TTL（秒），1小时
 
-    VISION_MODEL: str = "qwen2.5vl:7b"
-    VISION_MAX_PAGES: int = 30
-    VISION_DPI: int = 300
-    VISION_TIMEOUT: int = 300
+
 
     SLOT_FILLING_V2: bool = False
     SLOT_PRECOMPUTE: bool = True

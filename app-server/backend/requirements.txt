@@ -40,5 +40,7 @@ neo4j>=6.1.0
 ezdxf>=1.4.3
 latex2mathml>=3.81.0
 PyPDF2>=2.0.0
-
-
+docling>=2.0.0
+langfuse
+ragas
+langchain-community

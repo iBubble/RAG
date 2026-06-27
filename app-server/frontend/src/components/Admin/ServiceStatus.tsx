@@ -319,8 +319,8 @@ export default function ServiceStatus() {
         </div>
       )}
 
-      {/* 服务卡片 — 2×3 网格布局 */}
-      <div className="grid grid-cols-2 gap-2">
+      {/* 服务卡片 — 响应式网格布局 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {services.map((svc) => {
           const labels = METRIC_LABELS[svc.id] || {};
           const metrics = svc.metrics || {};
