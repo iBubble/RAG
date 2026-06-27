@@ -562,6 +562,7 @@ async def stream_ollama(
     temperature: float = 0.7,
     num_ctx: int = 32768,
     num_predict: int = 24576,
+    images: Optional[list] = None,
 ) -> AsyncGenerator[str, None]:
     """
     通过 Ollama REST API 流式调用本地大模型。
@@ -570,7 +571,7 @@ async def stream_ollama(
          所有进程共享锁资源。
     """
     async with RedisGPUSemaphore(max_slots=_GPU_MAX_SLOTS):
-        async for token in _stream_ollama_inner(prompt, model, temperature, num_ctx, num_predict):
+        async for token in _stream_ollama_inner(prompt, model, temperature, num_ctx, num_predict, images):
             yield token
 
 
@@ -580,6 +581,7 @@ async def _stream_ollama_inner(
     temperature: float = 0.7,
     num_ctx: int = 32768,
     num_predict: int = 24576,
+    images: Optional[list] = None,
 ) -> AsyncGenerator[str, None]:
     """Ollama 流式调用的内部实现（被信号量包裹）。"""
     url = f"{settings.OLLAMA_BASE_URL}/api/generate"
@@ -604,6 +606,19 @@ async def _stream_ollama_inner(
             "top_p": 0.9,
         }
     }
+
+    if images:
+        cleaned_images = []
+        for img in images:
+            if isinstance(img, str) and img.startswith("data:image"):
+                if "," in img:
+                    _, base64_data = img.split(",", 1)
+                    cleaned_images.append(base64_data)
+                else:
+                    cleaned_images.append(img)
+            else:
+                cleaned_images.append(img)
+        payload["images"] = cleaned_images
 
     # WHY: 在旧版 Ollama (如 0.21.0) 中，think: False 无效。
     #      针对 ChatML 格式的推演模型 (qwen3.6 系列)，

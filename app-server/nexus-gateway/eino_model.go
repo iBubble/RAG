@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -20,8 +21,9 @@ type OllamaChat struct {
 }
 
 type OllamaMessage struct {
-	Role    string `json:"role" xml:"role"`
-	Content string `json:"content" xml:"content"`
+	Role    string   `json:"role" xml:"role"`
+	Content string   `json:"content" xml:"content"`
+	Images  []string `json:"images,omitempty"`
 }
 
 type OllamaChatRequest struct {
@@ -47,6 +49,18 @@ func NewOllamaChat(modelName string) *OllamaChat {
 }
 
 func (o *OllamaChat) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	imageVal := ctx.Value("chat_image")
+	var images []string
+	if imageVal != nil {
+		if base64Str, ok := imageVal.(string); ok && base64Str != "" {
+			cleaned := base64Str
+			if idx := strings.Index(base64Str, ","); idx != -1 {
+				cleaned = base64Str[idx+1:]
+			}
+			images = []string{cleaned}
+		}
+	}
+
 	reqBody := OllamaChatRequest{
 		Model:    o.Model,
 		Messages: make([]OllamaMessage, len(input)),
@@ -56,6 +70,9 @@ func (o *OllamaChat) Generate(ctx context.Context, input []*schema.Message, opts
 		reqBody.Messages[i] = OllamaMessage{
 			Role:    string(msg.Role),
 			Content: msg.Content,
+		}
+		if i == len(input)-1 && string(msg.Role) == "user" && len(images) > 0 {
+			reqBody.Messages[i].Images = images
 		}
 	}
 	jsonBytes, err := json.Marshal(reqBody)
@@ -88,6 +105,18 @@ func (o *OllamaChat) Generate(ctx context.Context, input []*schema.Message, opts
 }
 
 func (o *OllamaChat) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	imageVal := ctx.Value("chat_image")
+	var images []string
+	if imageVal != nil {
+		if base64Str, ok := imageVal.(string); ok && base64Str != "" {
+			cleaned := base64Str
+			if idx := strings.Index(base64Str, ","); idx != -1 {
+				cleaned = base64Str[idx+1:]
+			}
+			images = []string{cleaned}
+		}
+	}
+
 	reqBody := OllamaChatRequest{
 		Model:    o.Model,
 		Messages: make([]OllamaMessage, len(input)),
@@ -97,6 +126,9 @@ func (o *OllamaChat) Stream(ctx context.Context, input []*schema.Message, opts .
 		reqBody.Messages[i] = OllamaMessage{
 			Role:    string(msg.Role),
 			Content: msg.Content,
+		}
+		if i == len(input)-1 && string(msg.Role) == "user" && len(images) > 0 {
+			reqBody.Messages[i].Images = images
 		}
 	}
 	jsonBytes, err := json.Marshal(reqBody)

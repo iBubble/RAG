@@ -31,6 +31,7 @@ export interface Message {
     speed: number;
   };
   timestamp?: number;
+  image?: string;
 }
 
 export interface ChatStreamingState {
@@ -126,7 +127,8 @@ interface ProjectState {
     chatMode: string,
     getAuthHeaders: () => Record<string, string>,
     checkedFileIds: string[],
-    selectedModel: string
+    selectedModel: string,
+    image?: string
   ) => Promise<void>;
   stopAgentMessage: () => void;
   publicSettings: Record<string, any> | null;
@@ -276,12 +278,12 @@ export const useProjectStore = create<ProjectState>()(
     streamingSources: [],
     abortController: null,
   },
-  sendAgentMessage: async (projectId, input, chatMode, getAuthHeaders, checkedFileIds, selectedModel) => {
+  sendAgentMessage: async (projectId, input, chatMode, getAuthHeaders, checkedFileIds, selectedModel, image) => {
     const currentStreaming = useProjectStore.getState().chatStreamingState;
     if (currentStreaming.isGenerating) return;
 
     const API_BASE = import.meta.env.VITE_API_BASE || '';
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: input, timestamp: Date.now() };
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: input, image, timestamp: Date.now() };
     const agentMsgId = (Date.now() + 1).toString();
 
     useProjectStore.getState().setProjectMessages(projectId, (prev) => [
@@ -329,6 +331,7 @@ export const useProjectStore = create<ProjectState>()(
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMsg.content,
+          image: userMsg.image, // 新增：将 Base64 图片发送至后端
           file_ids: checkedFileIds,
           project_id: projectId,
           history,

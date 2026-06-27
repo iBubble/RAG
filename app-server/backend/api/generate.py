@@ -61,6 +61,7 @@ class HistoryMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
+    image: Optional[str] = None  # 新增：接收 Base64 编码的图片
     file_ids: List[str] = []
     project_id: str = ""
     history: List[HistoryMessage] = []
@@ -410,12 +411,14 @@ async def _sse_generator(
     verification_ctx: dict = None,
     data_analysis: dict = None,
     project_id: str | None = None,
+    image: str | None = None,
 ):
     if project_id:
         from core.llm_engine import current_project_id
         current_project_id.set(project_id)
     from core.llm_engine import stream_ollama
-    raw_stream = stream_ollama(prompt, model=model, num_predict=num_predict, num_ctx=num_ctx)
+    images = [image] if image else None
+    raw_stream = stream_ollama(prompt, model=model, num_predict=num_predict, num_ctx=num_ctx, images=images)
 
     if think_mode == "filter":
         from core.think_filter import filter_think_stream
@@ -2399,6 +2402,7 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
                 num_predict=chat_num_predict, num_ctx=chat_num_ctx,
                 data_analysis=da_meta if (use_rag or req.force_data_analysis) else None,
                 project_id=req.project_id,
+                image=req.image,
             ):
                 yield event
                 # ── 续期 chat 与 auditor 活跃状态（每 10 秒续期一次，防止生成长文本时超时） ──

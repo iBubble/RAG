@@ -29,6 +29,7 @@ type EinoAgentRequest struct {
 	FileIDs   []string `json:"file_ids"`
 	Model     string   `json:"model"`
 	ChatMode  string   `json:"chat_mode"`
+	Image     string   `json:"image"`
 	// 新角色名（Go Eino DAG）
 	PlannerName string `json:"planner_name"`
 	CheckerName string `json:"checker_name"`
@@ -278,6 +279,10 @@ func RunEinoOrchestration(ctx context.Context, req *EinoAgentRequest, w io.Write
 		Req:     req,
 		Writer:  w,
 		TraceID: uuid.NewString(),
+	}
+
+	if req.Image != "" {
+		ctx = context.WithValue(ctx, "chat_image", req.Image)
 	}
 
 	_, err = r.Invoke(ctx, initCtx)

@@ -1,1 +1,0 @@
-['worker.py', 'test_replace.log', 'tools', 'core', 'requirements.txt', 'find_file.py', 'Qwen_Modelfile', 'Qwen_Modelfile_Q4', 'run_model_benchmark.py', 'docx_builder', 'reingest.py', 'scripts', 'read_log.py', 'test_api_replace.py', 'read_env.py', 'api', 'reingest_gis.py', '.env.example', 'main.py']

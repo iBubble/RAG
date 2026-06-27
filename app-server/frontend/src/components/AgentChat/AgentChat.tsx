@@ -74,7 +74,8 @@ export default function AgentChat({ projectId }: { projectId: string }) {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isRecommending, setIsRecommending] = useState(false);
 
-  const [chatMode, setChatMode] = useState<string>('fast');
+  const [chatMode, setChatMode] = useState<string>('smart');
+  const [pastedImage, setPastedImage] = useState<string | null>(null);
   const fetchPublicSettings = useProjectStore(state => state.fetchPublicSettings);
 
   useEffect(() => {
@@ -84,7 +85,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
   }, [publicSettings, fetchPublicSettings]);
 
   useEffect(() => {
-    setChatMode('fast');
+    setChatMode('smart');
   }, [user]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -170,10 +171,70 @@ export default function AgentChat({ projectId }: { projectId: string }) {
     syncChatHistory();
   }, [projectId]);
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+
+    // 1. 优先检查 files 列表（适用于复制本地图片文件、拖拽、截图直接粘贴等情况）
+    const files = clipboardData.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            if (event.target?.result) {
+              setPastedImage(event.target.result as string);
+            }
+          };
+          reader.readAsDataURL(file);
+          e.preventDefault(); // 阻止默认的文件路径粘贴
+          return;
+        }
+      }
+    }
+
+    // 2. 检查 items 列表（适用于微信、飞书、剪切板截图、网页右键复制图片等情况）
+    const items = clipboardData.items;
+    if (items && items.length > 0) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/') || item.kind === 'file') {
+          const file = item.getAsFile();
+          if (file && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              if (event.target?.result) {
+                setPastedImage(event.target.result as string);
+              }
+            };
+            reader.readAsDataURL(file);
+            e.preventDefault();
+            return;
+          }
+        }
+      }
+    }
+
+    // 3. 检查是否为 HTML 格式并带有 <img> 标签（部分网页右键“复制图片”可能会放入 HTML）
+    const htmlText = clipboardData.getData('text/html');
+    if (htmlText) {
+      const match = htmlText.match(/<img[^>]+src=["'](data:image\/[^"']+)["']/i);
+      if (match && match[1]) {
+        setPastedImage(match[1]);
+        e.preventDefault();
+        return;
+      }
+    }
+  };
+
   const handleSend = async () => {
-    if (!input.trim() || isGenerating) return;
+    if ((!input.trim() && !pastedImage) || isGenerating) return;
+    const textToSend = input;
+    const imageToSend = pastedImage || undefined;
     setInput('');
-    sendAgentMessage(projectId, input, chatMode, getAuthHeaders, allCheckedIds, selectedModel);
+    setPastedImage(null);
+    sendAgentMessage(projectId, textToSend, chatMode, getAuthHeaders, allCheckedIds, selectedModel, imageToSend);
   };
 
   const handleStop = () => {
@@ -627,7 +688,24 @@ export default function AgentChat({ projectId }: { projectId: string }) {
                 {/* WHY: 用户消息不需要 Markdown 解析，直接纯文本渲染保持白色字体；
                          Agent 消息使用 MarkdownBlock 渲染结构化内容 */}
                 {msg.role === 'user'
-                  ? <div className="whitespace-pre-wrap">{msg.content}</div>
+                  ? (
+                    <div className="space-y-2">
+                      {msg.image && (
+                        <div className="relative">
+                          <img 
+                            src={msg.image} 
+                            alt="Pasted content" 
+                            className="max-w-[240px] max-h-40 object-contain rounded-xl border border-[#C4B5A0]/30 shadow-sm cursor-zoom-in hover:brightness-95 transition-all bg-white" 
+                            onClick={() => {
+                              const w = window.open();
+                              if (w) w.document.write(`<img src="${msg.image}" style="max-width:100%; max-height:99vh; display:block; margin:auto;" />`);
+                            }}
+                          />
+                        </div>
+                      )}
+                      <div className="whitespace-pre-wrap">{msg.content}</div>
+                    </div>
+                  )
                   : renderMessageContent(msg.isStreaming ? streamingContent : msg.content, msg.isStreaming)
                 }
                 
@@ -695,10 +773,27 @@ export default function AgentChat({ projectId }: { projectId: string }) {
       <div className="p-4 border-t border-[#E0DCD5]/60 bg-transparent shrink-0">
 
 
+        {pastedImage && (
+          <div className="relative inline-block mb-3 p-1.5 bg-white/75 backdrop-blur-md border border-[#E0DCD5] rounded-2xl shadow-md shrink-0">
+            <img 
+              src={pastedImage} 
+              alt="Pasted Preview" 
+              className="max-h-24 max-w-[150px] object-contain rounded-xl border border-gray-100 bg-white" 
+            />
+            <button
+              onClick={() => setPastedImage(null)}
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-[#EA4335]/90 hover:bg-[#EA4335] text-white flex items-center justify-center text-[10px] cursor-pointer shadow-md transition-colors font-bold"
+              title="移除图片"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <div className="relative">
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
+            onPaste={handlePaste}
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -728,7 +823,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
             ) : (
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || ollamaStatus === 'offline'}
+                disabled={(!input.trim() && !pastedImage) || ollamaStatus === 'offline'}
                 className="w-9 h-9 rounded-full bg-[#5F6368] text-white hover:bg-[#474B4F] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center justify-center transition-colors shadow-sm"
               >
                 <ArrowUp className="w-4 h-4" />
