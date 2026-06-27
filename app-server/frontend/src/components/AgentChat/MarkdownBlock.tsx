@@ -88,16 +88,20 @@ function injectStyle() {
 
 function normalizeMarkdown(text: string): string {
   if (!text) return text;
-  // 强力消除在【参考文档区块】引用字样中间产生的非预期断行、空格以及可能含有的 # 井号，防止其换行后因以 # 开头被误识别为 H1 标题
-  let cleaned = text.replace(/(【参考文档区块\s*#?)\s*[\r\n]+\s*/g, '$1');
-  cleaned = cleaned.replace(/(【参考文档区块\s*#?)\s*(\d+)/g, '$1$2');
+  // 1. 强力消除在中文中括号 【...】 内部产生的非预期断行和空格，保持引用的整体连贯性
+  let cleaned = text.replace(/【([^】]+)】/g, (_, p1) => {
+    return '【' + p1.replace(/[\r\n]+/g, '').replace(/\s+/g, '') + '】';
+  });
+  // 2. 强力消除在英文中括号 [...] 内部产生的非预期断行和空格（排除 markdown 链接图片，只针对普通引用）
+  cleaned = cleaned.replace(/\[([^\]\(\)]+)\]/g, (_, p1) => {
+    return '[' + p1.replace(/[\r\n]+/g, '').replace(/\s+/g, '') + ']';
+  });
 
   return cleaned
     .replace(/^[ 　]{1,4}(?=[^#\-\*\+\d\s])/gm, '')
     .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
     .replace(/([^\n])\n([-*+]\s)/g, '$1\n\n$2')
     .replace(/([^\n])\n(\d+\.\s)/g, '$1\n\n$2')
-    .replace(/([^\n])(#{1,6})/g, '$1\n\n$2')
     .replace(/([^\n])(\s*[-*+]\s)/g, '$1\n\n$2')
     .replace(/([^\n])(\s*\d+\.\s)/g, '$1\n\n$2')
     .replace(/^(#{1,6})([^\s#])/gm, '$1 $2')
@@ -129,8 +133,13 @@ export default function MarkdownBlock({ content, isStreaming }: MarkdownBlockPro
     const normalized = normalizeMarkdown(content);
     const rawHtml = marked.parse(normalized) as string;
     const cleanHtml = DOMPurify.sanitize(rawHtml);
+
     return (
-      <div className="md-render" dangerouslySetInnerHTML={{ __html: cleanHtml }} />
+      <>
+        <div className="debug-raw-content" style={{ display: 'none' }}>{content}</div>
+        <div className="debug-normalized-content" style={{ display: 'none' }}>{normalized}</div>
+        <div className="md-render" dangerouslySetInnerHTML={{ __html: cleanHtml }} />
+      </>
     );
   } catch (err) {
     console.error('[MarkdownBlock] 解析渲染失败:', err);
