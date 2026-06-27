@@ -1,208 +1,240 @@
-/* Linvis3D.css - 3D 办公室大地板 (带实木外框与投影) */
-:root {
-  --linvis-floor-bg: #eae6df;
-  --linvis-floor-border: #5c3a21;
-}
+/* ============================================
+   Linvis3D.css V8 - 简洁办公室 + 帧动画
+   参考 Marvis 办公室风格：干净、融合、无卡片
+   ============================================ */
 
-[data-mode="dark"] {
-  --linvis-floor-bg: #1c1917;
-  --linvis-floor-border: #3c2a1e;
-}
-
-[data-theme="theme-b"] {
-  --linvis-floor-bg: #e2e8f0;
-  --linvis-floor-border: #334155;
-}
-
-[data-theme="theme-b"][data-mode="dark"] {
-  --linvis-floor-bg: #0f172a;
-  --linvis-floor-border: #1e293b;
-}
-
-.linvis-office-floor {
-  background: var(--linvis-floor-bg);
-  border-radius: 48px;
-  border: 12px solid var(--linvis-floor-border);
-  box-shadow: 
-    0 30px 60px -15px rgba(0, 0, 0, 0.22),
-    inset 0 4px 20px rgba(255, 255, 255, 0.35),
-    inset -10px -10px 30px rgba(0, 0, 0, 0.08);
+/* ===== 办公室场景容器 ===== */
+.office-scene {
   position: relative;
+  width: 100%;
+  min-height: 600px;
+  background: #ffffff;
+  border-radius: 16px;
   overflow: hidden;
-  padding: 20px 15px;
-  transform: rotateX(10deg) rotateY(-3deg) rotateZ(0.5deg);
-  transform-style: preserve-3d;
-  transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.6s ease, background-color 0.3s ease, border-color 0.3s ease;
 }
-.linvis-office-floor:hover {
-  transform: rotateX(8deg) rotateY(-1.5deg) rotateZ(0.2deg) translateY(-4px);
+
+/* 地板格子纹理（很淡） */
+.office-floor {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(45deg, rgba(180,160,120,0.04) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(180,160,120,0.04) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(180,160,120,0.04) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(180,160,120,0.04) 75%);
+  background-size: 48px 48px;
+  background-position: 0 0, 0 24px, 24px -24px, -24px 0;
+  pointer-events: none;
+}
+
+/* 办公室内容 */
+.office-content {
+  position: relative; z-index: 3;
+  padding: 20px 24px 32px 24px;
+}
+
+/* ===== 区域分组 (左拟物门牌 + 右工位行) ===== */
+.office-zone {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 0px;
+  padding: 10px 0;
+  gap: 16px;
+  border-bottom: 1px dashed rgba(180, 160, 120, 0.15);
+}
+.office-zone:last-child {
+  border-bottom: none;
+}
+
+/* ===== 拟物化悬挂门牌 ===== */
+.zone-signboard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 90px;
+  height: 90px;
+  border-radius: 12px;
+  position: relative;
+  flex-shrink: 0;
   box-shadow: 
-    0 35px 70px -15px rgba(0, 0, 0, 0.28),
-    inset 0 4px 20px rgba(255, 255, 255, 0.35),
-    inset -10px -10px 30px rgba(0, 0, 0, 0.08);
+    0 8px 16px rgba(0,0,0,0.12),
+    inset 0 1px 0 rgba(255,255,255,0.2);
+  margin-left: 12px;
+  overflow: hidden;
 }
 
-/* 办公室内部地毯区域划分 */
-.carpet-reception {
-  background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%);
-  border: 2px dashed #fca5a5;
-  box-shadow: inset 0 2px 6px rgba(0,0,0,0.03);
+/* 吊挂挂绳 */
+.zone-signboard::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 10px;
+  border-left: 2px solid #6b7280;
+  border-right: 2px solid #6b7280;
+  opacity: 0.6;
 }
 
-.carpet-case {
-  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-  border: 2px dashed #fde047;
-  box-shadow: inset 0 2px 6px rgba(0,0,0,0.03);
+.sign-icon {
+  font-size: 20px;
+  margin-bottom: 4px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+.sign-text {
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  letter-spacing: 0.5px;
 }
 
-.carpet-data {
-  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-  border: 2px dashed #bae6fd;
-  box-shadow: inset 0 2px 6px rgba(0,0,0,0.03);
+/* 1. 木质标牌 */
+.sign-wood {
+  background: linear-gradient(135deg, #a76d3f 0%, #6f4223 100%);
+  border: 3px solid #543118;
+  color: #fef3c7;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+/* 2. 黄铜标牌 */
+.sign-brass {
+  background: linear-gradient(135deg, #eab308 0%, #a16207 100%);
+  border: 3px solid #854d0e;
+  color: #fefcf0;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+/* 3. 钢铁标牌 */
+.sign-steel {
+  background: linear-gradient(135deg, #9ca3af 0%, #4b5563 100%);
+  border: 3px solid #374151;
+  color: #f9fafb;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
-/* 3D 粘土质感卡片与装饰 */
-.clay-card-3d {
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 
-    3px 4px 8px rgba(0, 0, 0, 0.06),
-    inset 2px 2px 4px rgba(255, 255, 255, 0.9),
-    inset -3px -3px 8px rgba(0, 0, 0, 0.04);
+/* ===== 工位行 ===== */
+.desk-row {
+  display: flex;
+  justify-content: flex-start;
+  gap: 16px;
+  flex-grow: 1;
+  padding: 4px 0;
 }
 
-[data-mode="dark"] .carpet-reception {
-  background: linear-gradient(135deg, #311c1e 0%, #200f11 100%) !important;
-  border-color: #7f1d1d !important;
+/* ===== 单个工位 ===== */
+.workstation {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 155px;
+  padding: 4px;
+  transition: transform 0.3s ease;
 }
-[data-mode="dark"] .carpet-case {
-  background: linear-gradient(135deg, #322510 0%, #221703 100%) !important;
-  border-color: #78350f !important;
-}
-[data-mode="dark"] .carpet-data {
-  background: linear-gradient(135deg, #122137 0%, #07111e 100%) !important;
-  border-color: #1e3a8a !important;
-}
-[data-mode="dark"] .clay-card-3d {
-  background: rgba(28, 25, 23, 0.85) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
-  box-shadow: 
-    3px 4px 8px rgba(0, 0, 0, 0.3),
-    inset 1px 1px 2px rgba(255, 255, 255, 0.1),
-    inset -2px -2px 4px rgba(0, 0, 0, 0.2) !important;
-}
-[data-theme="theme-b"][data-mode="dark"] .clay-card-3d {
-  background: rgba(17, 24, 39, 0.85) !important;
+.workstation:hover {
+  transform: translateY(-4px);
+  z-index: 20;
 }
 
-/* 呼吸动画 */
-@keyframes linvis-breath {
-  0%, 100% { transform: translateY(0px) scaleY(1); }
-  50% { transform: translateY(-2.5px) scaleY(1.015); }
+/* ===== 精灵视口（透明融入场景） ===== */
+.sprite-viewport {
+  position: relative;
+  width: 135px;
+  height: 135px;
+  overflow: hidden;
+  z-index: 5;
 }
-.animate-breath {
-  animation: linvis-breath 3s ease-in-out infinite;
-}
-
-/* 打字节奏微晃 */
-@keyframes linvis-typing-shake {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  25% { transform: translate(0.5px, -0.5px) rotate(0.2deg); }
-  75% { transform: translate(-0.5px, 0.5px) rotate(-0.2deg); }
-}
-.animate-typing-shake {
-  animation: linvis-typing-shake 0.18s ease-in-out infinite;
+.sprite-strip {
+  height: 100%;
+  width: auto;
+  max-width: none !important;
+  display: block;
 }
 
-/* 打字小手跳动 */
-@keyframes linvis-hand-left {
-  0%, 100% { transform: translate(0, 0); }
-  50% { transform: translate(-1.5px, -5px); }
+/* ===== 悬浮名牌 ===== */
+.agent-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  z-index: 6;
+  margin-top: -4px;
 }
-@keyframes linvis-hand-right {
-  0%, 100% { transform: translate(0, 0); }
-  50% { transform: translate(1.5px, -6px); }
-}
-.animate-hand-l {
-  animation: linvis-hand-left 0.15s ease-in-out infinite;
-}
-.animate-hand-r {
-  animation: linvis-hand-right 0.18s ease-in-out infinite;
-}
-
-/* 眨眼动画 */
-@keyframes linvis-blink {
-  0%, 90%, 100% { transform: scaleY(1); }
-  95% { transform: scaleY(0.15); }
-}
-.animate-blink {
-  animation: linvis-blink 3.8s ease-in-out infinite;
-  transform-origin: center;
+.label-name { font-size: 12px; font-weight: 700; color: #444; }
+.label-role { font-size: 9px; color: #999; }
+.label-status {
+  display: inline-flex; align-items: center;
+  padding: 1px 7px; border-radius: 6px;
+  font-size: 10px; font-weight: 700; margin-top: 2px;
 }
 
-/* 飘动 Zzz */
-@keyframes linvis-float-zzz {
-  0% { transform: translate(0, 8px) scale(0.6); opacity: 0; }
-  50% { opacity: 0.8; }
-  100% { transform: translate(12px, -24px) scale(1.1); opacity: 0; }
+/* ===== Zzz 飘浮 ===== */
+.zzz-overlay {
+  position: absolute; top: 6px; right: 6px;
+  z-index: 10; pointer-events: none;
 }
-.animate-zzz-1 { animation: linvis-float-zzz 2.6s ease-in-out infinite; }
-.animate-zzz-2 { animation: linvis-float-zzz 2.6s ease-in-out infinite 1.3s; }
-
-/* 咖啡飘热气 */
-@keyframes linvis-steam {
-  0% { stroke-dashoffset: 20; opacity: 0; }
-  50% { opacity: 0.7; }
-  100% { stroke-dashoffset: 0; opacity: 0; }
+.zzz {
+  position: absolute;
+  font-weight: 900; color: #818cf8;
 }
-.animate-steam {
-  stroke-dasharray: 10;
-  animation: linvis-steam 2.2s linear infinite;
+.zzz-1 { font-size: 18px; animation: zzz-up 2.5s ease-in-out infinite; right: 0; top: 0; }
+.zzz-2 { font-size: 13px; animation: zzz-up 2.5s ease-in-out infinite 0.8s; right: -6px; top: -4px; }
+.zzz-3 { font-size: 9px; animation: zzz-up 2.5s ease-in-out infinite 1.6s; right: -10px; top: -2px; }
+@keyframes zzz-up {
+  0% { transform: translate(0,4px) scale(0.5); opacity: 0; }
+  30% { opacity: 0.9; }
+  100% { transform: translate(10px,-24px) scale(1.2); opacity: 0; }
 }
 
-/* 搓游戏机小手 */
-@keyframes linvis-play {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-1.5px) scale(1.05); }
+/* ===== 独角发光 ===== */
+.horn-glow {
+  position: absolute;
+  top: 5%; left: 30%; width: 40%; height: 25%;
+  background: radial-gradient(circle, rgba(255,200,50,0.5) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none; z-index: 10;
+  animation: horn-pulse 1.5s ease-in-out infinite;
 }
-.animate-play {
-  animation: linvis-play 0.25s ease-in-out infinite;
-}
-
-/* 代码滚动 */
-@keyframes linvis-code-scroll {
-  0% { transform: translateY(0); }
-  100% { transform: translateY(-30px); }
-}
-.animate-code-scroll {
-  animation: linvis-code-scroll 5s linear infinite;
+@keyframes horn-pulse {
+  0%,100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
 }
 
-/* 3D 吊牌微弱摇晃动画 */
-@keyframes linvis-sign-swing {
-  0%, 100% { transform: rotate(3deg) rotateX(12deg) rotateY(-5deg); }
-  50% { transform: rotate(-3deg) rotateX(12deg) rotateY(-5deg); }
+/* ===== 警报灯 ===== */
+.alert-lamp {
+  position: absolute; top: -4px; right: -4px;
+  width: 16px; height: 16px; border-radius: 50%; z-index: 10;
+  animation: beacon-flash 0.8s ease-in-out infinite alternate;
 }
-@keyframes linvis-sign-swing-reverse {
-  0%, 100% { transform: rotate(-3deg) rotateX(12deg) rotateY(5deg); }
-  50% { transform: rotate(3deg) rotateX(12deg) rotateY(5deg); }
-}
-.animate-sign-swing {
-  animation: linvis-sign-swing 5s ease-in-out infinite;
-  transform-origin: top center;
-}
-.animate-sign-swing-reverse {
-  animation: linvis-sign-swing-reverse 5.5s ease-in-out infinite;
-  transform-origin: top center;
+@keyframes beacon-flash {
+  0% { background: #f59e0b; box-shadow: 0 0 4px #f59e0b; }
+  100% { background: #ef4444; box-shadow: 0 0 12px #ef4444; }
 }
 
-/* 3D 木质吊牌立体阴影与边框过渡 */
-.wood-sign-3d {
-  box-shadow: 
-    3px 5px 10px rgba(0, 0, 0, 0.18),
-    inset 1px 1px 2px rgba(255, 255, 255, 0.8),
-    inset -2px -2px 5px rgba(0, 0, 0, 0.15);
-  text-shadow: 0.5px 0.5px 1px rgba(255, 255, 255, 0.5);
-  transform-style: preserve-3d;
+/* ===== 气泡 ===== */
+.task-bubble-w, .task-bubble-f {
+  position: absolute;
+  top: -32px; left: 50%; transform: translateX(-50%);
+  z-index: 30; width: 150px;
+  text-align: center;
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.task-bubble-w {
+  background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46;
+}
+.task-bubble-f {
+  background: #fffbeb; border: 1px solid #fde68a; color: #92400e;
+}
+.task-bubble-w p, .task-bubble-f p {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 700; margin: 0;
+}
+.task-bubble-w span, .task-bubble-f span {
+  font-weight: 700; font-size: 9px;
 }
 

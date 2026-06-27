@@ -76,3 +76,25 @@ def get_agent_active(agent_key: str) -> dict | None:
         pass
     return None
 
+
+def clear_agent_active(agent_key: str):
+    """
+    立即清除特定 Agent 的活跃状态，让其恢复为空闲或睡觉。
+    """
+    try:
+        r = get_redis()
+        if r:
+            r.delete(f"linvis:active:{agent_key}")
+    except Exception as e:
+        logger.warning(f"清除 Agent {agent_key} 状态失败: {e}")
+
+
+def clear_all_agents_active():
+    """
+    清除所有 Agent 的活跃状态。
+    """
+    agents = ["chat", "legal", "service", "planner", "checker", "auditor"]
+    for a in agents:
+        clear_agent_active(a)
+
+

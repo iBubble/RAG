@@ -25,7 +25,7 @@ interface SystemStatus {
 }
 
 interface AgentInfo {
-  status: 'working' | 'sleeping' | 'funny' | 'idle';
+  status: 'working' | 'sleeping' | 'funny' | 'idle' | 'interrupted';
   funny_event: string | null;
   current_project: string | null;
   current_task: string | null;
@@ -41,8 +41,9 @@ interface LinvisData {
     chat: AgentInfo;
     legal: AgentInfo;
     service: AgentInfo;
-    contrarian: AgentInfo;
-    arbiter: AgentInfo;
+    planner: AgentInfo;
+    checker: AgentInfo;
+    auditor: AgentInfo;
   };
 }
 
@@ -71,8 +72,9 @@ const defaultStatus: LinvisData = {
     chat: { status: 'idle', funny_event: null, current_project: null, current_task: null },
     legal: { status: 'idle', funny_event: null, current_project: null, current_task: null },
     service: { status: 'idle', funny_event: null, current_project: null, current_task: null },
-    contrarian: { status: 'idle', funny_event: null, current_project: null, current_task: null },
-    arbiter: { status: 'idle', funny_event: null, current_project: null, current_task: null }
+    planner: { status: 'idle', funny_event: null, current_project: null, current_task: null },
+    checker: { status: 'idle', funny_event: null, current_project: null, current_task: null },
+    auditor: { status: 'idle', funny_event: null, current_project: null, current_task: null }
   }
 };
 
@@ -83,7 +85,90 @@ export default function Linvis() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  const [showAuditModal, setShowAuditModal] = useState(false);
+  const [auditProjectId, setAuditProjectId] = useState<string | null>(null);
+  const [frozenData, setFrozenData] = useState<any>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [resumeStreamOutput, setResumeStreamOutput] = useState('');
+  const [isResuming, setIsResuming] = useState(false);
+
   const API_BASE = import.meta.env.VITE_API_BASE || '';
+
+  const handleOpenAuditModal = async (projectId: string) => {
+    try {
+      setAuditProjectId(projectId);
+      setFrozenData(null);
+      setEditDraft('');
+      setResumeStreamOutput('');
+      setIsResuming(false);
+      setShowAuditModal(true);
+
+      const res = await fetch(`${API_BASE}/api/eino/frozen/${projectId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.status === 'success') {
+          setFrozenData(json.data);
+          setEditDraft(json.data.draft || '');
+        }
+      }
+    } catch (e) {
+      console.error("加载冻结状态失败", e);
+    }
+  };
+
+  const handleResume = async () => {
+    if (!auditProjectId) return;
+    setIsResuming(true);
+    setResumeStreamOutput('');
+    try {
+      const response = await fetch(`${API_BASE}/api/eino/resume`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          project_id: auditProjectId,
+          draft: editDraft
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP status ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) return;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (payload.type === 'token') {
+                setResumeStreamOutput(prev => prev + payload.content);
+              }
+            } catch (e) {
+              // 忽略解析异常
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("恢复执行失败", e);
+      setResumeStreamOutput(prev => prev + `\n❌ 恢复失败: ${e}`);
+    } finally {
+      setIsResuming(false);
+      fetchData();
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -171,168 +256,179 @@ export default function Linvis() {
         {/* 粉笔白板 */}
         <LinvisWhiteboard status={data.system_status} />
 
-        {/* 实际办公室环境 (一整片 3D 大地板，带地毯分区排布) */}
-        <div className="linvis-office-floor w-full min-h-[500px] flex flex-col gap-6 relative">
-          
-          {/* 3D 办公室吊顶/吊灯投影效果 */}
-          <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/10 pointer-events-none z-20"></div>
+        {/* ====== 简洁办公室场景 ====== */}
+        <div className="office-scene">
+          <div className="office-floor" />
 
-          {/* 1. 接待区 (前台地毯) */}
-          {hasVisibleInZone(['chat', 'service', 'contrarian', 'arbiter']) && (
-            <div className="carpet-reception rounded-[24px] pt-10 pb-4 pl-24 pr-4 flex flex-col items-center relative z-10">
-              {/* 3D 窗户光影投影 */}
-              <div className="absolute right-[-10px] top-[-10px] w-48 h-48 bg-white/25 rotate-12 blur-sm pointer-events-none" style={{ clipPath: 'polygon(10% 0%, 100% 0%, 90% 100%, 0% 100%)' }}></div>
-              <div className="absolute right-10 top-5 w-12 h-24 border border-white/10 opacity-30 pointer-events-none"></div>
-              
-              {/* 竖向 3D 挂牌 */}
-              <div className="absolute left-8 top-1/2 -translate-y-1/2 flex flex-col items-center z-20">
-                {/* 两个小挂钩 */}
-                <div className="flex justify-between w-8 px-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-br from-gray-200 via-gray-400 to-gray-600 shadow-[1px_2px_3px_rgba(0,0,0,0.2)] border border-gray-400"></div>
-                  <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-br from-gray-200 via-gray-400 to-gray-600 shadow-[1px_2px_3px_rgba(0,0,0,0.2)] border border-gray-400"></div>
+          <div className="office-content">
+            {/* 第一排：业务处理区 */}
+            {hasVisibleInZone(['chat', 'service', 'planner', 'checker', 'auditor']) && (
+              <div className="office-zone">
+                <div className="zone-signboard sign-wood">
+                  <span className="sign-icon">🛎️</span>
+                  <span className="sign-text">业务处理区</span>
                 </div>
-                {/* 挂绳 */}
-                <div className="flex justify-between w-8 h-8 px-2.5 -mt-0.5 opacity-80">
-                  <div className="w-[2px] h-full bg-gradient-to-b from-gray-500 to-[#f43f5e]"></div>
-                  <div className="w-[2px] h-full bg-gradient-to-b from-gray-500 to-[#f43f5e]"></div>
-                </div>
-                {/* 吊牌本体 */}
-                <div className="px-3 py-4 bg-gradient-to-b from-[#fff1f2] to-[#fda4af] border-2 border-[#f43f5e] border-b-4 border-r-4 rounded-2xl wood-sign-3d flex flex-col items-center gap-2 select-none animate-sign-swing">
-                  <span className="text-lg animate-pulse filter drop-shadow-[0_2px_3px_rgba(0,0,0,0.15)]">🛎️</span>
-                  <div className="flex flex-col items-center text-[11px] font-black text-rose-950 tracking-widest leading-none gap-0.5">
-                    {"智能前台接待".split("").map((char, idx) => (
-                      <span key={idx} className="filter drop-shadow-[0.5px_0.5px_0px_rgba(255,255,255,0.7)]">{char}</span>
-                    ))}
-                  </div>
+                <div className="desk-row">
+                  {showAgent('chat') && <LinvisDesk agentKey="chat" {...getAgentProps('chat', '小智(Smart)', 'male', 'horse')} roleTitle="智能客服咨询" info={data.agents.chat} />}
+                  {showAgent('planner') && <LinvisDesk agentKey="planner" {...getAgentProps('planner', '小划 (Planner)', 'male', 'robot')} roleTitle="Eino任务规划" info={data.agents.planner} />}
+                  {showAgent('checker') && <LinvisDesk agentKey="checker" {...getAgentProps('checker', '小定量 (Checker)', 'female', 'robot')} roleTitle="Eino定量校验" info={data.agents.checker} />}
+                  {showAgent('auditor') && (
+                    <div
+                      onClick={() => {
+                        if (data.agents.auditor.status === 'interrupted') {
+                          const pid = data.agents.auditor.current_project;
+                          if (pid) handleOpenAuditModal(pid);
+                        }
+                      }}
+                      className={data.agents.auditor.status === 'interrupted' ? 'cursor-pointer' : ''}
+                    >
+                      <LinvisDesk agentKey="auditor" {...getAgentProps('auditor', '小定性 (Auditor)', 'male', 'robot')} roleTitle="Eino定性审计" info={data.agents.auditor} />
+                    </div>
+                  )}
                 </div>
               </div>
-              
-              <div className="flex flex-wrap justify-center gap-16 z-10">
-                {showAgent('chat') && <LinvisDesk agentKey="chat" {...getAgentProps('chat', '小智 (Agent)', 'male', 'horse')} roleTitle="智能对话专家" info={data.agents.chat} />}
-                {showAgent('service') && <LinvisDesk agentKey="service" {...getAgentProps('service', '小管 (Manager)', 'female', 'horse')} roleTitle="文档审查专家" info={data.agents.service} />}
-              </div>
+            )}
 
-              {/* 3D 粘土盆栽 */}
-              <div className="absolute bottom-3 left-4 w-12 h-14 opacity-90 pointer-events-none z-10">
-                <svg viewBox="0 0 40 50" className="w-full h-full drop-shadow-md">
-                  <ellipse cx="20" cy="40" rx="10" ry="6" fill="#e11d48" />
-                  <path d="M12,40 L15,28 L25,28 L28,40 Z" fill="#f43f5e" />
-                  <ellipse cx="20" cy="28" rx="8" ry="3" fill="#fda4af" />
-                  {/* 绿叶 */}
-                  <path d="M20,28 Q20,10 12,14 Q20,20 20,28 Z" fill="#10b981" />
-                  <path d="M20,28 Q25,8 28,18 Q22,22 20,28 Z" fill="#059669" />
-                  <path d="M20,28 Q10,18 20,22 Z" fill="#34d399" />
-                </svg>
+            {/* 第二排：项目处理组 */}
+            {hasVisibleInZone(['legal', 'precompute', 'service']) && (
+              <div className="office-zone">
+                <div className="zone-signboard sign-brass">
+                  <span className="sign-icon">💡</span>
+                  <span className="sign-text">核心项目区</span>
+                </div>
+                <div className="desk-row">
+                  {showAgent('service') && <LinvisDesk agentKey="service" {...getAgentProps('service', '小管 (Manager)', 'female', 'horse')} roleTitle="文书审查专家" info={data.agents.service} />}
+                  {showAgent('legal') && <LinvisDesk agentKey="legal" {...getAgentProps('legal', '执法知识专家', 'male', 'horse')} roleTitle="执法知识专家" info={data.agents.legal} />}
+                  {showAgent('precompute') && <LinvisDesk agentKey="precompute" {...getAgentProps('precompute', '小预 (Precalc)', 'male', 'horse')} roleTitle="智能学习预计算" info={data.agents.precompute} />}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* 2. 项目处理区 (项目地毯) */}
-          {hasVisibleInZone(['legal', 'precompute']) && (
-            <div className="carpet-case rounded-[24px] pt-10 pb-4 pl-24 pr-4 flex flex-col items-center relative z-20">
-              {/* 3D 窗户光影投影 */}
-              <div className="absolute left-[-20px] top-[-10px] w-48 h-48 bg-white/30 -rotate-12 blur-sm pointer-events-none" style={{ clipPath: 'polygon(0% 0%, 90% 0%, 100% 100%, 10% 100%)' }}></div>
-              
-              {/* 竖向 3D 挂牌 */}
-              <div className="absolute left-8 top-1/2 -translate-y-1/2 flex flex-col items-center z-20">
-                {/* 两个小挂钩 */}
-                <div className="flex justify-between w-8 px-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-br from-gray-200 via-gray-400 to-gray-600 shadow-[1px_2px_3px_rgba(0,0,0,0.2)] border border-gray-400"></div>
-                  <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-br from-gray-200 via-gray-400 to-gray-600 shadow-[1px_2px_3px_rgba(0,0,0,0.2)] border border-gray-400"></div>
+            {/* 第三排：资料处理组 */}
+            {hasVisibleInZone(['vectorizer', 'graph', 'summary']) && (
+              <div className="office-zone">
+                <div className="zone-signboard sign-steel">
+                  <span className="sign-icon">📁</span>
+                  <span className="sign-text">资料工坊</span>
                 </div>
-                {/* 挂绳 */}
-                <div className="flex justify-between w-8 h-8 px-2.5 -mt-0.5 opacity-80">
-                  <div className="w-[2px] h-full bg-gradient-to-b from-gray-500 to-[#d97706]"></div>
-                  <div className="w-[2px] h-full bg-gradient-to-b from-gray-500 to-[#d97706]"></div>
-                </div>
-                {/* 吊牌本体 */}
-                <div className="px-3 py-4 bg-gradient-to-b from-[#fef3c7] to-[#f59e0b] border-2 border-[#d97706] border-b-4 border-r-4 rounded-2xl wood-sign-3d flex flex-col items-center gap-2 select-none animate-sign-swing-reverse">
-                  <span className="text-lg filter drop-shadow-[0_2px_3px_rgba(0,0,0,0.15)]">💡</span>
-                  <div className="flex flex-col items-center text-[11px] font-black text-amber-950 tracking-widest leading-none gap-0.5">
-                    {"核心项目处理".split("").map((char, idx) => (
-                      <span key={idx} className="filter drop-shadow-[0.5px_0.5px_0px_rgba(255,255,255,0.7)]">{char}</span>
-                    ))}
-                  </div>
+                <div className="desk-row">
+                  {showAgent('vectorizer') && <LinvisDesk agentKey="vectorizer" {...getAgentProps('vectorizer', '小向 (Vector)', 'male', 'horse')} roleTitle="后端向量化入库" info={data.agents.vectorizer} />}
+                  {showAgent('graph') && <LinvisDesk agentKey="graph" {...getAgentProps('graph', '小图 (Graphy)', 'female', 'horse')} roleTitle="知识图谱提炼" info={data.agents.graph} />}
+                  {showAgent('summary') && <LinvisDesk agentKey="summary" {...getAgentProps('summary', '小聚 (Communer)', 'male', 'horse')} roleTitle="图谱社区摘要" info={data.agents.summary} />}
                 </div>
               </div>
-              
-              <div className="flex flex-wrap justify-center gap-16 z-10">
-                {showAgent('legal') && <LinvisDesk agentKey="legal" {...getAgentProps('legal', '行业知识专家', 'male', 'horse')} roleTitle="行业知识专家" info={data.agents.legal} />}
-                {showAgent('precompute') && <LinvisDesk agentKey="precompute" {...getAgentProps('precompute', '小预 (Precalc)', 'male', 'horse')} roleTitle="智能学习预计算" info={data.agents.precompute} />}
-              </div>
-
-              {/* 3D 粘土落地灯 */}
-              <div className="absolute bottom-2 right-4 w-10 h-20 opacity-95 pointer-events-none z-10">
-                <svg viewBox="0 0 30 60" className="w-full h-full drop-shadow-md">
-                  <ellipse cx="15" cy="55" rx="10" ry="3" fill="#78350f" />
-                  <line x1="15" y1="55" x2="15" y2="25" stroke="#d97706" strokeWidth="2.5" />
-                  {/* 灯罩 */}
-                  <path d="M7,25 L23,25 L19,12 L11,12 Z" fill="#fbbf24" />
-                  <ellipse cx="15" cy="25" rx="8" ry="2.5" fill="#f59e0b" />
-                  {/* 柔和的灯光漫反射圈 */}
-                  <circle cx="15" cy="25" r="14" fill="#fbbf24" opacity="0.15" />
-                </svg>
-              </div>
-            </div>
-          )}
-
-          {/* 3. 资料处理工作区 (资料地毯) */}
-          {hasVisibleInZone(['vectorizer', 'graph', 'summary']) && (
-            <div className="carpet-data rounded-[24px] pt-10 pb-4 pl-24 pr-4 flex flex-col items-center relative z-30">
-              {/* 3D 窗户光影投影 */}
-              <div className="absolute right-[-20px] top-[-10px] w-56 h-56 bg-white/25 rotate-45 blur-sm pointer-events-none" style={{ clipPath: 'polygon(15% 0%, 100% 0%, 85% 100%, 0% 100%)' }}></div>
-              
-              {/* 竖向 3D 挂牌 */}
-              <div className="absolute left-8 top-1/2 -translate-y-1/2 flex flex-col items-center z-20">
-                {/* 两个小挂钩 */}
-                <div className="flex justify-between w-8 px-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-br from-gray-200 via-gray-400 to-gray-600 shadow-[1px_2px_3px_rgba(0,0,0,0.2)] border border-gray-400"></div>
-                  <div className="w-2.5 h-2.5 rounded-full bg-gradient-to-br from-gray-200 via-gray-400 to-gray-600 shadow-[1px_2px_3px_rgba(0,0,0,0.2)] border border-gray-400"></div>
-                </div>
-                {/* 挂绳 */}
-                <div className="flex justify-between w-8 h-8 px-2.5 -mt-0.5 opacity-80">
-                  <div className="w-[2px] h-full bg-gradient-to-b from-gray-500 to-[#0284c7]"></div>
-                  <div className="w-[2px] h-full bg-gradient-to-b from-gray-500 to-[#0284c7]"></div>
-                </div>
-                {/* 吊牌本体 */}
-                <div className="px-3 py-4 bg-gradient-to-b from-[#f0f9ff] to-[#7dd3fc] border-2 border-[#0284c7] border-b-4 border-r-4 rounded-2xl wood-sign-3d flex flex-col items-center gap-2 select-none animate-sign-swing">
-                  <span className="text-lg filter drop-shadow-[0_2px_3px_rgba(0,0,0,0.15)]">📁</span>
-                  <div className="flex flex-col items-center text-[11px] font-black text-sky-950 tracking-widest leading-none gap-0.5">
-                    {"资料处理工作".split("").map((char, idx) => (
-                      <span key={idx} className="filter drop-shadow-[0.5px_0.5px_0px_rgba(255,255,255,0.7)]">{char}</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="flex flex-wrap justify-center gap-16 z-10">
-                {showAgent('vectorizer') && <LinvisDesk agentKey="vectorizer" {...getAgentProps('vectorizer', '小向 (Vector)', 'male', 'horse')} roleTitle="后端向量化入库" info={data.agents.vectorizer} />}
-                {showAgent('graph') && <LinvisDesk agentKey="graph" {...getAgentProps('graph', '小图 (Graphy)', 'female', 'horse')} roleTitle="知识图谱提炼" info={data.agents.graph} />}
-                {showAgent('summary') && <LinvisDesk agentKey="summary" {...getAgentProps('summary', '小聚 (Communer)', 'male', 'horse')} roleTitle="图谱社区摘要" info={data.agents.summary} />}
-              </div>
-
-              {/* 3D 粘土文件柜 */}
-              <div className="absolute bottom-3 left-4 w-12 h-16 opacity-90 pointer-events-none z-10">
-                <svg viewBox="0 0 35 48" className="w-full h-full drop-shadow-md">
-                  {/* 外柜 */}
-                  <rect x="2" y="2" width="31" height="44" rx="4" fill="#0284c7" />
-                  <rect x="4" y="4" width="27" height="40" rx="2" fill="#0369a1" />
-                  {/* 抽屉 1 */}
-                  <rect x="6" y="8" width="23" height="10" rx="1.5" fill="#38bdf8" />
-                  <circle cx="17.5" cy="13" r="1.8" fill="#e0f2fe" />
-                  {/* 抽屉 2 */}
-                  <rect x="6" y="20" width="23" height="10" rx="1.5" fill="#38bdf8" />
-                  <circle cx="17.5" cy="25" r="1.8" fill="#e0f2fe" />
-                  {/* 抽屉 3 */}
-                  <rect x="6" y="32" width="23" height="10" rx="1.5" fill="#38bdf8" />
-                  <circle cx="17.5" cy="37" r="1.8" fill="#e0f2fe" />
-                </svg>
-              </div>
-            </div>
-          )}
-
+            )}
+          </div>
         </div>
       </div>
+
+      {/* 法务人工审核控制台 (Modal) */}
+      {showAuditModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-[#e0dcd5] shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col select-none">
+            
+            {/* Modal 头部 */}
+            <div className="px-6 py-4 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-[#e0dcd5] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">⚖️</span>
+                <div>
+                  <h3 className="font-bold text-gray-900 text-base">Eino 法务合规审查控制台</h3>
+                  <p className="text-xs text-gray-500">发现严重合规警报，正在人机共创拦截挂起中</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowAuditModal(false)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1.5 hover:bg-gray-100 rounded-full cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal 内容 */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {!frozenData ? (
+                <div className="flex flex-col items-center justify-center py-12 space-y-3">
+                  <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-sm text-gray-500">正在恢复断点并加载 Redis 冻结状态...</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* 左边：审查上下文 */}
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5">👤 原始用户提问</h4>
+                      <div className="p-3 bg-gray-50 border border-gray-200 rounded-2xl text-gray-800 text-sm font-medium leading-relaxed max-h-32 overflow-y-auto">
+                        {frozenData.request?.message}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="text-xs font-black text-amber-600 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                        ⚠️ 定量规则校验 (Checker 拦截意见)
+                      </h4>
+                      <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-2xl leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap">
+                        {frozenData.check_result}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 右边：草稿编辑与输出 */}
+                  <div className="space-y-4 flex flex-col h-full">
+                    <div className="flex-1 flex flex-col min-h-[220px]">
+                      <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5">📝 智能初稿修改器</h4>
+                      <textarea
+                        value={editDraft}
+                        onChange={(e) => setEditDraft(e.target.value)}
+                        disabled={isResuming}
+                        className="flex-1 p-3 border border-gray-200 rounded-2xl text-sm font-medium leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white text-gray-800"
+                        placeholder="在此修改违规草稿，确保合规后点击恢复..."
+                      />
+                    </div>
+
+                    {/* 流式输出 */}
+                    {(resumeStreamOutput || isResuming) && (
+                      <div>
+                        <h4 className="text-xs font-black text-indigo-600 uppercase tracking-widest mb-1.5 flex items-center gap-1 animate-pulse">
+                          ⚖️ Auditor 定性最终流式输出
+                        </h4>
+                        <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-2xl text-gray-800 text-sm font-medium leading-relaxed max-h-36 overflow-y-auto whitespace-pre-wrap">
+                          {resumeStreamOutput || "正在连接 Go 网关恢复端点..."}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal 底部 */}
+            <div className="px-6 py-4 border-t border-[#e0dcd5] bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={() => setShowAuditModal(false)}
+                className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-100 text-sm font-bold cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleResume}
+                disabled={!frozenData || isResuming}
+                className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white rounded-xl disabled:opacity-50 text-sm font-bold shadow-md cursor-pointer flex items-center gap-1.5"
+              >
+                {isResuming ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>正在恢复生成...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>批准通过并恢复 (Resume)</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

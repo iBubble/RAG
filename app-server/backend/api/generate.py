@@ -1960,7 +1960,7 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
                 custom_persona = metadata.get("aiPersona", "").strip()
                 break
 
-    from core.redis_client import set_agent_active
+    from core.redis_client import set_agent_active, clear_agent_active, clear_all_agents_active
     set_agent_active("chat", f"回答咨询: {req.message[:20]}...", project_name, duration=25)
 
     # ── L2 缓存检查：完整回答命中则秒级返回 ──
@@ -2004,6 +2004,9 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
 
 
     is_simple = _is_simple_query(req.message)
+
+    # 1. 启动 planner 进行意图与改写分析
+    set_agent_active("planner", "分析问题意图与消解指代...", project_name, duration=40)
 
     # ── 查询预处理管线（并行化优化）──
     # WHY: 意图分类（LLM）与指代消解（纯 CPU）之间无数据依赖，
@@ -2202,6 +2205,15 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
     _strategy_fp = f"{intent}:{strategy.get('vector_top_k', 8)}:{strategy.get('inject_data_analysis', False)}"
 
     if use_rag:
+        # 激活检索与校验模块，清除 planner 状态
+        clear_agent_active("planner")
+        set_agent_active("vectorizer", "执行案件与公共法典双路检索中...", project_name, duration=40)
+        set_agent_active("service", "检索结果关联度核验中...", project_name, duration=40)
+        if intent == "data_analysis":
+            set_agent_active("checker", "使用 DuckDB 引擎执行 SQL 数值分析...", project_name, duration=40)
+        else:
+            set_agent_active("checker", "核验并校验案件数据与适用法条准确性...", project_name, duration=40)
+
         # ── L1 缓存检查：检索结果命中则跳过多路并行检索 ──
         from core.chat_cache import get_rag_cache, set_rag_cache
         l1_hit = get_rag_cache(
@@ -2314,20 +2326,11 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
         )
 
     # ── 统一排版格式约束（所有对话模式共享）──
-    # WHY: 不加格式约束时，LLM 倾向于生成连续长段落，所有要点挤成一行，
-    #      前端虽然有 whitespace-pre-wrap，但模型未输出换行符就无效。
-    #      注入后模型会自觉使用 Markdown 标记和适当分段。
+    # WHY: 简化格式指令，避免因为过度干预(如强行首行缩进、强制拆分单行)导致 Markdown 列表破损与解析混乱。
     _FORMAT_RULES = (
-        "\n\n📐 **输出排版格式要求**（必须严格遵循）：\n"
-        "1. **结构化分段**：回答内容必须按主题分段，每段之间用空行隔开，严禁将所有内容挤在一个段落中。\n"
-        "2. **善用 Markdown 标记**：\n"
-        "   - 用 `##` / `###` 标记主要章节标题\n"
-        "   - 用 `**粗体**` 标记关键术语、金额、日期等重点信息\n"
-        "   - 用有序列表（`1. 2. 3.`）或无序列表（`- `）罗列多个要点\n"
-        "   - 涉及多项赔偿/费用/条款时，必须逐项单独成行，每项独占一行\n"
-        "3. **段落首行缩进**：纯叙述性段落的开头请使用两个全角空格（"  "）缩进\n"
-        "4. **禁止内容堆叠**：严禁在一行内罗列超过 2 个独立要点；"
-        "如需列举 3 项以上，必须换行使用列表格式"
+        "\n\n📐 **输出排版格式要求**：\n"
+        "1. 使用清晰的 Markdown 语法进行排版（如标题、列表、粗体）。\n"
+        "2. 结构合理分段，严禁过度换行或将不相干的文字拆成单独一行。"
     )
     sys_prompt += _FORMAT_RULES
 
@@ -2380,32 +2383,44 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
         WHY: _sse_generator 已经累积了 _full_text_parts，但它是内部变量。
              通过外层包装器拦截所有 yield 的 token 事件来重建完整文本。
         """
+        # 大模型回答与定性审计润色开始，清除检索和规划状态
+        clear_agent_active("planner")
+        clear_agent_active("vectorizer")
+        clear_agent_active("service")
+        clear_agent_active("checker")
+        set_agent_active("chat", "思考并组织生成回复中...", project_name, duration=60)
+        set_agent_active("auditor", "合规审查与定性润色中...", project_name, duration=60)
+
         _answer_parts: list[str] = []
         last_active_time = time.time()
-        async for event in _sse_generator(
-            prompt, model=req.model, think_mode=think_mode, sources=source_files,
-            num_predict=chat_num_predict, num_ctx=chat_num_ctx,
-            data_analysis=da_meta if (use_rag or req.force_data_analysis) else None,
-            project_id=req.project_id,
-        ):
-            yield event
-            # ── 续期 chat 活跃状态（每 10 秒续期一次，防止生成长文本时超时） ──
-            now_time = time.time()
-            if now_time - last_active_time > 10:
-                try:
-                    set_agent_active("chat", f"回答咨询: {req.message[:20]}...", project_name, duration=25)
-                    last_active_time = now_time
-                except Exception:
-                    pass
+        try:
+            async for event in _sse_generator(
+                prompt, model=req.model, think_mode=think_mode, sources=source_files,
+                num_predict=chat_num_predict, num_ctx=chat_num_ctx,
+                data_analysis=da_meta if (use_rag or req.force_data_analysis) else None,
+                project_id=req.project_id,
+            ):
+                yield event
+                # ── 续期 chat 与 auditor 活跃状态（每 10 秒续期一次，防止生成长文本时超时） ──
+                now_time = time.time()
+                if now_time - last_active_time > 10:
+                    try:
+                        set_agent_active("chat", "思考并组织生成回复中...", project_name, duration=25)
+                        set_agent_active("auditor", "合规审查与定性润色中...", project_name, duration=25)
+                        last_active_time = now_time
+                    except Exception:
+                        pass
 
-            # 拦截 token 事件，累积完整回答
-            if event.startswith("data: "):
-                try:
-                    _payload = json.loads(event[6:].strip())
-                    if "token" in _payload:
-                        _answer_parts.append(_payload["token"])
-                except Exception:
-                    pass
+                # 拦截 token 事件，累积完整回答
+                if event.startswith("data: "):
+                    try:
+                        _payload = json.loads(event[6:].strip())
+                        if "token" in _payload:
+                            _answer_parts.append(_payload["token"])
+                    except Exception:
+                        pass
+        finally:
+            clear_all_agents_active()
 
         # 流结束后写入 L2 缓存
         if _answer_parts:
@@ -2427,13 +2442,14 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
 @router.get("/llm/status")
 async def llm_status():
     """查询 Ollama 服务状态与模型列表，附带全系统巡检健康度状态。"""
-    from core.config import IS_RAID_ACTIVE
+    from core.watchdog import SYSTEM_READ_ONLY
     from core.vector_store import _get_client
     from core.graph_rag import graph_engine
     from core.redis_client import get_redis
 
     status_data = await get_ollama_status()
-    status_data["raid_status"] = "online" if IS_RAID_ACTIVE else "offline"
+    is_raid_active = not SYSTEM_READ_ONLY
+    status_data["raid_status"] = "online" if is_raid_active else "offline"
 
     # 全链路巡检逻辑 (方案 2)
     health_status = "green"
@@ -2447,7 +2463,7 @@ async def llm_status():
         errors.append("AI推理引擎(Ollama)离线")
 
     # 2. 检查存储阵列
-    if not IS_RAID_ACTIVE:
+    if not is_raid_active:
         health_status = "red"
         errors.append("NAS存储阵列离线")
 
@@ -2500,7 +2516,7 @@ async def llm_status():
             "ollama": "online" if ollama_ok else "offline",
             "qdrant": "online" if qdrant_ok else "offline",
             "neo4j": "online" if neo4j_ok else "offline",
-            "raid": "online" if IS_RAID_ACTIVE else "offline"
+            "raid": "online" if is_raid_active else "offline"
         }
     }
 
