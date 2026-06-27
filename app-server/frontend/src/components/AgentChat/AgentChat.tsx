@@ -77,6 +77,109 @@ export default function AgentChat({ projectId }: { projectId: string }) {
   const [chatMode, setChatMode] = useState<string>('smart');
   const [pastedImage, setPastedImage] = useState<string | null>(null);
   const fetchPublicSettings = useProjectStore(state => state.fetchPublicSettings);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // 切换项目或加载时，自动 focus 输入框
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [projectId]);
+
+  // 全局拦截粘贴事件并将其定向到当前对话框中
+  useEffect(() => {
+    const handleGlobalPaste = (e: ClipboardEvent) => {
+      const activeEl = document.activeElement;
+      // 如果焦点当前在其他的 input 或 textarea 上，不要干涉它
+      if (activeEl && (
+        activeEl.tagName === 'INPUT' || 
+        (activeEl.tagName === 'TEXTAREA' && activeEl !== textareaRef.current)
+      )) {
+        return;
+      }
+
+      const clipboardData = e.clipboardData;
+      if (!clipboardData) return;
+
+      let hasImage = false;
+      
+      // 1. 优先读取 files 里的图片（如本地复制的图片文件、系统截图等）
+      const files = clipboardData.files;
+      if (files && files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          if (file.type.startsWith('image/')) {
+            hasImage = true;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              if (event.target?.result) {
+                setPastedImage(event.target.result as string);
+              }
+            };
+            reader.readAsDataURL(file);
+            break;
+          }
+        }
+      }
+
+      // 2. 如果没有读取到，读取 items
+      if (!hasImage) {
+        const items = clipboardData.items;
+        if (items && items.length > 0) {
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.type.startsWith('image/') || item.kind === 'file') {
+              const file = item.getAsFile();
+              if (file && file.type.startsWith('image/')) {
+                hasImage = true;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                  if (event.target?.result) {
+                    setPastedImage(event.target.result as string);
+                  }
+                };
+                reader.readAsDataURL(file);
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // 3. 读取 HTML 里的 img 标签
+      if (!hasImage) {
+        const htmlText = clipboardData.getData('text/html');
+        if (htmlText) {
+          const match = htmlText.match(/<img[^>]+src=["'](data:image\/[^"']+)["']/i);
+          if (match && match[1]) {
+            hasImage = true;
+            setPastedImage(match[1]);
+          }
+        }
+      }
+
+      // 如果成功拦截图片，阻止默认操作（例如粘贴本地路径等），并强制聚焦输入框
+      if (hasImage) {
+        e.preventDefault();
+        textareaRef.current?.focus();
+      } else {
+        // 如果是纯文本粘贴，且当前焦点并不在输入框，将其自动追加并聚焦
+        if (activeEl !== textareaRef.current) {
+          const text = clipboardData.getData('text/plain');
+          if (text) {
+            e.preventDefault();
+            setInput(prev => prev + text);
+            textareaRef.current?.focus();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => {
+      window.removeEventListener('paste', handleGlobalPaste);
+    };
+  }, []);
 
   useEffect(() => {
     if (!publicSettings) {
@@ -230,6 +333,10 @@ export default function AgentChat({ projectId }: { projectId: string }) {
 
   const handleSend = async () => {
     if ((!input.trim() && !pastedImage) || isGenerating) return;
+    if (ollamaStatus === 'offline') {
+      alert('Ollama 算力服务当前处于离线状态，请先在算力配置中确认或启动服务。');
+      return;
+    }
     const textToSend = input;
     const imageToSend = pastedImage || undefined;
     setInput('');
@@ -791,6 +898,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
         )}
         <div className="relative">
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onPaste={handlePaste}
@@ -800,8 +908,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
                 handleSend();
               }
             }}
-            placeholder={ollamaStatus === 'online' ? '提问或创作内容' : 'Ollama 服务离线，请先启动...'}
-            disabled={ollamaStatus === 'offline'}
+            placeholder="提问或创作内容（支持 Cmd+V 粘贴图片）"
             className="w-full resize-none bg-white border border-[#C4B5A0] rounded-[28px] pr-28 pl-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#8B7355]/40 focus:border-[#8B7355] shadow-sm disabled:bg-gray-100 disabled:text-gray-400"
             rows={1}
             style={{ minHeight: '48px' }}
@@ -823,7 +930,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
             ) : (
               <button
                 onClick={handleSend}
-                disabled={(!input.trim() && !pastedImage) || ollamaStatus === 'offline'}
+                disabled={!input.trim() && !pastedImage}
                 className="w-9 h-9 rounded-full bg-[#5F6368] text-white hover:bg-[#474B4F] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center justify-center transition-colors shadow-sm"
               >
                 <ArrowUp className="w-4 h-4" />
