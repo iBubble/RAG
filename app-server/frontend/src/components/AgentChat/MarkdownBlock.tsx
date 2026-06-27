@@ -87,7 +87,12 @@ function injectStyle() {
 }
 
 function normalizeMarkdown(text: string): string {
-  return text
+  if (!text) return text;
+  // 强力消除在【参考文档区块】引用字样中间产生的非预期断行和空格，恢复行内的连贯性，并保证字体渲染大小统一
+  let cleaned = text.replace(/(【参考文档区块\s*)\n+(\s*)/g, '$1');
+  cleaned = cleaned.replace(/(【参考文档区块\s*)\s*(\d+)/g, '$1$2');
+
+  return cleaned
     .replace(/^[ 　]{1,4}(?=[^#\-\*\+\d\s])/gm, '')
     .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
     .replace(/([^\n])\n([-*+]\s)/g, '$1\n\n$2')

@@ -634,7 +634,7 @@ func auditorNode(llm *OllamaChat, nameAuditor string) *compose.Lambda {
 		setLinvisStatus("auditor", "working", "定性审计润色中...", input.Req.ProjectID)
 		writeEvent(input.Writer, "auditor", "auditing", fmt.Sprintf("⚖️ %s 正在审计并润色最终回答...", nameAuditor))
 
-		auditorPrompt := fmt.Sprintf("你是「%s」，最终公文综合审计定稿专家。\n收到：专家回答 + 定量校验结果。\n据此进行最终的合规审计并生成最终定稿回答。直接输出 Markdown 格式回答，严禁输出任何包含'仲裁官'、'裁决'、'判决'等带有司法或法庭色彩的词汇与 emoji 图标，首行标题必须使用庄重的政府公文风格，例如'📄 综合审计与定稿回复'或直接以正文开始，不要有废话。", nameAuditor)
+		auditorPrompt := fmt.Sprintf("你是「%s」，最终公文综合审计定稿专家。\n收到：专家回答 + 定量校验结果。\n据此进行综合审计并生成定稿回答。直接输出 Markdown 格式回答。", nameAuditor)
 		auditorInput := fmt.Sprintf("## 问题\n%s\n\n## 初稿\n%s\n\n## 定量校验\n%s", input.Req.Message, input.Draft, input.CheckResult)
 		auditorMessages := []*schema.Message{
 			{Role: schema.System, Content: auditorPrompt},
@@ -693,7 +693,7 @@ func RunEinoResumeOrchestration(ctx context.Context, req *EinoAgentRequest, draf
 	setLinvisStatus("auditor", "working", "人工审批通过，定性审计润色中...", req.ProjectID)
 	writeEvent(w, "auditor", "auditing", fmt.Sprintf("⚖️ %s 正在根据审批后的初稿进行最终审计并润色...", nameAuditor))
 
-	auditorPrompt := fmt.Sprintf("你是「%s」，最终公文综合审计定稿专家。\n收到：人工批准/修改后的回答草稿 + 定量校验结果。\n据此进行最终的合规审计并生成最终定稿回答。直接输出 Markdown 格式回答，严禁输出任何包含'仲裁官'、'裁决'、'判决'等带有司法或法庭色彩的词汇与 emoji 图标，首行标题必须使用庄重的政府公文风格，例如'📄 综合审计与定稿回复'或直接以正文开始，不要有废话。", nameAuditor)
+	auditorPrompt := fmt.Sprintf("你是「%s」，最终公文综合审计定稿专家。\n收到：人工批准/修改后的回答草稿 + 定量校验结果。\n据此进行综合审计并生成定稿回答。直接输出 Markdown 格式回答。", nameAuditor)
 	auditorInput := fmt.Sprintf("## 问题\n%s\n\n## 人工审批后的草稿\n%s\n\n## 原定量校验结果\n%s", req.Message, draft, checkResult)
 	auditorMessages := []*schema.Message{
 		{Role: schema.System, Content: auditorPrompt},
