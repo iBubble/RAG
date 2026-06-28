@@ -6,40 +6,40 @@
    全站多主题与深浅色色彩变量声明 (NotebookLM 风格)
    ═══════════════════════════════════════════════════════════════ */
 :root {
-  /* ── 浅色色彩方案 (类似于图一) ── */
-  --canvas-bg: #FAF9F6;
+  /* ── 浅色政务色彩方案 ── */
+  --canvas-bg: #F5F7FA;
   --panel-bg: #FFFFFF;
-  --outline-bg: #F3F1EC;
-  --border-soft: #E2DFD7;
-  --text-main: #1C1A18;
-  --text-muted: #73706A;
+  --outline-bg: #EAECEF;
+  --border-soft: #E5E7EB;
+  --text-main: #212529;
+  --text-muted: #6C757D;
   
-  /* 品牌前景色与强调色 (采用 NotebookLM 经典的深墨黑按钮/强调色) */
-  --primary-brand: #1E1F24;
-  --primary-brand-hover: #37383F;
-  --primary-brand-soft: #E5E7EB;
-  --primary-brand-border: #D1D5DB;
+  /* 品牌前景色与强调色 (标准市监政务蓝) */
+  --primary-brand: #0052D9;
+  --primary-brand-hover: #003EB3;
+  --primary-brand-soft: #E1ECFF;
+  --primary-brand-border: #B3D1FF;
 
-  /* 各种淡彩模块/卡片背景色 */
-  --card-pink-bg: #FFF1F2;
-  --card-pink-text: #9F1239;
-  --card-pink-border: #FECDD3;
+  /* 各种淡彩模块/卡片背景色 (剔除跳跃色彩，改用沉稳灰与规范红/绿/蓝状态色) */
+  --card-pink-bg: #FFF2F2;
+  --card-pink-text: #C0392B;
+  --card-pink-border: #FADBD8;
 
-  --card-yellow-bg: #FFFBEB;
-  --card-yellow-text: #92400E;
-  --card-yellow-border: #FEF3C7;
+  --card-yellow-bg: #F8F9FA;
+  --card-yellow-text: #495057;
+  --card-yellow-border: #E9ECEF;
 
-  --card-blue-bg: #F0F9FF;
-  --card-blue-text: #075985;
-  --card-blue-border: #BAE6FD;
+  --card-blue-bg: #EDF5FF;
+  --card-blue-text: #0052D9;
+  --card-blue-border: #D3E4FF;
 
-  --card-purple-bg: #FAF5FF;
-  --card-purple-text: #6B21A8;
-  --card-purple-border: #E9D5FF;
+  --card-purple-bg: #F8F9FA;
+  --card-purple-text: #495057;
+  --card-purple-border: #E9ECEF;
 
-  --card-green-bg: #F0FDF4;
-  --card-green-text: #166534;
-  --card-green-border: #BBF7D0;
+  --card-green-bg: #EBF8F2;
+  --card-green-text: #0F7643;
+  --card-green-border: #C2EDD6;
 }
 
 [data-mode="dark"] {
@@ -111,6 +111,15 @@
   --color-card-green-bg: var(--card-green-bg);
   --color-card-green-text: var(--card-green-text);
   --color-card-green-border: var(--card-green-border);
+
+  /* 统一将 Tailwind 的大圆角变量收缩为政务规范的小圆角与微直角 */
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
+  --radius-2xl: 6px;
+  --radius-3xl: 8px;
 }
 
 body {
@@ -171,7 +180,7 @@ body {
   border-spacing: 0;
   width: 100%;
   margin: 16px 0;
-  border-radius: 8px;
+  border-radius: 4px;
   overflow: hidden;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
   border: 1px solid #E5E7EB;
@@ -195,12 +204,12 @@ body {
 
 /* 表头首列左上圆角 */
 .ProseMirror table th:first-child {
-  border-top-left-radius: 7px;
+  border-top-left-radius: 3px;
 }
 
 /* 表头末列右上圆角 */
 .ProseMirror table th:last-child {
-  border-top-right-radius: 7px;
+  border-top-right-radius: 3px;
 }
 
 /* 数据单元格 */
@@ -259,10 +268,10 @@ body {
 
 /* 最后一行左下/右下圆角 */
 .ProseMirror table tr:last-child td:first-child {
-  border-bottom-left-radius: 7px;
+  border-bottom-left-radius: 3px;
 }
 .ProseMirror table tr:last-child td:last-child {
-  border-bottom-right-radius: 7px;
+  border-bottom-right-radius: 3px;
 }
 
 /* ═══════════════════════════════════════════════════════════════

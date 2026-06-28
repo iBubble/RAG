@@ -66,7 +66,7 @@
 | :--- | :--- | :--- |
 | **表现层** | React 19 + TypeScript + Vite + Zustand | 支持单页应用（SPA）的高性能状态树管理与防 Tab 切换中断设计。 |
 | **网关服务** | Go (Gin) + Eino 编排框架 + JWT | 维持高并发长连接（心跳、上报），管理 L2 缓存拦截，驱动核心对话流图编排。 |
-| **富文本** | Tiptap 3 + Document Studio | 所见即所得的长文编辑器，新增联动二级下拉选择的 AI 表格智选面板，支持前后文感知及 Zustand 持久化防断电丢草稿。 |
+| **富文本** | Tiptap 3 + Document Studio | 所见即所得的长文编辑器，新增联动二级下拉选择的 AI 表格智选面板，支持前后文感知、红头公文格式预览（仿宋/楷体排版）及 Zustand 持久化防断电丢草稿。 |
 | **算法服务** | FastAPI + Uvicorn + Python 3.12 | 异步处理通用工作流、ASR 转写、OCR 及 docx 批注，暴露纯净算法微服务。 |
 | **异步队列** | Celery + Redis | 负责文档解析、Leiden 社区摘要提取、知识图谱提炼等重度后台离线任务。 |
 | **向量数据库** | Qdrant (Dense + Sparse 混合检索) | 毫秒级支持 Dense 稠密向量与 Sparse 稀疏向量的检索与 RRF 融合。 |
@@ -137,6 +137,11 @@
 ### 6. 异步 OTel 追踪与 Ragas 错峰离线评测
 *   **Langfuse 分布式链路监控**：利用异步线程上报 OTel 规范的 Trace ID (32位十六进制小写) 及节点 Span，主请求线程无任何网络等待损耗，实时渲染 Eino 拓扑链。
 *   **Ragas 离线跑批打分**：在 [worker.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/worker.py#L155) 中配置 Celery 凌晨定时打分任务，废除随机数 Mock，使用 Ragas 框架计算上下文相关性、回答相关性及忠实度指标，并将计算平均值回写至 SQLite 的 `ragas_daily_reports` 日报表中，保障系统生成公文与决策的严肃质量。
+
+### 7. 全新政务化 UI/UX 视觉重塑与卡片/列表双模式
+*   **深色/浅色政务色系**：重构了页面背景色（替换为干净灰白的 `#F5F7FA`），圆角收缩为 `4px` 紧凑直角，移除所有霓虹渐变与活泼 Emoji。
+*   **列表/卡片双模式**：实现以高密度 Table 列表为默认的首页项目空间排版，支持 Card/List 双模式及 localStorage 记忆。
+*   **排队等待体验优化**：引入脉冲时钟微标，纠正『正在提取: 排队中』的文案冲突，提升慢速大模型提炼队列的排队呈现。
 
 ---
 

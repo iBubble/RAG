@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../../store/authStore';
-import { Loader2, Database, AlertCircle, Network, BrainCircuit, Cpu, Activity, AlertTriangle, X, Copy, Eye, Square, Trash2, Play, Pause } from 'lucide-react';
+import { Loader2, Database, AlertCircle, Network, BrainCircuit, Cpu, Activity, AlertTriangle, X, Copy, Eye, Square, Trash2, Play, Pause, Clock } from 'lucide-react';
 import { GraphVisualizer } from './GraphVisualizer';
 import LogoSpinner from '../LogoSpinner';
 
@@ -369,9 +369,9 @@ export default function LearningProgress() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-xl font-bold text-gray-800">学习进度看板</h2>
+        <h2 className="text-xl font-bold text-gray-800">知识库智能构建监控</h2>
         <p className="text-sm text-gray-500 mt-1">
-          全局监控所有项目的向量化入库、知识图谱提取与智能学习预计算状态
+          全局监控所有知识库的数字化拆解、主体 / 权责关联图谱提炼与智能研习预计算状态
         </p>
       </div>
 
@@ -407,7 +407,7 @@ export default function LearningProgress() {
           <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-100 p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-3 text-gray-600">
               <Activity className="w-5 h-5 text-orange-500" />
-              <span className="font-semibold text-sm">Celery 引擎积压</span>
+              <span className="font-semibold text-sm">后台任务处理调度</span>
             </div>
             <div className="flex justify-between items-end h-[52px]">
               <div className="text-center w-1/2 border-r border-gray-100">
@@ -436,25 +436,20 @@ export default function LearningProgress() {
           <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-100 p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-3 text-gray-600">
               <Database className="w-5 h-5 text-indigo-500" />
-              <span className="font-semibold text-sm">Qdrant 向量切片</span>
+              <span className="font-semibold text-sm">法律法规数字化拆解</span>
             </div>
             <div className="flex flex-col justify-end h-[52px]">
-              <div className="text-3xl font-black" style={{
-                background: 'linear-gradient(to right, #6366f1, #a855f7)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}>
+              <div className="text-3xl font-bold text-gray-800">
                 {systemStats.vector_db.total_chunks.toLocaleString()}
               </div>
-              <div className="text-[10px] text-gray-400 uppercase tracking-wider">总切片数</div>
+              <div className="text-[10px] text-gray-400 uppercase tracking-wider">总拆解条目数</div>
             </div>
           </div>
 
           <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-100 p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-3 text-gray-600">
               <Network className="w-5 h-5 text-cyan-500" />
-              <span className="font-semibold text-sm">Neo4j 知识图谱</span>
+              <span className="font-semibold text-sm">主体 / 权责关联图谱</span>
             </div>
             <div className="flex justify-between items-end h-[52px]">
               <div className="text-left w-1/2">
@@ -462,7 +457,7 @@ export default function LearningProgress() {
                 <div className="text-[10px] text-gray-400 uppercase tracking-wider">总实体数</div>
               </div>
               <div className="text-right w-1/2">
-                <div className="text-2xl font-bold text-cyan-600">{systemStats.graph_db.total_relationships.toLocaleString()}</div>
+                <div className="text-2xl font-bold text-[#0052D9]">{systemStats.graph_db.total_relationships.toLocaleString()}</div>
                 <div className="text-[10px] text-gray-400 uppercase tracking-wider">总关系数</div>
               </div>
             </div>
@@ -498,7 +493,7 @@ export default function LearningProgress() {
                     cx="72"
                     cy="72"
                     r="60"
-                    stroke="url(#gradientOverall)"
+                    stroke="#0052D9"
                     strokeWidth="10"
                     fill="transparent"
                     strokeDasharray={377}
@@ -506,13 +501,6 @@ export default function LearningProgress() {
                     strokeLinecap="round"
                     className="transition-all duration-1000 ease-out"
                   />
-                  <defs>
-                    <linearGradient id="gradientOverall" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#6366f1" />
-                      <stop offset="50%" stopColor="#8b5cf6" />
-                      <stop offset="100%" stopColor="#06b6d4" />
-                    </linearGradient>
-                  </defs>
                 </svg>
                 <div className="absolute flex flex-col items-center text-center">
                   <span className="text-3xl font-extrabold text-gray-800 tracking-tight">{summaryData.overallPercent.toFixed(2)}%</span>
@@ -526,72 +514,72 @@ export default function LearningProgress() {
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-indigo-50 rounded-lg">
-                      <Database className="w-4 h-4 text-indigo-500" />
+                    <div className="p-1.5 bg-blue-50 rounded-lg">
+                      <Database className="w-4 h-4 text-[#0052D9]" />
                     </div>
-                    <span className="font-bold text-gray-700 text-xs">1. 向量化入库</span>
+                    <span className="font-bold text-gray-700 text-xs">1. 数字化拆解归档</span>
                   </div>
                   <span className="text-xs text-gray-400 font-semibold">{summaryData.vector.completed} / {summaryData.vector.total} 文件</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
-                    <div className="bg-indigo-500 h-full rounded-full transition-all duration-700" style={{ width: `${summaryData.vector.percent}%` }}></div>
+                    <div className="bg-[#0052D9] h-full rounded-full transition-all duration-700" style={{ width: `${summaryData.vector.percent}%` }}></div>
                   </div>
-                  <span className="text-xs font-bold text-indigo-600 w-12 text-right">{summaryData.vector.percent.toFixed(2)}%</span>
+                  <span className="text-xs font-bold text-[#0052D9] w-12 text-right">{summaryData.vector.percent.toFixed(2)}%</span>
                 </div>
               </div>
 
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-cyan-50 rounded-lg">
-                      <Network className="w-4 h-4 text-cyan-500" />
+                    <div className="p-1.5 bg-emerald-50 rounded-lg">
+                      <Network className="w-4 h-4 text-emerald-500" />
                     </div>
-                    <span className="font-bold text-gray-700 text-xs">2. 知识图谱提取</span>
+                    <span className="font-bold text-gray-700 text-xs">2. 关联要点提炼</span>
                   </div>
                   <span className="text-xs text-gray-400 font-semibold">{summaryData.graph.completed} / {summaryData.graph.total} 文件</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
-                    <div className="bg-cyan-500 h-full rounded-full transition-all duration-700" style={{ width: `${summaryData.graph.percent}%` }}></div>
+                    <div className="bg-emerald-500 h-full rounded-full transition-all duration-700" style={{ width: `${summaryData.graph.percent}%` }}></div>
                   </div>
-                  <span className="text-xs font-bold text-cyan-600 w-12 text-right">{summaryData.graph.percent.toFixed(2)}%</span>
+                  <span className="text-xs font-bold text-emerald-600 w-12 text-right">{summaryData.graph.percent.toFixed(2)}%</span>
                 </div>
               </div>
 
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-pink-50 rounded-lg">
-                      <Network className="w-4 h-4 text-pink-500" />
+                    <div className="p-1.5 bg-blue-50 rounded-lg">
+                      <Network className="w-4 h-4 text-blue-500" />
                     </div>
-                    <span className="font-bold text-gray-700 text-xs">3. 图谱社区摘要</span>
+                    <span className="font-bold text-gray-700 text-xs">3. 规章公文要点汇编</span>
                   </div>
                   <span className="text-xs text-gray-400 font-semibold">{summaryData.summary.completed} / {summaryData.summary.total} 段</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
-                    <div className="bg-pink-500 h-full rounded-full transition-all duration-700" style={{ width: `${summaryData.summary.percent}%` }}></div>
+                    <div className="bg-blue-500 h-full rounded-full transition-all duration-700" style={{ width: `${summaryData.summary.percent}%` }}></div>
                   </div>
-                  <span className="text-xs font-bold text-pink-600 w-12 text-right">{summaryData.summary.percent.toFixed(2)}%</span>
+                  <span className="text-xs font-bold text-blue-600 w-12 text-right">{summaryData.summary.percent.toFixed(2)}%</span>
                 </div>
               </div>
 
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-purple-50 rounded-lg">
-                      <BrainCircuit className="w-4 h-4 text-purple-500" />
+                    <div className="p-1.5 bg-gray-150 rounded-lg">
+                      <BrainCircuit className="w-4 h-4 text-gray-700" />
                     </div>
-                    <span className="font-bold text-gray-700 text-xs">4. 智能学习预计算</span>
+                    <span className="font-bold text-gray-700 text-xs">4. 一体化智能预研习</span>
                   </div>
                   <span className="text-xs text-gray-400 font-semibold">{summaryData.precompute.completed} / {summaryData.precompute.total} 项</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
-                    <div className="bg-purple-500 h-full rounded-full transition-all duration-700" style={{ width: `${summaryData.precompute.percent}%` }}></div>
+                    <div className="bg-gray-600 h-full rounded-full transition-all duration-700" style={{ width: `${summaryData.precompute.percent}%` }}></div>
                   </div>
-                  <span className="text-xs font-bold text-purple-600 w-12 text-right">{summaryData.precompute.percent.toFixed(2)}%</span>
+                  <span className="text-xs font-bold text-gray-700 w-12 text-right">{summaryData.precompute.percent.toFixed(2)}%</span>
                 </div>
               </div>
             </div>
@@ -685,11 +673,11 @@ export default function LearningProgress() {
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <Database className="w-4 h-4 text-indigo-500" />
-                      <span className="font-semibold text-gray-700 text-sm">1. 向量化入库</span>
+                      <span className="font-semibold text-gray-700 text-sm">1. 数字化拆解归档</span>
                     </div>
                     {p.vectorization.total_chunks !== undefined && (
                       <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 text-[10px] font-medium border border-indigo-100/80 shadow-sm">
-                        {p.vectorization.total_chunks.toLocaleString()} 切片
+                        {p.vectorization.total_chunks.toLocaleString()} 条目
                       </span>
                     )}
                   </div>
@@ -697,12 +685,21 @@ export default function LearningProgress() {
                     <span className="truncate pr-2 max-w-[70%]">
                       {p.vectorization.current_task ? (
                         <span className="flex items-center text-indigo-600 font-medium" title={p.vectorization.current_task.filename}>
-                          <Loader2 className="w-3 h-3 mr-1 animate-spin shrink-0" />
-                          <span className="truncate">正在处理: {p.vectorization.current_task.filename}</span>
+                          {p.vectorization.current_task?.filename?.includes('排队中:') ? (
+                            <Clock className="w-3 h-3 mr-1 shrink-0 text-amber-500 animate-pulse" />
+                          ) : (
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin shrink-0" />
+                          )}
+                          <span className="truncate">
+                            {p.vectorization.current_task?.filename?.includes('排队中:') 
+                              ? p.vectorization.current_task.filename 
+                              : `正在处理: ${p.vectorization.current_task.filename}`
+                            }
+                          </span>
                           <span className="ml-1 shrink-0">({p.vectorization.current_task.size})</span>
                         </span>
                       ) : (
-                        p.vectorization.percent >= 100 ? '索引构建完成' : '切片向量化中...'
+                        p.vectorization.percent >= 100 ? '入库构建完成' : '数据解析归档中...'
                       )}
                     </span>
                     <div className="flex items-center gap-2">
@@ -725,7 +722,7 @@ export default function LearningProgress() {
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <Network className="w-4 h-4 text-cyan-500" />
-                      <span className="font-semibold text-gray-700 text-sm">2. 知识图谱提取</span>
+                      <span className="font-semibold text-gray-700 text-sm">2. 关联要点提炼</span>
                     </div>
                     {p.graph_rag.total_entities !== undefined && (
                       <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-medium border border-emerald-100/80 shadow-sm">
@@ -737,8 +734,17 @@ export default function LearningProgress() {
                     <span className="truncate pr-2 max-w-[70%]">
                       {p.graph_rag.current_task ? (
                         <span className="flex items-center text-cyan-600 font-medium" title={p.graph_rag.current_task.filename}>
-                          <Loader2 className="w-3 h-3 mr-1 animate-spin shrink-0" />
-                          <span className="truncate">正在提取: {p.graph_rag.current_task.filename}</span>
+                          {p.graph_rag.current_task?.filename?.includes('排队中:') ? (
+                            <Clock className="w-3 h-3 mr-1 shrink-0 text-amber-500 animate-pulse" />
+                          ) : (
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin shrink-0" />
+                          )}
+                          <span className="truncate">
+                            {p.graph_rag.current_task?.filename?.includes('排队中:') 
+                              ? p.graph_rag.current_task.filename 
+                              : `正在提取: ${p.graph_rag.current_task.filename}`
+                            }
+                          </span>
                           <span className="ml-1 shrink-0">({p.graph_rag.current_task.size})</span>
                         </span>
                       ) : (
@@ -765,7 +771,7 @@ export default function LearningProgress() {
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <Network className="w-4 h-4 text-pink-500" />
-                      <span className="font-semibold text-gray-700 text-sm">3. 图谱社区摘要</span>
+                      <span className="font-semibold text-gray-700 text-sm">3. 规章公文要点汇编</span>
                     </div>
                   </div>
                   <div className="flex justify-between text-xs text-gray-500 mb-2">
@@ -799,7 +805,7 @@ export default function LearningProgress() {
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <BrainCircuit className="w-4 h-4 text-purple-500" />
-                      <span className="font-semibold text-gray-700 text-sm">4. 智能学习预计算</span>
+                      <span className="font-semibold text-gray-700 text-sm">4. 一体化智能预研习</span>
                     </div>
                     <div className="flex items-center gap-1">
                       {/* 停止按钮：任一模式 running 时显示 */}

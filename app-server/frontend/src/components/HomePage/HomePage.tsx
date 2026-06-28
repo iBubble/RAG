@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Settings, X, Loader2, LogIn, Trash2, Globe, Lock, Library, Search, AlertTriangle } from 'lucide-react';
+import { Plus, Settings, X, Loader2, LogIn, Trash2, Globe, Lock, Library, Search, AlertTriangle, LayoutGrid, List } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { SystemStatusIndicator, ThemeSwitcher } from '../../App';
 import { APP_VERSION, APP_NAME } from '../../version';
@@ -28,6 +28,7 @@ export default function HomePage() {
   const [linvisName, setLinvisName] = useState('麟维斯');
   const [projects, setProjects] = useState<Project[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'card'>(() => (localStorage.getItem('home_view_mode') as 'list' | 'card') || 'list');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectVisibility, setNewProjectVisibility] = useState('public');
@@ -221,9 +222,8 @@ export default function HomePage() {
 
   const avatarUrl = user?.avatar ? `${API_BASE}${user.avatar}` : '';
 
-  // 渲染项目卡片
+  // 渲染项目卡片 (政务化扁平微缩版)
   const renderProjectCard = (proj: Project, section: string) => {
-    const isLibrary = proj.project_type === 'library';
     const canEdit = proj.owner_id === user?.id || user?.role === 'admin';
     const isPrivate = proj.visibility === 'private';
     const isAdmin = user?.role === 'admin';
@@ -238,32 +238,32 @@ export default function HomePage() {
       onDragOver={handleDragOver}
       onDrop={(e) => handleDrop(e, proj)}
       onDragEnd={handleDragEnd}
-      className={`h-56 rounded-2xl p-5 flex flex-col cursor-pointer transition-all duration-300 relative overflow-hidden group
+      className={`h-36 rounded-lg p-4 flex flex-col cursor-pointer transition-all duration-200 relative overflow-hidden group border
         ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''}
         ${isDragged 
-          ? 'opacity-40 border-dashed border-indigo-400 bg-indigo-50/10' 
-          : 'hover:-rotate-1 hover:scale-[1.02] hover:shadow-xl'
+          ? 'opacity-40 border-dashed border-[#0052D9] bg-[#E1ECFF]/20' 
+          : 'hover:border-[#0052D9] hover:shadow-sm'
         }
-        shadow-[0_2px_12px_rgba(0,0,0,0.06),0_1px_3px_rgba(0,0,0,0.04)] border
-        ${isLibrary
-          ? 'bg-gradient-to-br from-white to-blue-50/60 border-[#E0DCD5]/60 dark:from-[#112338] dark:to-[#1a2f4a] dark:border-[#1E3A8A]'
-          : 'bg-gradient-to-br from-white to-orange-50/40 border-[#E0DCD5]/60 dark:from-[#2d1f14] dark:to-[#3d2f21] dark:border-[#78350F]'
-        }`}
+        bg-white dark:bg-panel-bg border-gray-200 dark:border-border-soft`}
     >
-      {/* 斜角丝带标签 */}
-      <div className={`absolute -right-8 top-5 w-28 text-center py-0.5 text-[10px] font-bold tracking-wider rotate-45 shadow-sm ${
-        isPrivate
-          ? 'bg-gradient-to-r from-orange-400 to-amber-500 text-white'
-          : 'bg-gradient-to-r from-emerald-400 to-green-500 text-white'
-      }`}>
-        {isPrivate ? '私有' : '公开'}
+      {/* 规整的扁平化角标 */}
+      <div className="absolute top-3.5 right-3.5 flex items-center gap-1.5">
+        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+          isPrivate
+            ? 'bg-amber-50 text-amber-700 border border-amber-250/50 dark:bg-amber-950/20 dark:text-amber-400'
+            : 'bg-emerald-50 text-emerald-700 border border-emerald-250/50 dark:bg-emerald-950/20 dark:text-emerald-400'
+        }`}>
+          {isPrivate ? '私有' : '公开'}
+        </span>
       </div>
 
-      <div className="flex items-center justify-between mb-auto">
-        <div className="text-6xl drop-shadow-sm transition-transform duration-300 group-hover:scale-110">
+      <div className="flex items-start gap-2.5 mb-auto pr-12">
+        <span className="text-2xl shrink-0 drop-shadow-sm transition-transform duration-300 group-hover:scale-110">
           {proj.icon || '📚'}
-        </div>
+        </span>
+        <h3 className="font-semibold text-gray-950 dark:text-text-main text-sm leading-snug line-clamp-2">{proj.name}</h3>
       </div>
+
       {/* 三点菜单 */}
       <div 
         className="absolute bottom-3 right-3 z-20" 
@@ -272,42 +272,40 @@ export default function HomePage() {
       >
         <button
           onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === menuKey ? null : menuKey); }}
-          className="w-7 h-10 bg-white dark:bg-panel-bg border border-[#E0DCD5] dark:border-border-soft shadow-sm rounded-full flex flex-col items-center justify-center gap-0.5 hover:bg-gray-50 dark:hover:bg-outline-bg active:scale-95 transition-all opacity-0 group-hover:opacity-100 cursor-pointer z-10"
+          className="w-7 h-7 bg-white dark:bg-panel-bg border border-gray-200 dark:border-border-soft shadow-sm rounded-md flex flex-col items-center justify-center gap-0.5 hover:bg-gray-50 dark:hover:bg-outline-bg active:scale-95 transition-all opacity-0 group-hover:opacity-100 cursor-pointer z-10"
         >
           <div className="w-1 h-1 bg-gray-600 dark:bg-gray-400 rounded-full pointer-events-none"></div>
           <div className="w-1 h-1 bg-gray-600 dark:bg-gray-400 rounded-full pointer-events-none"></div>
           <div className="w-1 h-1 bg-gray-600 dark:bg-gray-400 rounded-full pointer-events-none"></div>
         </button>
         {activeMenu === menuKey && (
-          <div className="absolute right-0 bottom-full mb-1.5 w-44 bg-white dark:bg-panel-bg border border-[#E0DCD5] dark:border-border-soft rounded-xl shadow-lg py-1 z-50">
-            <button onClick={(e) => { e.stopPropagation(); navigate(`/project/${proj.id}`); }} className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-text-main hover:bg-gray-50 dark:hover:bg-outline-bg flex items-center gap-2.5 cursor-pointer">
-              <LogIn className="w-4 h-4 text-[#8B7355]" /> 进入
+          <div className="absolute right-0 bottom-full mb-1 w-40 bg-white dark:bg-panel-bg border border-gray-200 dark:border-border-soft rounded-lg shadow-lg py-1 z-50">
+            <button onClick={(e) => { e.stopPropagation(); navigate(`/project/${proj.id}`); }} className="w-full px-3 py-2 text-left text-xs text-gray-700 dark:text-text-main hover:bg-gray-50 dark:hover:bg-outline-bg flex items-center gap-2 cursor-pointer">
+              <LogIn className="w-3.5 h-3.5 text-[#0052D9]" /> 进入
             </button>
             {canEdit && (
               <>
-                <button onClick={(e) => { e.stopPropagation(); setIconPickerFor(proj.id); setActiveMenu(null); }} className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-text-main hover:bg-gray-50 dark:hover:bg-outline-bg flex items-center gap-2.5 cursor-pointer">
-                  <span className="text-base">🎨</span> 修改图标
+                <button onClick={(e) => { e.stopPropagation(); setIconPickerFor(proj.id); setActiveMenu(null); }} className="w-full px-3 py-2 text-left text-xs text-gray-700 dark:text-text-main hover:bg-gray-50 dark:hover:bg-outline-bg flex items-center gap-2 cursor-pointer">
+                  <span>🎨</span> 修改图标
                 </button>
-                <button onClick={(e) => { e.stopPropagation(); handleToggleVisibility(proj.id, proj.visibility || 'public'); }} className="w-full px-4 py-2.5 text-left text-sm text-gray-700 dark:text-text-main hover:bg-gray-50 dark:hover:bg-outline-bg flex items-center gap-2.5 cursor-pointer">
-                  {isPrivate ? <><Globe className="w-4 h-4 text-green-500" /> 设为公开</> : <><Lock className="w-4 h-4 text-orange-500" /> 设为私有</>}
+                <button onClick={(e) => { e.stopPropagation(); handleToggleVisibility(proj.id, proj.visibility || 'public'); }} className="w-full px-3 py-2 text-left text-xs text-gray-700 dark:text-text-main hover:bg-gray-50 dark:hover:bg-outline-bg flex items-center gap-2 cursor-pointer">
+                  {isPrivate ? <><Globe className="w-3.5 h-3.5 text-green-500" /> 设为公开</> : <><Lock className="w-3.5 h-3.5 text-orange-500" /> 设为私有</>}
                 </button>
-                <button onClick={(e) => { e.stopPropagation(); handleDeleteProject(proj.id, proj.name); }} className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2.5 cursor-pointer">
-                  <Trash2 className="w-4 h-4" /> 删除
+                <button onClick={(e) => { e.stopPropagation(); handleDeleteProject(proj.id, proj.name); }} className="w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2 cursor-pointer">
+                  <Trash2 className="w-3.5 h-3.5" /> 删除
                 </button>
               </>
             )}
           </div>
         )}
       </div>
-      <div className="flex items-end justify-between">
-        <div>
-          <h3 className="font-semibold text-gray-900 dark:text-text-main text-base leading-snug mb-1.5 line-clamp-2">{proj.name}</h3>
-          <p className="text-xs text-gray-400 dark:text-text-muted">
-            {formatDate(proj.createdAt)} · {proj.sourceCount} 个文档
-          </p>
-        </div>
+
+      <div className="flex items-center justify-between mt-auto">
+        <p className="text-[11px] text-gray-400 dark:text-text-muted">
+          {formatDate(proj.createdAt)} · {proj.sourceCount} 个文档
+        </p>
         {proj.owner_name && (
-          <span className="text-[11px] text-gray-400 dark:text-text-muted shrink-0 ml-3 bg-gray-50 dark:bg-outline-bg px-2 py-0.5 rounded-full transition-opacity duration-200 group-hover:opacity-0">
+          <span className="text-[10px] text-gray-400 dark:text-text-muted shrink-0 ml-3 bg-gray-50 dark:bg-outline-bg px-2 py-0.5 rounded transition-opacity duration-200 group-hover:opacity-0">
             {proj.owner_name}
           </span>
         )}
@@ -315,6 +313,87 @@ export default function HomePage() {
     </div>
     );
   };
+
+  // 渲染项目列表表格 (高信息密度政务版)
+  const renderProjectListTable = (projectsList: Project[], section: string) => {
+    return (
+      <div className="overflow-x-auto border border-gray-200 dark:border-border-soft rounded-lg shadow-sm bg-white dark:bg-panel-bg">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-border-soft text-left text-xs font-sans">
+          <thead className="bg-gray-50 dark:bg-outline-bg text-gray-500 dark:text-text-muted uppercase tracking-wider text-[11px] font-semibold">
+            <tr>
+              <th className="px-5 py-3 w-[80px] text-center">图标</th>
+              <th className="px-5 py-3">项目名称</th>
+              <th className="px-5 py-3 w-[120px]">权限状态</th>
+              <th className="px-5 py-3 w-[120px]">文档数量</th>
+              <th className="px-5 py-3 w-[150px]">负责人</th>
+              <th className="px-5 py-3 w-[180px]">创建时间</th>
+              <th className="px-5 py-3 w-[100px] text-center">操作</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-150 dark:divide-border-soft/60 text-gray-700 dark:text-text-main">
+            {projectsList.map((proj) => {
+              const isPrivate = proj.visibility === 'private';
+              const canEdit = proj.owner_id === user?.id || user?.role === 'admin';
+              const menuKey = `${section}-${proj.id}`;
+              return (
+                <tr 
+                  key={proj.id} 
+                  onClick={() => navigate(`/project/${proj.id}`)}
+                  className="hover:bg-gray-50 dark:hover:bg-outline-bg/40 cursor-pointer transition-colors"
+                >
+                  <td className="px-5 py-3 text-center text-lg">{proj.icon || '📚'}</td>
+                  <td className="px-5 py-3 font-semibold text-gray-900 dark:text-text-main hover:text-[#0052D9] transition-colors">{proj.name}</td>
+                  <td className="px-5 py-3">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                      isPrivate 
+                        ? 'bg-amber-50 text-amber-700 border border-amber-200/60 dark:bg-amber-950/20 dark:text-amber-400' 
+                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200/60 dark:bg-emerald-950/20 dark:text-emerald-400'
+                    }`}>
+                      {isPrivate ? '私有' : '公开'}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3 text-gray-500 dark:text-text-muted">{proj.sourceCount} 个文档</td>
+                  <td className="px-5 py-3 text-gray-550 dark:text-text-muted">{proj.owner_name || '系统'}</td>
+                  <td className="px-5 py-3 text-gray-400 dark:text-text-muted">{formatDate(proj.createdAt)}</td>
+                  <td className="px-5 py-3 text-center" onClick={e => e.stopPropagation()}>
+                    <div className="relative inline-block text-left" ref={activeMenu === menuKey ? menuRef : null}>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === menuKey ? null : menuKey); }}
+                        className="text-gray-400 hover:text-gray-650 px-2 py-1 rounded hover:bg-gray-150 dark:hover:bg-outline-bg cursor-pointer transition-colors font-bold"
+                      >
+                        •••
+                      </button>
+                      {activeMenu === menuKey && (
+                        <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-panel-bg border border-gray-200 dark:border-border-soft rounded-lg shadow-lg py-1 z-50">
+                          <button onClick={() => navigate(`/project/${proj.id}`)} className="w-full px-3 py-2 text-left text-xs text-gray-700 dark:text-text-main hover:bg-gray-50 dark:hover:bg-outline-bg flex items-center gap-2 cursor-pointer">
+                            <LogIn className="w-3.5 h-3.5 text-[#0052D9]" /> 进入项目
+                          </button>
+                          {canEdit && (
+                            <>
+                              <button onClick={() => { setIconPickerFor(proj.id); setActiveMenu(null); }} className="w-full px-3 py-2 text-left text-xs text-gray-700 dark:text-text-main hover:bg-gray-50 dark:hover:bg-outline-bg flex items-center gap-2 cursor-pointer">
+                                <span>🎨</span> 修改图标
+                              </button>
+                              <button onClick={() => { handleToggleVisibility(proj.id, proj.visibility || 'public'); setActiveMenu(null); }} className="w-full px-3 py-2 text-left text-xs text-gray-700 dark:text-text-main hover:bg-gray-50 dark:hover:bg-outline-bg flex items-center gap-2 cursor-pointer">
+                                {isPrivate ? <><Globe className="w-3.5 h-3.5 text-green-500" /> 设为公开</> : <><Lock className="w-3.5 h-3.5 text-orange-500" /> 设为私有</>}
+                              </button>
+                              <button onClick={() => { handleDeleteProject(proj.id, proj.name); setActiveMenu(null); }} className="w-full px-3 py-2 text-left text-xs text-red-650 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2 cursor-pointer">
+                                <Trash2 className="w-3.5 h-3.5" /> 删除项目
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
 
   return (
     <>
@@ -372,8 +451,35 @@ export default function HomePage() {
         <main className="max-w-7xl mx-auto px-6 py-8">
           {pageLoading && <LogoSpinner size={72} overlay={false} />}
           <div className="flex items-center justify-between mb-8">
-            <div className="text-xl font-bold tracking-tight text-gray-800">项目空间</div>
-            <div className="relative flex items-center">
+            <div className="flex items-center gap-4">
+              <div className="text-xl font-bold tracking-tight text-gray-850 dark:text-text-main">项目空间</div>
+              {/* 视图切换按钮组 */}
+              <div className="flex items-center border border-gray-200 dark:border-border-soft rounded-lg p-0.5 bg-gray-100/60 dark:bg-outline-bg">
+                <button
+                  onClick={() => { setViewMode('list'); localStorage.setItem('home_view_mode', 'list'); }}
+                  title="列表展示"
+                  className={`p-1.5 rounded-md transition-all cursor-pointer ${
+                    viewMode === 'list' 
+                      ? 'bg-white dark:bg-panel-bg text-[#0052D9] shadow-sm font-semibold border border-gray-200/40' 
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  <List className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => { setViewMode('card'); localStorage.setItem('home_view_mode', 'card'); }}
+                  title="卡片展示"
+                  className={`p-1.5 rounded-md transition-all cursor-pointer ${
+                    viewMode === 'card' 
+                      ? 'bg-white dark:bg-panel-bg text-[#0052D9] shadow-sm font-semibold border border-gray-200/40' 
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="relative flex items-center gap-3">
               <Search className="w-4 h-4 text-gray-400 absolute left-3.5 pointer-events-none" />
               <input
                 type="text"
@@ -395,23 +501,35 @@ export default function HomePage() {
 
           {/* 我的项目 */}
           <section className="mb-10">
-            <h2 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
-              📋 我的项目 <span className="text-sm font-normal text-gray-400">({caseProjects.length})</span>
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {!searchQuery && (
-                <div 
+            <h2 className="text-lg font-bold text-gray-900 mb-5 flex items-center justify-between">
+              <span className="flex items-center gap-2">📋 我的项目 <span className="text-sm font-normal text-gray-400">({caseProjects.length})</span></span>
+              {viewMode === 'list' && !searchQuery && (
+                <button 
                   onClick={() => { setNewProjectType('case'); setIsModalOpen(true); setCreateError(''); setNewProjectName(''); }}
-                  className="h-56 bg-white border-2 border-dashed border-[#C4B5A0] rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:shadow-lg hover:border-[#8B7355] hover:scale-[1.02] transition-all duration-300 group"
+                  className="text-xs font-semibold text-[#0052D9] hover:text-[#003EB3] flex items-center gap-1.5 cursor-pointer bg-white dark:bg-panel-bg px-3 py-1.5 border border-gray-200 dark:border-border-soft rounded hover:shadow-sm transition-all"
                 >
-                  <div className="w-14 h-14 bg-[#F0EDE8] rounded-full flex items-center justify-center mb-4 group-hover:bg-[#E0DCD5] transition-colors">
-                    <Plus className="w-6 h-6 text-[#8B7355]" />
-                  </div>
-                  <span className="font-medium text-[#8B7355]">新建项目空间</span>
-                </div>
+                  <Plus className="w-3.5 h-3.5" /> 新建项目
+                </button>
               )}
-              {caseProjects.map(p => renderProjectCard(p, 'case'))}
-            </div>
+            </h2>
+            {viewMode === 'list' ? (
+              renderProjectListTable(caseProjects, 'case')
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {!searchQuery && (
+                  <div 
+                    onClick={() => { setNewProjectType('case'); setIsModalOpen(true); setCreateError(''); setNewProjectName(''); }}
+                    className="h-36 bg-white dark:bg-panel-bg border-2 border-dashed border-gray-300 dark:border-border-soft rounded-lg flex flex-col items-center justify-center cursor-pointer hover:shadow-sm hover:border-[#0052D9] transition-all duration-300 group"
+                  >
+                    <div className="w-10 h-10 bg-gray-50 dark:bg-outline-bg rounded-full flex items-center justify-center mb-2 group-hover:bg-[#E1ECFF] transition-colors">
+                      <Plus className="w-4 h-4 text-gray-500 dark:text-[#0052D9]" />
+                    </div>
+                    <span className="text-xs font-medium text-gray-600 dark:text-text-muted">新建项目空间</span>
+                  </div>
+                )}
+                {caseProjects.map(p => renderProjectCard(p, 'case'))}
+              </div>
+            )}
           </section>
 
           {/* 公开项目 */}
@@ -420,9 +538,13 @@ export default function HomePage() {
               <h2 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
                 🌐 公开项目 <span className="text-sm font-normal text-gray-400">({publicProjects.length})</span>
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {publicProjects.map(p => renderProjectCard(p, 'public'))}
-              </div>
+              {viewMode === 'list' ? (
+                renderProjectListTable(publicProjects, 'public')
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {publicProjects.map(p => renderProjectCard(p, 'public'))}
+                </div>
+              )}
             </section>
           )}
 
@@ -432,34 +554,50 @@ export default function HomePage() {
               <h2 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
                 🔒 私有项目 <span className="text-sm font-normal text-gray-400">({privateProjects.length})</span>
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {privateProjects.map(p => renderProjectCard(p, 'private'))}
-              </div>
+              {viewMode === 'list' ? (
+                renderProjectListTable(privateProjects, 'private')
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {privateProjects.map(p => renderProjectCard(p, 'private'))}
+                </div>
+              )}
             </section>
           )}
 
           {/* 公共文档 */}
           <section className="mb-10">
-            <h2 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
-              📚 公共文档 <span className="text-sm font-normal text-gray-400">({libraryProjects.length})</span>
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {user?.role === 'admin' && !searchQuery && (
-                <div 
+            <h2 className="text-lg font-bold text-gray-900 mb-5 flex items-center justify-between">
+              <span className="flex items-center gap-2">📚 公共文档 <span className="text-sm font-normal text-gray-400">({libraryProjects.length})</span></span>
+              {viewMode === 'list' && user?.role === 'admin' && !searchQuery && (
+                <button 
                   onClick={() => { setNewProjectType('library'); setIsModalOpen(true); setCreateError(''); setNewProjectName(''); }}
-                  className="h-56 bg-white border-2 border-dashed border-[#C4B5A0] rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:shadow-lg hover:border-[#8B7355] hover:scale-[1.02] transition-all duration-300 group"
+                  className="text-xs font-semibold text-[#0052D9] hover:text-[#003EB3] flex items-center gap-1.5 cursor-pointer bg-white dark:bg-panel-bg px-3 py-1.5 border border-gray-200 dark:border-border-soft rounded hover:shadow-sm transition-all"
                 >
-                  <div className="w-14 h-14 bg-[#F0EDE8] rounded-full flex items-center justify-center mb-4 group-hover:bg-[#E0DCD5] transition-colors">
-                    <Library className="w-6 h-6 text-[#8B7355]" />
+                  <Plus className="w-3.5 h-3.5" /> 新建公共文档库
+                </button>
+              )}
+            </h2>
+            {viewMode === 'list' ? (
+              renderProjectListTable(libraryProjects, 'library')
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {user?.role === 'admin' && !searchQuery && (
+                  <div 
+                    onClick={() => { setNewProjectType('library'); setIsModalOpen(true); setCreateError(''); setNewProjectName(''); }}
+                    className="h-36 bg-white dark:bg-panel-bg border-2 border-dashed border-gray-300 dark:border-border-soft rounded-lg flex flex-col items-center justify-center cursor-pointer hover:shadow-sm hover:border-[#0052D9] transition-all duration-300 group"
+                  >
+                    <div className="w-10 h-10 bg-gray-50 dark:bg-outline-bg rounded-full flex items-center justify-center mb-2 group-hover:bg-[#E1ECFF] transition-colors">
+                      <Library className="w-4 h-4 text-gray-500 dark:text-[#0052D9]" />
+                    </div>
+                    <span className="text-xs font-medium text-gray-600 dark:text-text-muted">新建公共文档库</span>
                   </div>
-                  <span className="font-medium text-[#8B7355]">新建公共文档库</span>
-                </div>
-              )}
-              {libraryProjects.length === 0 && user?.role !== 'admin' && (
-                <div className="col-span-full text-center text-gray-400 text-sm py-8">暂无公共文档库</div>
-              )}
-              {libraryProjects.map(p => renderProjectCard(p, 'library'))}
-            </div>
+                )}
+                {libraryProjects.length === 0 && user?.role !== 'admin' && (
+                  <div className="col-span-full text-center text-gray-400 text-sm py-8">暂无公共文档库</div>
+                )}
+                {libraryProjects.map(p => renderProjectCard(p, 'library'))}
+              </div>
+            )}
           </section>
         </main>
       </div>

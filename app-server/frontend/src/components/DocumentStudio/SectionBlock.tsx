@@ -10,7 +10,7 @@
  */
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
-import { Rocket, Trash2, Square, Paperclip, AlertTriangle, Bold, Italic, Plus, ChevronDown, ChevronUp, Columns, Layers, Table as TableIcon } from 'lucide-react';
+import { Rocket, Trash2, Square, Paperclip, AlertTriangle, Bold, Italic, Plus, ChevronDown, ChevronUp, Columns, Layers, Table as TableIcon, FileText } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Table } from '@tiptap/extension-table';
@@ -45,6 +45,7 @@ const SectionBlock = forwardRef<SectionBlockHandle, SectionBlockProps>(({
 }, ref) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isOfficialFormat, setIsOfficialFormat] = useState(false);
   const lastUpdateRef = useRef<number>(0);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -189,9 +190,36 @@ const SectionBlock = forwardRef<SectionBlockHandle, SectionBlockProps>(({
             <div className="w-[1px] h-3.5 bg-gray-200 dark:bg-stone-800 mx-1" />
             <button onClick={() => editor.chain().focus().mergeCells().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded text-gray-600 dark:text-stone-300" title="合并单元格"><Layers className="w-3.5 h-3.5" /></button>
             <button onClick={() => editor.chain().focus().splitCell().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded text-gray-600 dark:text-stone-300" title="拆分单元格"><TableIcon className="w-3.5 h-3.5" /></button>
+            <div className="w-[1px] h-3.5 bg-gray-200 dark:bg-stone-800 mx-1" />
+            <button 
+              onClick={() => setIsOfficialFormat(!isOfficialFormat)} 
+              className={`p-1 flex items-center gap-1 rounded text-xs cursor-pointer transition-colors ${
+                isOfficialFormat 
+                  ? 'bg-red-50 text-red-600 font-bold border border-red-200/50 shadow-sm' 
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+              }`} 
+              title="切换公文红头预览"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>公文格式</span>
+            </button>
           </div>
         )}
-        <div className="tiptap-wrapper min-h-[50px]">
+        <div className={`tiptap-wrapper min-h-[50px] transition-all duration-300 ${
+          isOfficialFormat 
+            ? 'bg-white p-8 border border-red-200 shadow-sm max-w-[760px] mx-auto rounded-md official-document-style my-4' 
+            : ''
+        }`}>
+          {isOfficialFormat && (
+            <div className="select-none text-center border-b-[2px] border-red-600 pb-3 mb-6">
+              <div className="text-red-600 text-2xl font-bold tracking-[0.2em] font-serif mb-1">
+                市场监督管理局行政公文
+              </div>
+              <div className="text-gray-400 text-[10px] tracking-wider uppercase font-semibold">
+                [ 智能辅助草拟呈批件 ]
+              </div>
+            </div>
+          )}
           <EditorContent editor={editor} />
         </div>
         <div className="chart-renderer-wrapper">
@@ -250,6 +278,34 @@ const SectionBlock = forwardRef<SectionBlockHandle, SectionBlockProps>(({
             </div>
           </div>,
           document.body
+        )}
+        {isOfficialFormat && (
+          <style dangerouslySetInnerHTML={{__html: `
+            .official-document-style .ProseMirror {
+              font-family: "FangSong", "仿宋", "STFangsong", "KaiTi", "楷体", "Noto Serif CJK SC", serif !important;
+              font-size: 16px !important;
+              line-height: 1.8 !important;
+              color: #000000 !important;
+              text-align: justify !important;
+              background-color: #ffffff !important;
+            }
+            .official-document-style .ProseMirror p {
+              text-indent: 2em !important;
+              margin-bottom: 12px !important;
+              color: #000000 !important;
+            }
+            .official-document-style .ProseMirror h1,
+            .official-document-style .ProseMirror h2,
+            .official-document-style .ProseMirror h3 {
+              font-family: "SimSun", "宋体", "STSong", "SimHei", "黑体", sans-serif !important;
+              text-indent: 0 !important;
+              text-align: center !important;
+              color: #000000 !important;
+              margin-top: 20px !important;
+              margin-bottom: 16px !important;
+              font-weight: bold !important;
+            }
+          `}} />
         )}
       </div>
     </div>
