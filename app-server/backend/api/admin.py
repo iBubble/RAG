@@ -857,6 +857,8 @@ async def get_learning_progress(user: dict = Depends(get_current_user)):
         graph_pending_task = None
         
         stuck_pending_files = []
+        stuck_graph_queued_files = []
+        graph_extracting_active = 0
         latest_update_time = None
 
         def format_size(size_bytes: int) -> str:
@@ -969,9 +971,16 @@ async def get_learning_progress(user: dict = Depends(get_current_user)):
                         graph_failed += 1
                     else:
                         graph_processing += 1
+                        graph_extracting_active += 1
                 elif st == "graph_queued":
                     # 排队等待 slow_queue 处理，算作进行中
                     graph_processing += 1
+                    if _is_stale_task(updated_at, 600):
+                        stuck_graph_queued_files.append({
+                            "path": path,
+                            "file_id": file_id,
+                            "filename": f
+                        })
                 elif st == "vectorized" and "failed" in error_msg.lower():
                     # 预留给未来可能写入 explicit graph error 的机制
                     graph_failed += 1
@@ -986,15 +995,19 @@ async def get_learning_progress(user: dict = Depends(get_current_user)):
                 elif st == "graph_queued" and not graph_current_task and not graph_pending_task:
                     graph_pending_task = {"filename": f, "size": format_size(os.path.getsize(path))}
 
+        # ── 真实正在活跃（处理中）的图谱与向量化任务统计 ──
+        # vec_current_task 存在且未超时（因为 processing 且超时的已被重设为 failed 了，剩下的是真正的活跃任务）
+        # graph_extracting_active 则是真正未超时的提取任务
+        has_real_active = (vec_current_task is not None) or (graph_extracting_active > 0)
+
         # ── 僵尸 pending 任务的防空转重投自愈 ──
         if stuck_pending_files:
-            has_active_tasks = (graph_processing > 0)
             import time
             from datetime import datetime, timezone, timedelta
             now_ts = datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None).timestamp()
             is_stale_project = (latest_update_time is None) or (now_ts - latest_update_time > 120)
             
-            if not has_active_tasks and is_stale_project:
+            if not has_real_active and is_stale_project:
                 from worker import process_document
                 from core.status_tracker import update_file_status
                 logger.info(f"🕸️ [get_learning_progress] 项目 {pid} 检测到有 {len(stuck_pending_files)} 个僵尸 pending 任务，自动补发触发 Celery 向量化任务。")
@@ -1013,6 +1026,29 @@ async def get_learning_progress(user: dict = Depends(get_current_user)):
                             process_document.delay(str(fpath), fid, fname, pid)
                     except Exception as _tr_e:
                         logger.warning(f"Failed to auto trigger stuck pending task {item['filename']}: {_tr_e}")
+
+        # ── 僵尸 graph_queued 任务的防空转重投自愈 ──
+        if stuck_graph_queued_files:
+            import time
+            from datetime import datetime, timezone, timedelta
+            now_ts = datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None).timestamp()
+            is_stale_project = (latest_update_time is None) or (now_ts - latest_update_time > 120)
+            
+            if not has_real_active and is_stale_project:
+                from worker import process_graph_extraction
+                from core.status_tracker import update_file_status
+                logger.info(f"🕸️ [get_learning_progress] 项目 {pid} 检测到有 {len(stuck_graph_queued_files)} 个僵尸 graph_queued 任务，自动补发触发 Celery 图谱任务。")
+                for item in stuck_graph_queued_files:
+                    try:
+                        fid = item["file_id"]
+                        fname = item["filename"]
+                        update_file_status(pid, fid, "graph_queued", error_message="防空转自动补发")
+                        process_graph_extraction.apply_async(
+                            args=[fid, fname, pid],
+                            queue='slow_queue'
+                        )
+                    except Exception as _tr_e:
+                        logger.warning(f"Failed to auto trigger stuck graph_queued task {item['filename']}: {_tr_e}")
         
         if not vec_current_task and vec_pending_task:
             vec_current_task = {"filename": f"排队中: {vec_pending_task['filename']}", "size": vec_pending_task['size']}

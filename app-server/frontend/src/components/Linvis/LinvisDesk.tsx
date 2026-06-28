@@ -37,7 +37,7 @@ const BADGE: Record<string, string> = {
 
 const STC: Record<string, { l: string; fg: string; bg: string }> = {
   working:     { l: '⚡ 工作中',   fg: '#059669', bg: '#ecfdf5' },
-  sleeping:    { l: '💤 休眠中',   fg: '#6366f1', bg: '#eef2ff' },
+  sleeping:    { l: '💤 休息中',   fg: '#6366f1', bg: '#eef2ff' },
   idle:        { l: '😴 空闲',     fg: '#6b7280', bg: '#f9fafb' },
   funny:       { l: '☕ 摸鱼中',   fg: '#d97706', bg: '#fffbeb' },
   interrupted: { l: '🚨 等待审批', fg: '#dc2626', bg: '#fef2f2' },

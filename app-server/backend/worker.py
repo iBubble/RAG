@@ -590,7 +590,7 @@ def generate_docx_bg(self, run_id: str, json_path: str, tmp_path: str):
     self.update_state(state='PROGRESS', meta={'message': '初始化文档生成', 'percent': 5})
 
     cmd = [
-        "dotnet", "run", "--project", "/app/backend/docx_builder/KimiDocx.csproj",
+        "dotnet", "/app/backend/docx_builder/bin/Release/net8.0/publish/KimiDocx.dll",
         json_path, tmp_path, "/app/backend/docx_builder/assets"
     ]
 
