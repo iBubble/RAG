@@ -1,4 +1,8 @@
 import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
 import sys
 import json
 import hashlib
@@ -10,7 +14,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from worker import process_document, process_graph_extraction
 from core.status_tracker import update_file_status
 
-UPLOAD_DIR = "/Volumes/SYRAID/RAG_Files/uploads"
+from core.config import settings
+UPLOAD_DIR = settings.UPLOAD_DIR
 target_pids = {"fc28c7fff7bb": "国家市场监督法律法规", "1c34280f1f56": "规章制度"}
 
 print("🚀 开始恢复悬空的学习进度...")
@@ -50,8 +55,8 @@ for pid, pname in target_pids.items():
                 except Exception:
                     pass
             
-            # 1. 恢复向量化任务
-            if status == "pending":
+            # 1. 恢复向量化任务（包含卡在 processing 的悬空任务）
+            if status in ("pending", "processing"):
                 update_file_status(pid, file_id, "pending")
                 process_document.delay(str(path), file_id, f, pid)
                 pending_count += 1

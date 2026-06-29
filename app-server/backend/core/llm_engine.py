@@ -45,7 +45,7 @@ def get_client() -> httpx.AsyncClient:
     except RuntimeError:
         # 非异步上下文，返回一个临时 client
         return httpx.AsyncClient(
-            timeout=httpx.Timeout(180.0),
+            timeout=httpx.Timeout(60.0),
             proxy=None,
             trust_env=False
         )
@@ -57,7 +57,7 @@ def get_client() -> httpx.AsyncClient:
 
     if current_loop not in _loop_clients or _loop_clients[current_loop].is_closed:
         _loop_clients[current_loop] = httpx.AsyncClient(
-            timeout=httpx.Timeout(180.0),
+            timeout=httpx.Timeout(60.0),
             proxy=None,
             trust_env=False,
             limits=httpx.Limits(max_connections=100, max_keepalive_connections=20)
@@ -563,6 +563,8 @@ async def stream_ollama(
     num_ctx: int = 32768,
     num_predict: int = 24576,
     images: Optional[list] = None,
+    timeout: Optional[float | httpx.Timeout] = None,
+    priority: Optional[int] = None,
 ) -> AsyncGenerator[str, None]:
     """
     通过 Ollama REST API 流式调用本地大模型。
@@ -570,8 +572,8 @@ async def stream_ollama(
     WHY: 使用优先级 GPU 信号量保证跨进程 GPU 限流及优先级抢占。
          所有进程共享锁资源。
     """
-    async with RedisGPUSemaphore(max_slots=_GPU_MAX_SLOTS):
-        async for token in _stream_ollama_inner(prompt, model, temperature, num_ctx, num_predict, images):
+    async with RedisGPUSemaphore(max_slots=_GPU_MAX_SLOTS, priority=priority):
+        async for token in _stream_ollama_inner(prompt, model, temperature, num_ctx, num_predict, images, timeout):
             yield token
 
 
@@ -582,6 +584,7 @@ async def _stream_ollama_inner(
     num_ctx: int = 32768,
     num_predict: int = 24576,
     images: Optional[list] = None,
+    timeout: Optional[float | httpx.Timeout] = None,
 ) -> AsyncGenerator[str, None]:
     """Ollama 流式调用的内部实现（被信号量包裹）。"""
     url = f"{settings.OLLAMA_BASE_URL}/api/generate"
@@ -631,9 +634,10 @@ async def _stream_ollama_inner(
         payload["prompt"] = raw_prompt
         payload["raw"] = True
 
-    # WHY: Ollama 在 GPU 繁忙时偶发 503，加重试避免 0 字空白。
+    # WHY: Ollama 在 GPU 繁忙时偶发 503，但将重试收紧为 1 次，
+    #      结合 45s 的 HTTP 超时机制实现快速失败自愈，拒绝后台无端死等。
     import asyncio as _aio
-    _max_retries = 3
+    _max_retries = 1
     for _attempt in range(_max_retries):
         try:
             import time as _time
@@ -644,7 +648,9 @@ async def _stream_ollama_inner(
             think_buffer = ""
             _last_yield_time = _time.time()
             
-            async with client.stream("POST", url, json=payload) as response:
+            # 默认给 stream 推理较大的超时时间以防 35B 模型在长上下文 prefill 时发生 ReadTimeout
+            actual_timeout = timeout if timeout is not None else httpx.Timeout(300.0, connect=10.0)
+            async with client.stream("POST", url, json=payload, timeout=actual_timeout) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if not line.strip():

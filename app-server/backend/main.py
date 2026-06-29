@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["HF_HUB_OFFLINE"] = os.getenv("HF_HUB_OFFLINE", "0")
 
 # ── onnxruntime 阻断器（必须在所有其他 import 之前执行） ──

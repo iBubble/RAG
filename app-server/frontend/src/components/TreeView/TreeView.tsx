@@ -17,6 +17,7 @@ interface FileItem {
   is_public?: boolean;   // 是否为公共文档引用
   ingest_status?: string;
   error_message?: string;
+  isRef?: boolean;
 }
 
 interface TreeViewProps {
@@ -43,7 +44,7 @@ const renderFileIcon = (file: FileItem) => {
   }
   if (file.source_type === 'text') {
     return (
-      <div className="p-1 rounded-md shrink-0 flex items-center justify-center bg-indigo-50 text-indigo-600 border border-indigo-100 dark:bg-indigo-950/30 dark:text-indigo-400 dark:border-indigo-900/50" title="粘贴文本">
+      <div className="p-1 rounded-md shrink-0 flex items-center justify-center bg-indigo-50 text-indigo-600 border border-indigo-100 dark:bg-indigo-950/30 dark:text-indigo-400 dark:border-indigo-900/50" title="新建文本">
         <span className="w-3.5 h-3.5 text-center leading-3.5 text-[10px] font-bold">📋</span>
       </div>
     );
@@ -132,6 +133,8 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [refFiles, setRefFiles] = useState<FileItem[]>([]);
   const [usePublicRef, setUsePublicRef] = useState<boolean>(true);
+  const [projectRefFiles, setProjectRefFiles] = useState<FileItem[]>([]);
+
 
   const { checkedFileIds, toggleFileCheck, setCheckedFiles, activePreviewFile, setActivePreviewFile, refreshCounter, checkedRefIds, setCheckedRefIds } = useProjectStore();
   const { getAuthHeaders } = useAuthStore();
@@ -222,35 +225,57 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
     }
   };
 
-  // 联动逻辑：当 usePublicRef 状态或引用的公共文件列表 refFiles 变化时，同步更新选中的 checkedRefIds
+  // 加载手工引用的其他公开项目文档列表
+  const fetchProjectRefFiles = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/projects/${projectId}/project-ref-files`, { headers: getAuthHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setProjectRefFiles(data.files || []);
+      }
+    } catch (e) {
+      console.error('获取关联公开项目文档失败', e);
+    }
+  };
+
+  // 联动逻辑：同步公共文档的全选/全反选状态到 checkedRefIds
   useEffect(() => {
+    const publicIds = refFiles.map(f => f.id);
+    const currentIds = useProjectStore.getState().checkedRefIds;
+    
     if (usePublicRef) {
-      const allIds = refFiles.map(f => f.id);
-      const currentIds = useProjectStore.getState().checkedRefIds;
-      const isSame = allIds.length === currentIds.length && allIds.every(id => currentIds.includes(id));
-      if (!isSame) {
-        setCheckedRefIds(allIds);
-      }
+      const newChecked = Array.from(new Set([...currentIds, ...publicIds]));
+      setCheckedRefIds(newChecked);
     } else {
-      const currentIds = useProjectStore.getState().checkedRefIds;
-      if (currentIds.length > 0) {
-        setCheckedRefIds([]);
-      }
+      const newChecked = currentIds.filter(id => !publicIds.includes(id));
+      setCheckedRefIds(newChecked);
     }
   }, [usePublicRef, refFiles, setCheckedRefIds]);
+
+  // 当项目 ID 发生改变时，重置 usePublicRef 状态并清空所有勾选，防止交叉污染
+  useEffect(() => {
+    setUsePublicRef(true);
+    setCheckedRefIds([]);
+  }, [projectId, setCheckedRefIds]);
 
   // WHY: 组件加载 / projectId 变化 / 上传弹窗关闭(refreshCounter) 时均刷新引用列表，
   //       确保数量始终正确。
   useEffect(() => {
     fetchFiles();
     fetchRefFiles();
+    fetchProjectRefFiles();
   }, [projectId, refreshCounter]);
 
   // 删除文件：触发自定义确认弹窗
   const handleDeleteFileClick = (file: FileItem, e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    setShowConfirmFile(file);
+    const isReferencedFile = file.isRef || projectRefFiles.some(f => f.id === file.id);
+    if (isReferencedFile) {
+      setShowConfirmExcludeFile(file);
+    } else {
+      setShowConfirmFile(file);
+    }
   };
 
   // 真正执行删除文件逻辑
@@ -295,7 +320,11 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
   const handleDeleteFolderClick = (folderPath: string, folderName: string, fileCount: number, e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    setShowConfirmFolder({ pathKey: folderPath, folderName, fileCount });
+    if (folderName === '其他公开项目文档') {
+      setShowConfirmBulkExclude(true);
+    } else {
+      setShowConfirmFolder({ pathKey: folderPath, folderName, fileCount });
+    }
   };
 
   // 真正执行删除文件夹逻辑
@@ -336,18 +365,20 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
   // 从扁平文件列表构建树形目录结构
   const treeRoot = useMemo(() => {
     const root: TreeNode = { name: 'root', isFolder: true, children: {} };
+
+    // 1. 将本项目的本地文件直接放入 root 顶级层级下
     files.forEach(file => {
       let relPath = file.path;
-      if (relPath.startsWith(`${projectId}/`)) {
+      if (file.source_type === 'web' || file.source_type === 'text') {
+        relPath = file.filename;
+      } else if (relPath.startsWith(`${projectId}/`)) {
         relPath = relPath.substring(projectId.length + 1);
       }
       const parts = relPath.split('/');
       let current = root;
-      let currentPath = '';
 
       for (let i = 0; i < parts.length - 1; i++) {
         const part = parts[i];
-        currentPath = currentPath ? `${currentPath}/${part}` : part;
         if (!current.children[part]) {
           current.children[part] = { name: part, isFolder: true, children: {} };
         }
@@ -356,8 +387,42 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
       const fileName = parts[parts.length - 1];
       current.children[fileName] = { name: fileName, isFolder: false, file, children: {} };
     });
+
+    // 3. 将引用其他项目的文档塞入“其他公开项目文档”虚拟顶级文件夹下
+    if (projectRefFiles.length > 0) {
+      const refFolderName = '其他公开项目文档';
+      root.children[refFolderName] = {
+        name: refFolderName,
+        isFolder: true,
+        children: {}
+      };
+
+      projectRefFiles.forEach(file => {
+        root.children[refFolderName].children[file.filename] = {
+          name: file.filename,
+          isFolder: false,
+          file: { ...file, isRef: true },
+          children: {}
+        };
+      });
+    }
+
     return root;
-  }, [files, projectId]);
+  }, [files, projectRefFiles, projectId]);
+
+  const bulkExcludeCount = useMemo(() => {
+    const selectedProjRefIds = projectRefFiles.filter(f => checkedRefIds.includes(f.id)).map(f => f.id);
+    return selectedProjRefIds.length > 0 ? selectedProjRefIds.length : projectRefFiles.length;
+  }, [projectRefFiles, checkedRefIds]);
+
+  // 默认把引用目录加进展开中
+  useEffect(() => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      next.add('其他公开项目文档');
+      return next;
+    });
+  }, []);
 
   // 渲染后将真正新创建的文件夹自动加入展开集合，保留用户手动折叠的状态
   useEffect(() => {
@@ -428,8 +493,8 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
     );
   }
 
-  if (files.length === 0) {
-    return <div className="text-gray-400 text-center mt-4">暂无文件，请上传</div>;
+  if (files.length === 0 && refFiles.length === 0) {
+    return <div className="text-gray-400 text-center mt-4">暂无文件，请上传或引用</div>;
   }
 
   // 计算全局全选状态
@@ -460,17 +525,35 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
   const handleNodeCheck = (node: TreeNode, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!node.isFolder && node.file) {
-      toggleFileCheck(node.file.id);
+      const isRef = node.file.isRef || projectRefFiles.some(rf => rf.id === node.file?.id);
+      if (isRef) {
+        if (checkedRefIds.includes(node.file.id)) {
+          setCheckedRefIds(checkedRefIds.filter(id => id !== node.file?.id));
+        } else {
+          setCheckedRefIds([...checkedRefIds, node.file.id]);
+        }
+      } else {
+        toggleFileCheck(node.file.id);
+      }
     } else {
       const ids = getFileIdsUnderNode(node);
-      const allNodeChecked = ids.length > 0 && ids.every(id => checkedFileIds.includes(id));
-      if (allNodeChecked) {
-        // 反选这些 IDs
-        setCheckedFiles(checkedFileIds.filter(id => !ids.includes(id)));
+      const isRef = node.name === '其他公开项目文档' || ids.some(id => projectRefFiles.some(rf => rf.id === id));
+      if (isRef) {
+        const allNodeChecked = ids.length > 0 && ids.every(id => checkedRefIds.includes(id));
+        if (allNodeChecked) {
+          setCheckedRefIds(checkedRefIds.filter(id => !ids.includes(id)));
+        } else {
+          const newChecked = new Set([...checkedRefIds, ...ids]);
+          setCheckedRefIds(Array.from(newChecked));
+        }
       } else {
-        // 勾选所有缺失的 IDs
-        const newChecked = new Set([...checkedFileIds, ...ids]);
-        setCheckedFiles(Array.from(newChecked));
+        const allNodeChecked = ids.length > 0 && ids.every(id => checkedFileIds.includes(id));
+        if (allNodeChecked) {
+          setCheckedFiles(checkedFileIds.filter(id => !ids.includes(id)));
+        } else {
+          const newChecked = new Set([...checkedFileIds, ...ids]);
+          setCheckedFiles(Array.from(newChecked));
+        }
       }
     }
   };
@@ -520,7 +603,7 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
     }
   };
 
-  // 真正执行单个公共文档排除逻辑
+  // 真正执行单个公共/项目文档排除逻辑
   const executeExcludeFile = async (file: FileItem) => {
     setShowConfirmExcludeFile(null);
     try {
@@ -534,37 +617,43 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
       );
       if (res.ok) {
         setRefFiles(prev => prev.filter(f => f.id !== file.id));
+        setProjectRefFiles(prev => prev.filter(f => f.id !== file.id));
         setCheckedRefIds(checkedRefIds.filter(id => id !== file.id));
       } else {
         alert('排除失败，请重试');
       }
     } catch (e) {
-      console.error('排除公共文档失败', e);
+      console.error('排除公共/项目文档失败', e);
       alert('排除失败，请重试');
     }
   };
 
-  // 真正执行批量公共文档排除逻辑
+  // 真正执行批量公开项目文档排除逻辑
   const executeBulkExclude = async () => {
     setShowConfirmBulkExclude(false);
-    if (checkedRefIds.length === 0) return;
+    const projectRefIds = projectRefFiles.map(f => f.id);
+    let toExcludeIds = checkedRefIds.filter(id => projectRefIds.includes(id));
+    if (toExcludeIds.length === 0) {
+      toExcludeIds = projectRefIds;
+    }
+    if (toExcludeIds.length === 0) return;
     try {
       const res = await fetch(
         `${API_BASE}/api/projects/${projectId}/exclude-ref-files`,
         {
           method: 'POST',
           headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ file_ids: checkedRefIds }),
+          body: JSON.stringify({ file_ids: toExcludeIds }),
         }
       );
       if (res.ok) {
-        setRefFiles(prev => prev.filter(f => !checkedRefIds.includes(f.id)));
-        setCheckedRefIds([]);
+        setProjectRefFiles(prev => prev.filter(f => !toExcludeIds.includes(f.id)));
+        setCheckedRefIds(checkedRefIds.filter(id => !toExcludeIds.includes(id)));
       } else {
         alert('排除失败，请重试');
       }
     } catch (e) {
-      console.error('排除公共文档失败', e);
+      console.error('排除公开项目文档失败', e);
       alert('排除失败，请重试');
     }
   };
@@ -624,10 +713,22 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
       const pathKey = currentPath ? `${currentPath}/${child.name}` : child.name;
 
       if (child.isFolder) {
+        const isRefRoot = child.name === '其他公开项目文档';
+
         const isExpanded = expandedFolders.has(pathKey);
         const childIds = getFileIdsUnderNode(child);
-        const isAllChecked = childIds.length > 0 && childIds.every(id => checkedFileIds.includes(id));
-        const isSomeChecked = childIds.some(id => checkedFileIds.includes(id));
+
+        // 如果是引用目录，使用 checkedRefIds 进行勾选判断，否则用 checkedFileIds
+        const isAllChecked = childIds.length > 0 && childIds.every(id => {
+          return isRefRoot || pathKey.startsWith('其他公开项目文档/')
+            ? checkedRefIds.includes(id)
+            : checkedFileIds.includes(id);
+        });
+        const isSomeChecked = childIds.some(id => {
+          return isRefRoot || pathKey.startsWith('其他公开项目文档/')
+            ? checkedRefIds.includes(id)
+            : checkedFileIds.includes(id);
+        });
 
         const isDeletingFolder = deletingId === pathKey;
 
@@ -653,37 +754,55 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
               
               <div className="flex items-center gap-1 flex-1 min-w-0 text-gray-600 group-hover/folder:text-blue-600 transition-colors">
                 {isExpanded ? <FolderOpen className="w-4 h-4 opacity-80 shrink-0" /> : <Folder className="w-4 h-4 opacity-80 shrink-0" />}
-                <span className="text-sm font-medium truncate select-none">{child.name}</span>
+                <span className={`text-sm ${isRefRoot ? 'font-bold' : 'font-medium'} truncate select-none`}>{child.name}</span>
                 <span className="text-[10px] text-gray-400 shrink-0">({childIds.length})</span>
               </div>
 
               {/* 文件夹悬浮下载与删除按钮 */}
               <div className="flex items-center gap-1 opacity-0 group-hover/folder:opacity-100 transition-opacity">
-                <button
-                  className="p-0.5 rounded hover:bg-blue-100 text-gray-300 hover:text-blue-500"
-                  title={`下载文件夹 ${child.name}`}
-                  onClick={(e) => handleDownload([`${projectId}/${pathKey}`], `${child.name}.zip`, e)}
-                  disabled={downloadingId === `${projectId}/${pathKey}`}
-                >
-                  {downloadingId === `${projectId}/${pathKey}` ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
-                  ) : (
-                    <Download className="w-3.5 h-3.5" />
-                  )}
-                </button>
-                {canWrite && (
-                  <button
-                    className="p-0.5 rounded hover:bg-red-100 text-gray-300 hover:text-red-500"
-                    title={`删除文件夹 ${child.name}（含 ${childIds.length} 个文件）`}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => handleDeleteFolderClick(pathKey, child.name, childIds.length, e)}
-                  >
-                    {isDeletingFolder ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
+                {isRefRoot ? (
+                  canWrite && (
+                    <button
+                      className="p-0.5 rounded hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
+                      title="取消引用所有公开项目文档"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowConfirmBulkExclude(true);
+                      }}
+                    >
                       <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )
+                ) : (
+                  <>
+                    <button
+                      className="p-0.5 rounded hover:bg-blue-100 text-gray-300 hover:text-blue-500"
+                      title={`下载文件夹 ${child.name}`}
+                      onClick={(e) => handleDownload([`${projectId}/${pathKey}`], `${child.name}.zip`, e)}
+                      disabled={downloadingId === `${projectId}/${pathKey}`}
+                    >
+                      {downloadingId === `${projectId}/${pathKey}` ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                    {canWrite && (
+                      <button
+                        className="p-0.5 rounded hover:bg-red-100 text-gray-300 hover:text-red-500"
+                        title={`删除文件夹 ${child.name}（含 ${childIds.length} 个文件）`}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => handleDeleteFolderClick(pathKey, child.name, childIds.length, e)}
+                      >
+                        {isDeletingFolder ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                      </button>
                     )}
-                  </button>
+                  </>
                 )}
               </div>
             </div>
@@ -698,7 +817,8 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
 
       // 文件节点
       const file = child.file!;
-      const isChecked = checkedFileIds.includes(file.id);
+      const isRef = file.isRef || projectRefFiles.some(rf => rf.id === file.id);
+      const isChecked = isRef ? checkedRefIds.includes(file.id) : checkedFileIds.includes(file.id);
       const isActive = activePreviewFile?.id === file.id;
       const isDeleting = deletingId === file.id;
 
@@ -753,7 +873,7 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
               {canWrite && (
                 <button
                   className="p-0.5 rounded hover:bg-red-100 text-gray-300 hover:text-red-500"
-                  title={`删除 ${file.filename}`}
+                  title={isRef ? `取消引用 ${file.filename}` : `删除 ${file.filename}`}
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => handleDeleteFileClick(file, e)}
                 >
@@ -776,15 +896,24 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
       {refFiles.length > 0 && (
         <div className="flex items-center justify-between p-2 mb-1 bg-[#F7F5F0] border border-[#E0DCD5] rounded-md shadow-sm">
           <div 
-            className="flex items-center gap-2 cursor-pointer group select-none"
+            className="flex items-center justify-between w-full cursor-pointer select-none"
             onClick={() => setUsePublicRef(!usePublicRef)}
           >
-            <div className={`shrink-0 transition-colors ${usePublicRef ? 'text-[#8B7355]' : 'text-gray-400 group-hover:text-[#8B7355]'}`}>
-              {usePublicRef ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-            </div>
-            <span className={`text-xs font-semibold transition-colors ${usePublicRef ? 'text-[#8B7355]' : 'text-gray-500 group-hover:text-gray-700'}`}>
+            <span className="text-xs font-semibold text-[#8B7355]">
               引用所有公共文档 ({refFiles.length}个)
             </span>
+            {/* 极简 iOS 风格滑动开关 */}
+            <div 
+              className={`relative w-8 h-4.5 rounded-full transition-colors duration-200 shrink-0 ${
+                usePublicRef ? 'bg-[#8B7355]' : 'bg-gray-300'
+              }`}
+            >
+              <div 
+                className={`absolute top-[2px] left-[2px] w-3.5 h-3.5 rounded-full bg-white transition-transform duration-200 shadow-sm ${
+                  usePublicRef ? 'translate-x-3.5' : 'translate-x-0'
+                }`}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -875,8 +1004,8 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
 
       <ConfirmModal
         isOpen={!!showConfirmExcludeFile}
-        title="取消公共文档引用吗？"
-        message={`您确定要取消引用公共文档「${showConfirmExcludeFile?.filename || ''}」吗？\n\n此操作仅会移除本案件与该公共文档的引用关系，不会删除公共文档库中的原始文件。`}
+        title="取消项目文档引用吗？"
+        message={`您确定要取消引用项目文档「${showConfirmExcludeFile?.filename || ''}」吗？\n\n此操作仅会移除本案件与该项目文档的引用关系，不会删除原项目中的物理文件。`}
         onConfirm={() => showConfirmExcludeFile && executeExcludeFile(showConfirmExcludeFile)}
         onCancel={() => setShowConfirmExcludeFile(null)}
         confirmText="取消引用"
@@ -885,8 +1014,8 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
 
       <ConfirmModal
         isOpen={showConfirmBulkExclude}
-        title="批量取消公共文档引用吗？"
-        message={`您确定要取消引用选中的这 ${checkedRefIds.length} 个公共文档吗？\n\n此操作仅会移除引用关系，不会删除公共文档库中的原始文件。`}
+        title="批量取消公开项目文档引用吗？"
+        message={`您确定要取消引用这 ${bulkExcludeCount} 个公开项目文档吗？\n\n此操作仅会移除引用关系，不会删除任何原公开项目中的文件。`}
         onConfirm={executeBulkExclude}
         onCancel={() => setShowConfirmBulkExclude(false)}
         confirmText="取消引用"

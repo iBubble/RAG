@@ -1032,18 +1032,25 @@ class RefCreate(BaseModel):
 @router.post("/{case_id}/refs")
 async def add_ref(case_id: str, data: RefCreate, user: dict = Depends(get_current_user)):
     """
-    为案件添加公共文档库引用。
-    WHY: 引用而非复制——公共文档只存一份，多案件共享检索。
+    为案件添加其他公开项目/文档库的引用。
+    WHY: 引用而非复制——公共文档或公开项目文档只存一份，多案件共享检索。
     """
     require_project_access(case_id, user, write=False)
 
-    # 验证 library_id 是公共文档库类型
+    if data.library_id == case_id:
+        raise HTTPException(400, "不能引用当前项目自身的文档")
+
+    # 验证 library_id 是公开项目或公共文档库
     with get_db() as conn:
         lib = conn.execute(
-            "SELECT project_type FROM projects WHERE id = ?", (data.library_id,)
+            "SELECT project_type, visibility FROM projects WHERE id = ?", (data.library_id,)
         ).fetchone()
-        if not lib or dict(lib).get("project_type") != "library":
-            raise HTTPException(400, "目标项目不是公共文档库")
+        if not lib:
+            raise HTTPException(404, "目标项目不存在")
+        
+        lib_dict = dict(lib)
+        if lib_dict.get("visibility") != "public" and lib_dict.get("project_type") != "library":
+            raise HTTPException(400, "目标项目不是公开项目或公共文档库")
 
         # 防止重复引用同一个库
         existing = conn.execute(
@@ -1077,15 +1084,22 @@ class BatchRefCreate(BaseModel):
 
 @router.post("/{case_id}/refs/batch")
 async def add_ref_batch(case_id: str, data: BatchRefCreate, user: dict = Depends(get_current_user)):
-    """批量为案件添加公共文档库引用（支持跨库）。"""
+    """批量为案件添加其他公开项目/文档库引用（支持跨库）。"""
     require_project_access(case_id, user, write=True)
 
     with get_db() as conn:
         for ref in data.refs:
+            if ref.library_id == case_id:
+                continue
+
             lib = conn.execute(
-                "SELECT project_type FROM projects WHERE id = ?", (ref.library_id,)
+                "SELECT project_type, visibility FROM projects WHERE id = ?", (ref.library_id,)
             ).fetchone()
-            if not lib or dict(lib).get("project_type") != "library":
+            if not lib:
+                continue
+            
+            lib_dict = dict(lib)
+            if lib_dict.get("visibility") != "public" and lib_dict.get("project_type") != "library":
                 continue
 
             existing = conn.execute(
@@ -1617,5 +1631,67 @@ async def stream_retrospective(project_id: str, req: RetrospectiveRequest, user:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/{case_id}/project-ref-files")
+async def list_project_ref_files(case_id: str, user: dict = Depends(get_current_user)):
+    """
+    获取当前案件手动引用的其他公开项目文件列表（排除 library 文档库）。
+    """
+    require_project_access(case_id, user, write=False)
+
+    with get_db() as conn:
+        refs = conn.execute(
+            "SELECT library_id, file_ids FROM project_refs WHERE case_id = ?",
+            (case_id,)
+        ).fetchall()
+
+    project_files = []
+    import os, hashlib
+    with get_db() as conn:
+        for ref in refs:
+            lib_id = ref["library_id"]
+            # 确认 library_id 项目不是 library 且是公开的
+            lib_info = conn.execute(
+                "SELECT name, project_type, visibility FROM projects WHERE id = ?",
+                (lib_id,)
+            ).fetchone()
+            if not lib_info:
+                continue
+            lib_dict = dict(lib_info)
+            if lib_dict.get("project_type") == "library" or lib_dict.get("visibility") != "public":
+                continue
+
+            file_ids_limit = json.loads(ref["file_ids"] or "[]")
+            if not file_ids_limit:
+                continue
+
+            lib_dir = Path(settings.UPLOAD_DIR) / lib_id
+            if not lib_dir.exists():
+                continue
+
+            for root, dirs, fnames in os.walk(str(lib_dir)):
+                dirs[:] = [d for d in dirs if not d.startswith(".")]
+                for fname in fnames:
+                    if fname.startswith("."):
+                        continue
+                    fpath = os.path.join(root, fname)
+                    rel_path = os.path.relpath(fpath, str(Path(settings.UPLOAD_DIR)))
+                    file_id = hashlib.md5(
+                        f"{lib_id}_{rel_path}".encode("utf-8")
+                    ).hexdigest()
+
+                    if file_id in file_ids_limit:
+                        project_files.append({
+                            "id": file_id,
+                            "filename": fname,
+                            "path": rel_path,
+                            "size": os.path.getsize(fpath),
+                            "library_id": lib_id,
+                            "library_name": lib_dict["name"],
+                            "is_project_ref": True
+                        })
+    return {"files": project_files}
+
 
 

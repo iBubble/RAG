@@ -334,3 +334,19 @@ def search_fts(query: str, project_id: str, file_ids: list[str] | None = None, l
             except Exception as e2:
                 logger.error(f"FTS 降级搜索依然失败: {e2}")
                 return []
+
+
+def get_fts_text_by_file_id(file_id: str) -> Optional[str]:
+    """
+    根据 file_id 从 doc_chunks_fts 虚拟表中检索并按 chunk_index 顺序拼接出已提取的全文文本。
+    """
+    sql = "SELECT document FROM doc_chunks_fts WHERE file_id = ? ORDER BY CAST(chunk_index AS INTEGER)"
+    with get_db() as conn:
+        try:
+            rows = conn.execute(sql, [file_id]).fetchall()
+            if rows:
+                return "\n\n".join([r["document"] for r in rows])
+        except Exception as e:
+            logger.warning(f"获取已提取的 FTS 全文失败 ({file_id}): {e}")
+    return None
+

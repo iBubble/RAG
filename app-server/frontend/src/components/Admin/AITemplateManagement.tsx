@@ -3,7 +3,8 @@ import { useAuthStore } from '../../store/authStore';
 import { 
   FolderOpen, FileSpreadsheet, Trash2, Plus, 
   Save, Loader2, RefreshCw, AlertCircle, FileUp,
-  Bold, Italic, Table as TableIcon, ChevronDown, ChevronUp, Columns, Layers
+  Bold, Italic, Table as TableIcon, ChevronDown, ChevronUp, Columns, Layers,
+  AlignLeft, AlignCenter, AlignRight, Grid
 } from 'lucide-react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -12,6 +13,7 @@ import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import Placeholder from '@tiptap/extension-placeholder';
+import TextAlign from '@tiptap/extension-text-align';
 
 const CustomTable = Table.extend({
   addAttributes() {
@@ -90,6 +92,8 @@ export default function AITemplateManagement() {
   const [newTableNames, setNewTableNames] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [, setUpdateTrigger] = useState(0);
+
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -97,10 +101,16 @@ export default function AITemplateManagement() {
       TableRow,
       CustomTableHeader,
       CustomTableCell,
+      TextAlign.configure({
+        types: ['heading', 'paragraph', 'tableCell', 'tableHeader'],
+      }),
       Placeholder.configure({ placeholder: '在此编辑模板结构，支持直接插入和调整表格...' })
     ],
     content: '',
     immediatelyRender: false,
+    onTransaction() {
+      setUpdateTrigger(prev => prev + 1);
+    },
     editorProps: {
       attributes: {
         class: 'prose prose-sm focus:outline-none w-full min-h-[420px] text-gray-900 leading-relaxed font-sans p-2',
@@ -463,19 +473,102 @@ export default function AITemplateManagement() {
                     </div>
                     {/* 表格操作快捷键 */}
                     {editor && (
-                      <div className="flex items-center gap-1 bg-white dark:bg-[#1E1F22] px-2 py-1 rounded-lg border border-gray-200 dark:border-stone-850">
-                        <button onClick={() => editor.chain().focus().toggleBold().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded" title="加粗"><Bold className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => editor.chain().focus().toggleItalic().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded" title="斜体"><Italic className="w-3.5 h-3.5" /></button>
+                      <div className="flex items-center gap-1 bg-white dark:bg-[#1E1F22] px-2 py-1 rounded-lg border border-gray-200 dark:border-stone-850 flex-wrap">
+                        <button onClick={() => editor.chain().focus().toggleBold().run()} className={`p-1 rounded ${editor.isActive('bold') ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-gray-100'}`} title="加粗"><Bold className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => editor.chain().focus().toggleItalic().run()} className={`p-1 rounded ${editor.isActive('italic') ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-gray-100'}`} title="斜体"><Italic className="w-3.5 h-3.5" /></button>
+                        
                         <div className="w-[1px] h-3.5 bg-gray-200 dark:bg-stone-800 mx-1" />
+                        
+                        <button onClick={() => editor.chain().focus().setTextAlign('left').run()} className={`p-1 rounded ${editor.isActive({ textAlign: 'left' }) ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-gray-100'}`} title="居左对齐"><AlignLeft className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => editor.chain().focus().setTextAlign('center').run()} className={`p-1 rounded ${editor.isActive({ textAlign: 'center' }) ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-gray-100'}`} title="居中对齐"><AlignCenter className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => editor.chain().focus().setTextAlign('right').run()} className={`p-1 rounded ${editor.isActive({ textAlign: 'right' }) ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-gray-100'}`} title="居右对齐"><AlignRight className="w-3.5 h-3.5" /></button>
+                        
+                        <div className="w-[1px] h-3.5 bg-gray-200 dark:bg-stone-800 mx-1" />
+                        
                         <button onClick={() => editor.chain().focus().addRowAfter().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded flex items-center gap-0.5" title="下方增行"><Plus className="w-3 h-3" /><ChevronDown className="w-3 h-3" /></button>
                         <button onClick={() => editor.chain().focus().addRowBefore().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded flex items-center gap-0.5" title="上方增行"><Plus className="w-3 h-3" /><ChevronUp className="w-3 h-3" /></button>
                         <button onClick={() => editor.chain().focus().deleteRow().run()} className="p-1 hover:bg-red-50 text-red-500 dark:hover:bg-red-950/20 rounded flex items-center gap-0.5" title="删行"><Trash2 className="w-3 h-3" /><ChevronDown className="w-3 h-3" /></button>
+                        
                         <div className="w-[1px] h-3.5 bg-gray-200 dark:bg-stone-800 mx-1" />
+                        
                         <button onClick={() => editor.chain().focus().addColumnAfter().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded flex items-center gap-0.5" title="右侧增列"><Plus className="w-3 h-3" /><Columns className="w-3 h-3" /></button>
                         <button onClick={() => editor.chain().focus().deleteColumn().run()} className="p-1 hover:bg-red-50 text-red-500 dark:hover:bg-red-950/20 rounded flex items-center gap-0.5" title="删列"><Trash2 className="w-3 h-3" /><Columns className="w-3 h-3" /></button>
+                        
                         <div className="w-[1px] h-3.5 bg-gray-200 dark:bg-stone-800 mx-1" />
+                        
                         <button onClick={() => editor.chain().focus().mergeCells().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded" title="合并单元格"><Layers className="w-3.5 h-3.5" /></button>
                         <button onClick={() => editor.chain().focus().splitCell().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded" title="拆分单元格"><TableIcon className="w-3.5 h-3.5" /></button>
+                        
+                        {(() => {
+                          const getTableAttrs = () => {
+                            const { selection } = editor.state;
+                            const { $from } = selection;
+                            for (let depth = $from.depth; depth > 0; depth--) {
+                              const node = $from.node(depth);
+                              if (node.type.name === 'table') {
+                                return node.attrs;
+                              }
+                            }
+                            return null;
+                          };
+                          
+                          const tableAttrs = getTableAttrs();
+                          if (!tableAttrs) return null;
+                          
+                          const isNoBorder = tableAttrs.noborder === 'true';
+                          
+                          return (
+                            <>
+                              <div className="w-[1px] h-3.5 bg-gray-200 dark:bg-stone-800 mx-1" />
+                              <button 
+                                onClick={() => {
+                                  const { state, view } = editor;
+                                  const { selection } = state;
+                                  const { $from } = selection;
+                                  for (let depth = $from.depth; depth > 0; depth--) {
+                                    const node = $from.node(depth);
+                                    if (node.type.name === 'table') {
+                                      const tablePos = $from.before(depth);
+                                      const newStatus = isNoBorder ? null : 'true';
+                                      
+                                      let tr = state.tr;
+                                      // 1. 修改 table 的 markup
+                                      tr = tr.setNodeMarkup(tablePos, undefined, {
+                                        ...node.attrs,
+                                        noborder: newStatus
+                                      });
+                                      
+                                      // 2. 遍历并修改所有子 cell 的 markup 确保 noborder 属性同步一致
+                                      node.descendants((child: any, childPos: number) => {
+                                        if (child.type.name === 'tableCell' || child.type.name === 'tableHeader') {
+                                          const absoluteChildPos = tablePos + 1 + childPos;
+                                          tr = tr.setNodeMarkup(absoluteChildPos, undefined, {
+                                            ...child.attrs,
+                                            noborder: newStatus
+                                          });
+                                        }
+                                        return true;
+                                      });
+                                      
+                                      view.dispatch(tr);
+                                      editor.commands.focus();
+                                      break;
+                                    }
+                                  }
+                                }} 
+                                className={`p-1.5 rounded flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 border ${
+                                  isNoBorder 
+                                    ? 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100/50' 
+                                    : 'bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100/50'
+                                }`} 
+                                title="切换表格外边线(实线/无边框)"
+                              >
+                                <Grid className="w-3.5 h-3.5" />
+                                <span>{isNoBorder ? '当前: 无边框' : '当前: 有边框'}</span>
+                              </button>
+                            </>
+                          );
+                        })()}
                       </div>
                     )}
                     <button
@@ -515,6 +608,9 @@ export default function AITemplateManagement() {
                       }
                       .ProseMirror * {
                         color: #000000 !important;
+                      }
+                      .ProseMirror, .ProseMirror p, .ProseMirror td, .ProseMirror th, .ProseMirror div {
+                        white-space: pre-wrap !important;
                       }
                       .ProseMirror .tableWrapper {
                         padding: 4px !important;
@@ -569,6 +665,12 @@ export default function AITemplateManagement() {
                       .ai-document-editor .ProseMirror table tr:last-child td {
                         border-bottom: 1px solid #000000 !important;
                       }
+                      .ai-document-editor .ProseMirror table:has(td[noborder]) tr:last-child td,
+                      .ai-document-editor .ProseMirror table:has(td[noborder="true"]) tr:last-child td,
+                      .ai-document-editor .ProseMirror table tr:last-child td[noborder],
+                      .ai-document-editor .ProseMirror table tr:last-child td[noborder="true"] {
+                        border-bottom: 1px dashed #E5E7EB !important;
+                      }
                       /* 强力消除 index.css 中的斑马纹与悬浮高亮 */
                       .ai-document-editor .ProseMirror table tbody tr:nth-child(odd) td,
                       .ai-document-editor .ProseMirror table tbody tr:nth-child(even) td,
@@ -577,27 +679,30 @@ export default function AITemplateManagement() {
                         background: #ffffff !important;
                       }
                       
-                      /* 带有 noborder="true" 或 noborder 属性的排版/布局表格强制无边框 */
+                      /* 带有 noborder="true" 或 noborder 属性的排版/布局表格在后台编辑器中显示为浅灰色虚线框，方便编辑 */
                       .ai-document-editor .ProseMirror table[noborder="true"],
-                      .ai-document-editor .ProseMirror table[noborder] {
-                        border: none !important;
+                      .ai-document-editor .ProseMirror table[noborder],
+                      .ai-document-editor .ProseMirror table:has(td[noborder="true"]),
+                      .ai-document-editor .ProseMirror table:has(td[noborder]),
+                      .ai-document-editor .ProseMirror table .noborder-table {
+                        border: 1px dashed #D1D5DB !important;
                         box-shadow: none !important;
-                        background: transparent !important;
-                        background-color: transparent !important;
+                        background: #FAFAFA !important;
+                        background-color: #FAFAFA !important;
                       }
                       .ai-document-editor .ProseMirror table[noborder="true"] tr,
                       .ai-document-editor .ProseMirror table[noborder] tr,
                       .ai-document-editor .ProseMirror table[noborder="true"] td,
                       .ai-document-editor .ProseMirror table[noborder] td,
                       .ai-document-editor .ProseMirror table[noborder="true"] th,
-                      .ai-document-editor .ProseMirror table[noborder] th {
-                        border: none !important;
-                        border-top: none !important;
-                        border-bottom: none !important;
-                        border-left: none !important;
-                        border-right: none !important;
-                        background: transparent !important;
-                        background-color: transparent !important;
+                      .ai-document-editor .ProseMirror table[noborder] th,
+                      .ai-document-editor .ProseMirror table td[noborder="true"],
+                      .ai-document-editor .ProseMirror table th[noborder="true"],
+                      .ai-document-editor .ProseMirror table td[noborder],
+                      .ai-document-editor .ProseMirror table th[noborder] {
+                        border: 1px dashed #E5E7EB !important;
+                        background: #FAFAFA !important;
+                        background-color: #FAFAFA !important;
                       }
                       /* 对于 2 列的 noborder 布局表格（如登记单位和编号），做两端对齐 */
                       .ai-document-editor .ProseMirror table[noborder="true"] td:first-child:nth-last-child(2),

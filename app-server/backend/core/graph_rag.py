@@ -55,14 +55,20 @@ def _parse_triples(raw: str) -> list[dict]:
     # 清除 <think> 标签
     text = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL)
 
-    # 提取 JSON 代码块
-    m = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
-    if m:
-        text = m.group(1)
+    # WHY: 抛弃低效的正则表达式，改用首尾定位器截取 JSON。
+    #      大模型返回的长异常文本配上 .* 正则在匹配失败时极易引发
+    #      Python 正则引擎的灾难性回溯，把 CPU 100% 跑满卡死。
+    #      使用 string.find/rfind 保证 O(N) 复杂度，绝对不卡死。
+    start = text.find('{')
+    end = text.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        text = text[start:end+1]
     else:
-        m = re.search(r'\{.*\}', text, re.DOTALL)
-        if m:
-            text = m.group(0)
+        # 支持直接返回数组的情况
+        start = text.find('[')
+        end = text.rfind(']')
+        if start != -1 and end != -1 and end > start:
+            text = f'{{"triples": {text[start:end+1]}}}'
 
     try:
         data = json.loads(text)

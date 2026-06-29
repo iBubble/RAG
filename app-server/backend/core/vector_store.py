@@ -6,6 +6,11 @@ WHY: 从 FastEmbed 的 bge-small-en-v1.5（384 维英文）升级到 BGE-M3（10
 """
 from __future__ import annotations
 
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
 import logging
 import os
 import uuid
@@ -13,9 +18,7 @@ import hashlib
 from typing import List, Optional, Dict, Any
 
 import numpy as np
-import torch
 from qdrant_client import QdrantClient, models
-from sentence_transformers import SentenceTransformer
 
 from core.config import settings
 
@@ -57,10 +60,10 @@ def _get_dense_model() -> SentenceTransformer:
     global _dense_model
     if _dense_model is None:
         logger.info(f"正在加载 Dense 编码模型: {_MODEL_NAME} ...")
-        # WHY: 强制离线模式，防止 Celery 进程 fork 时继承断开的 httpx 客户端导致 Timeout
         import os
         import torch
-        # WHY: 限制 PyTorch 线程数为 4，防止多核环境下线程过度争抢导致 CPU 击穿和软超时
+        from sentence_transformers import SentenceTransformer
+        # WHY: 限制 PyTorch 线程数为 4，配合 OMP_WAIT_POLICY=PASSIVE 环境变量，既能榨干 M4 Max 多核性能，又绝无自旋锁假死
         torch.set_num_threads(4)
         os.environ["HF_HUB_OFFLINE"] = os.getenv("HF_HUB_OFFLINE", "0")
         _dense_model = SentenceTransformer(_MODEL_NAME)
@@ -125,6 +128,7 @@ def _compute_sparse_vectors(texts: List[str]) -> List[models.SparseVector]:
     WHY: 稀疏向量通过 token 级别的 lexical weight 实现精确匹配。
          算法：log(1 + relu(hidden_state))，然后按 token_id max-pool。
     """
+    import torch
     tokenizer, model = _get_sparse_model()
     results = []
 
@@ -134,7 +138,7 @@ def _compute_sparse_vectors(texts: List[str]) -> List[models.SparseVector]:
         batch = texts[i:i + batch_size]
         inputs = tokenizer(
             batch, padding=True, truncation=True,
-            return_tensors="pt", max_length=8192
+            return_tensors="pt", max_length=1024
         )
         with torch.no_grad():
             out = model(**inputs, return_dict=True)

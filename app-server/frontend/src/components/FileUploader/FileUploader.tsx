@@ -604,11 +604,6 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
 
   // 🪄 智能推荐公共文档状态
   const [showRecArea, setShowRecArea] = useState(false);
-  const [recommendedFiles, setRecommendedFiles] = useState<any[]>([]);
-  const [selectedRecFiles, setSelectedRecFiles] = useState<string[]>([]);
-  const [recLoading, setRecLoading] = useState(false);
-  const [recSubmitting, setRecSubmitting] = useState(false);
-  const [recResult, setRecResult] = useState('');
 
   const handleWebIngest = async () => {
     if (!webUrl.trim() || webLoading) return;
@@ -669,8 +664,8 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
         {([
           { key: 'file' as const, label: '📁 上传文件' },
           { key: 'url' as const, label: '🌐 网页链接' },
-          { key: 'text' as const, label: '📋 粘贴文本' },
-          { key: 'ref' as const, label: '📚 引用公共文档' },
+          { key: 'text' as const, label: '📋 新建文本' },
+          { key: 'ref' as const, label: '📚 引用公开项目文档' },
         ]).map(tab => (
           <button
             key={tab.key}
@@ -820,11 +815,11 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
               {webResult}
             </p>
           )}
-          <p className="text-[11px] text-gray-400">支持政府公报、新闻网页、统计年鉴等公开页面。需要登录的页面请使用「📋 粘贴文本」。</p>
+          <p className="text-[11px] text-gray-400">支持政府公报、新闻网页、统计年鉴等公开页面。需要登录的页面请使用「📋 新建文本」。</p>
         </div>
       )}
 
-      {/* ─── Tab: 粘贴文本 ─── */}
+      {/* ─── Tab: 新建文本 ─── */}
       {activeUploadTab === 'text' && (
         <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
           <div>
@@ -863,10 +858,10 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
         </div>
       )}
 
-      {/* ─── Tab: 引用公共文档 ─── */}
+      {/* ─── Tab: 引用公开项目文档 ─── */}
       {activeUploadTab === 'ref' && (
         <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-          <p className="text-sm text-gray-600 mb-2">从公共文档库中选择文件引用到当前项目，引用不会复制文件。</p>
+          <p className="text-sm text-gray-600 mb-2">从其他公开项目中选择文件引用到当前项目，引用不会复制文件。</p>
 
           <div className="flex flex-wrap gap-3 items-center">
             {refLibraries.length === 0 && !refLoading && (
@@ -878,193 +873,25 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
                     const res = await fetch(`${API_BASE}/api/projects`, { headers: getAuthHeaders() });
                     if (res.ok) {
                       const all = await res.json();
-                      setRefLibraries(all.filter((p: any) => p.project_type === 'library'));
+                      setRefLibraries(all.filter((p: any) => p.visibility === 'public' && p.project_type !== 'library' && p.id !== projectId));
                     }
                   } catch (e) { console.error(e); }
                   finally { setRefLoading(false); }
                 }}
                 className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-semibold hover:bg-indigo-100 transition-colors flex items-center gap-2 shadow-sm border border-indigo-100"
               >
-                <Library className="w-3.5 h-3.5" /> 加载公共文档库列表
+                <Library className="w-3.5 h-3.5" /> 加载其他公开项目列表
               </button>
             )}
 
-            {!recLoading && (
-              <button
-                onClick={async () => {
-                  setRecLoading(true);
-                  setRecResult('');
-                  setRefSelectedLib('');
-                  setShowRecArea(true);
-                  try {
-                    const res = await fetch(`${API_BASE}/api/projects/${projectId}/recommend-refs`, { headers: getAuthHeaders() });
-                    if (res.ok) {
-                      const data = await res.json();
-                      const recommended = data.recommended || [];
-                      setRecommendedFiles(recommended);
-                      setSelectedRecFiles(recommended.map((f: any) => f.id));
-                    } else {
-                      setRecResult('❌ 智能推荐获取失败');
-                    }
-                  } catch (e) {
-                    setRecResult('❌ 获取推荐网络错误');
-                  } finally {
-                    setRecLoading(false);
-                  }
-                }}
-                className="px-4 py-2 bg-purple-50 text-purple-700 rounded-lg text-xs font-semibold hover:bg-purple-100 transition-colors flex items-center gap-2 shadow-sm border border-purple-100"
-              >
-                <span>🪄</span> 智能推荐关联知识 (10部)
-              </button>
-            )}
-
-            {refLibraries.length > 0 && showRecArea && (
-              <button
-                onClick={() => {
-                  setShowRecArea(false);
-                  setRefSelectedLib('');
-                }}
-                className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg bg-white"
-              >
-                返回常规库列表
-              </button>
-            )}
           </div>
 
           {refLoading && <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-indigo-500" /></div>}
 
-          {/* ─── AI智能推荐展示区 ─── */}
-          {showRecArea && (
-            <div className="space-y-4 border border-purple-100 bg-purple-50/20 p-5 rounded-xl animate-in fade-in slide-in-from-top-3 duration-300">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-xs font-bold text-purple-950 flex items-center gap-1.5">
-                    <span>✨</span>
-                    根据项目初步理解，为您智能推荐以下 10 部关联参考文档
-                  </h4>
-                  <p className="text-[10px] text-purple-500/80 mt-0.5">默认全选，可手动调整后一键关联引用</p>
-                </div>
-                {recommendedFiles.length > 0 && (
-                  <button
-                    onClick={() => {
-                      if (selectedRecFiles.length === recommendedFiles.length) {
-                        setSelectedRecFiles([]);
-                      } else {
-                        setSelectedRecFiles(recommendedFiles.map(f => f.id));
-                      }
-                    }}
-                    className="text-xs text-purple-650 hover:text-purple-800 hover:underline font-semibold"
-                  >
-                    {selectedRecFiles.length === recommendedFiles.length ? '取消全选' : '全部勾选'}
-                  </button>
-                )}
-              </div>
-
-              {recLoading && (
-                <div className="flex flex-col items-center justify-center py-8 text-purple-600/70">
-                  <Loader2 className="w-6 h-6 animate-spin mb-2" />
-                  <span className="text-xs">智能模型正在通读分析已上传文档，请稍候...</span>
-                </div>
-              )}
-
-              {!recLoading && recommendedFiles.length === 0 && (
-                <div className="text-center py-6 text-gray-400 text-xs">
-                  暂未提取到足够项目特征，或公共库暂无文件。
-                </div>
-              )}
-
-              {!recLoading && recommendedFiles.length > 0 && (
-                <div className="border border-purple-100 rounded-lg max-h-60 overflow-y-auto bg-white">
-                  {recommendedFiles.map((file: any) => {
-                    const isChecked = selectedRecFiles.includes(file.id);
-                    return (
-                      <div
-                        key={file.id}
-                        onClick={() => {
-                          setSelectedRecFiles(prev =>
-                            prev.includes(file.id)
-                              ? prev.filter(id => id !== file.id)
-                              : [...prev, file.id]
-                          );
-                        }}
-                        className={`flex items-center gap-2 px-3 py-2.5 text-xs cursor-pointer border-b border-purple-50/50 last:border-b-0 transition-colors ${
-                          isChecked ? 'bg-purple-50/40 text-purple-950' : 'hover:bg-purple-50/10 text-gray-700'
-                        }`}
-                      >
-                        <div className="shrink-0">
-                          {isChecked ? <CheckSquare className="w-4 h-4 text-purple-600" /> : <Square className="w-4 h-4 text-purple-200" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="font-semibold block truncate" title={file.filename}>{file.filename}</span>
-                          <span className="text-[9px] text-purple-400 font-medium mt-0.5 block">来自公共库：📚 {file.library_name}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {!recLoading && selectedRecFiles.length > 0 && (
-                <button
-                  onClick={async () => {
-                    setRecSubmitting(true);
-                    setRecResult('');
-                    try {
-                      const groupedRefs: Record<string, string[]> = {};
-                      recommendedFiles.forEach(f => {
-                        if (selectedRecFiles.includes(f.id)) {
-                          if (!groupedRefs[f.library_id]) {
-                            groupedRefs[f.library_id] = [];
-                          }
-                          groupedRefs[f.library_id].push(f.id);
-                        }
-                      });
-
-                      const refsPayload = Object.entries(groupedRefs).map(([libId, fids]) => ({
-                        library_id: libId,
-                        file_ids: fids
-                      }));
-
-                      const res = await fetch(`${API_BASE}/api/projects/${projectId}/refs/batch`, {
-                        method: 'POST',
-                        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ refs: refsPayload }),
-                      });
-
-                      if (res.ok) {
-                        setRecResult(`✅ 成功关联引用 ${selectedRecFiles.length} 个公共文档`);
-                        setSelectedRecFiles([]);
-                        setRecommendedFiles([]);
-                        setShowRecArea(false);
-                      } else {
-                        const err = await res.json().catch(() => ({}));
-                        setRecResult(`❌ 关联失败: ${err.detail || '未知错误'}`);
-                      }
-                    } catch (e) {
-                      setRecResult('❌ 关联时网络异常');
-                    } finally {
-                      setRecSubmitting(false);
-                    }
-                  }}
-                  disabled={recSubmitting}
-                  className="px-5 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-xs font-semibold transition-colors flex items-center gap-2 shadow-sm"
-                >
-                  {recSubmitting ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 正在引用...</> : `一键引用已选 ${selectedRecFiles.length} 部参考文档`}
-                </button>
-              )}
-
-              {recResult && (
-                <p className={`text-xs p-3 rounded-lg ${recResult.startsWith('✅') ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
-                  {recResult}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* 公共文档库卡片 */}
-          {!showRecArea && refLibraries.length > 0 && (
+          {/* 公开项目卡片 */}
+          {refLibraries.length > 0 && (
             <div className="space-y-2">
-              <label className="block text-xs font-medium text-gray-600 mb-1">选择公共文档库</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">选择公开项目</label>
               <div className="flex flex-wrap gap-2">
                 {refLibraries.map((lib: any) => (
                   <button
@@ -1092,7 +919,7 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
                         : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                     }`}
                   >
-                    📚 {lib.name}
+                    📁 {lib.name}
                   </button>
                 ))}
               </div>
@@ -1177,7 +1004,7 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
                     body: JSON.stringify({ library_id: refSelectedLib, file_ids: selectedRefFiles }),
                   });
                   if (res.ok) {
-                    setRefResult(`✅ 成功引用 ${selectedRefFiles.length} 个公共文档`);
+                    setRefResult(`✅ 成功引用 ${selectedRefFiles.length} 个公开项目文档`);
                     setSelectedRefFiles([]);
                   } else {
                     const err = await res.json().catch(() => ({}));
@@ -1192,7 +1019,7 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
               disabled={refSubmitting}
               className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium transition-colors flex items-center gap-2"
             >
-              {refSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> 引用中...</> : `📚 引用 ${selectedRefFiles.length} 个文件`}
+              {refSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> 引用中...</> : `📁 引用 ${selectedRefFiles.length} 个文件`}
             </button>
           )}
           {refResult && (

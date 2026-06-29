@@ -54,4 +54,8 @@ celery_app.conf.beat_schedule = {
         'task': 'worker.evaluate_nightly_ragas',
         'schedule': crontab(hour=3, minute=0),  # 每天凌晨 3:00 执行
     },
+    'auto-recover-learning-faults': {
+        'task': 'worker.check_and_recover_learning_faults',
+        'schedule': 300.0,  # 每 5 分钟 (300 秒) 自动运行一次！
+    },
 }

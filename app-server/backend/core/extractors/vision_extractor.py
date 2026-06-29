@@ -414,6 +414,32 @@ def extract_image_vision(
     _ollama_url = settings.OLLAMA_BASE_URL
     filename = Path(file_path).name
 
+    # ── [NEW] Ollama 模型存在性自检与自动降级机制 ──
+    # WHY: 当 settings.VISION_MODEL 不存在于本地 Ollama 时，
+    #      Ollama 会在线尝试下载 5GB 模型，导致长达 300s 的连接挂起超时。
+    #      通过 /api/tags 接口检查模型列表，不存在时自适应降级为本地已装的多模态模型，
+    #      如无多模态则快速降级使用本地 OCR，避免无效等待。
+    try:
+        resp = httpx.get(f"{_ollama_url}/api/tags", timeout=5.0)
+        if resp.status_code == 200:
+            local_models = [m.get("name") for m in resp.json().get("models", [])]
+            # 如果配置的模型不存在于本地列表中
+            if _model not in local_models and f"{_model}:latest" not in local_models:
+                logger.warning(f"⚠️ 本地 Ollama 未检测到多模态模型 {_model}，执行降级自愈...")
+                # 策略 1: 寻找已缓存的 minicpm-v
+                if "minicpm-v:latest" in local_models:
+                    _model = "minicpm-v:latest"
+                    logger.info(f"🔄 自适应降级为本地已就绪的多模态模型: minicpm-v:latest")
+                elif "moondream:latest" in local_models:
+                    _model = "moondream:latest"
+                    logger.info(f"🔄 自适应降级为本地已就绪的多模态模型: moondream:latest")
+                else:
+                    # 策略 2: 本地无多模态模型，直接快速返回空以触发本地 OCR，摆脱 300 秒挂死
+                    logger.warning(f"❌ 本地无可用的多模态模型，直接绕过 Vision LLM 并降级启用本地 OCR")
+                    return ""
+    except Exception as check_err:
+        logger.warning(f"模型存在性自检失败 (跳过): {check_err}")
+
     logger.info(f"🔍 Vision 图片解析: {filename} (model={_model})")
 
     try:

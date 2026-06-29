@@ -604,6 +604,19 @@ function StudioLayout() {
     if (isEditingName && nameInputRef.current) nameInputRef.current.focus();
   }, [isEditingName]);
 
+  useEffect(() => {
+    const handleNameUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail && customEvent.detail.name) {
+        setProjectName(customEvent.detail.name);
+      }
+    };
+    window.addEventListener('projectNameUpdated', handleNameUpdated);
+    return () => {
+      window.removeEventListener('projectNameUpdated', handleNameUpdated);
+    };
+  }, []);
+
   // WHY: 进入项目时从后端加载该项目独有的范文大纲
   const setExemplarData = useProjectStore(state => state.setExemplarData);
   const clearExemplar = useProjectStore(state => state.clearExemplar);

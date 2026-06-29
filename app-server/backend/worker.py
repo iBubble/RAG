@@ -6,6 +6,9 @@ WHY: 运行后台耗时任务，包括各类文件的解析抽取和向量化切
 from __future__ import annotations
 
 import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["HF_HUB_OFFLINE"] = os.getenv("HF_HUB_OFFLINE", "0")
 
 # ── onnxruntime 阻断器（必须在所有其他 import 之前执行） ──
@@ -157,6 +160,17 @@ def process_document(self, file_path: str, file_id: str, filename: str, project_
         )
         return {"status": "paused_due_to_high_priority"}
     logger.info(f"开始处理文档: {filename} ({file_id})")
+
+    # ── 强力物理文件校验（D3 升级） ──
+    # WHY: 在 OrbStack 等容器虚拟化挂载盘下，若宿主机上的文件已丢失，
+    #      直接调用 Path(file_path).read_text() 会被 Virtio-FS 驱动无限期卡死在内核态 D 状态。
+    #      通过 os.path.exists 提前低成本校验并拦截，彻底阻止文件挂起。
+    import os
+    if not os.path.exists(file_path):
+        logger.error(f"❌ 物理文件不存在，放弃解析: {file_path}")
+        update_file_status(project_id, file_id, "failed", error_message="物理文件已在磁盘中被清理，请重新上传。")
+        return {"status": "failed", "error": "file_not_found"}
+
     update_file_status(project_id, file_id, "processing")
     try:
         from core.vector_store import delete_by_file_id
@@ -328,20 +342,31 @@ def process_graph_extraction(self, file_id: str, filename: str, project_id: str)
 
     async def extract_all():
         nonlocal total_triples
+        # 限制最大并发数为 3，防止在单并发 Ollama 下等待排队超时
+        sem = asyncio.Semaphore(3)
+        results = [None] * len(chunks)
+
+        async def worker_task(idx, chunk_text):
+            if len(chunk_text) < 50:
+                return
+            async with sem:
+                try:
+                    t = await graph_engine.extract_entities_and_relationships(chunk_text)
+                    results[idx] = t
+                except Exception as _e:
+                    logger.error(f"🕸️ 并发提取 chunk {idx+1} 异常: {_e}")
+
+        tasks = [worker_task(idx, chunk) for idx, chunk in enumerate(chunks)]
+        await asyncio.gather(*tasks)
+
         triples_batch = []
-        # WHY: 连续失败熔断计数器。如果连续 3 个 chunk 的 LLM 调用
-        #      全部超时/返回空，说明 Ollama 服务不可用，
-        #      立即跳过该文件，释放 Worker 处理队列中的下一个。
         consecutive_failures = 0
         MAX_CONSECUTIVE_FAILURES = 3
 
-        for i, chunk in enumerate(chunks):
-            # 避免对非常短的废话进行抽取
-            if len(chunk) < 50:
+        for i, t in enumerate(results):
+            if len(chunks[i]) < 50:
                 continue
 
-            # 抽取三元组（异步，直接 await）
-            t = await graph_engine.extract_entities_and_relationships(chunk)
             if t:
                 consecutive_failures = 0  # 成功则重置
                 triples_batch.extend(t)
@@ -882,3 +907,111 @@ def evaluate_nightly_ragas(self):
         raise e
     finally:
         db_ctx.__exit__(None, None, None)
+
+
+@celery_app.task(name="worker.check_and_recover_learning_faults")
+def check_and_recover_learning_faults():
+    """
+    定时任务：自动扫描并恢复后台由于卡死或超时报错失败的文档解析/提取任务。
+    WHY: 自动解决大批量文件处理时，因大模型或网络波动死锁导致的任务挂起，降低人工重试运维成本。
+    """
+    logger.info("🕸️ [Watchdog] 开始扫描后台学习故障文件...")
+    import os
+    import json
+    import hashlib
+    from pathlib import Path
+    from core.config import settings
+    from core.db import get_db
+    from core.status_tracker import get_file_status, update_file_status
+    
+    try:
+        with get_db() as conn:
+            projects = conn.execute("SELECT id FROM projects").fetchall()
+    except Exception as e:
+        logger.error(f"[Watchdog] 读取项目列表失败: {e}")
+        return {"status": "db_error", "message": str(e)}
+
+    recovered_count = 0
+    
+    for p in projects:
+        pid = p["id"]
+        project_dir = Path(settings.UPLOAD_DIR) / pid
+        if not project_dir.exists():
+            continue
+            
+        for root, dirs, files_in_dir in os.walk(str(project_dir)):
+            if ".job_states" in dirs:
+                dirs.remove(".job_states")
+            for f in files_in_dir:
+                if f.startswith(".") or f.endswith(".lock"):
+                    continue
+                
+                path = Path(root) / f
+                rel_path = str(path.relative_to(Path(settings.UPLOAD_DIR)))
+                file_id = hashlib.md5(f"{pid}_{rel_path}".encode("utf-8")).hexdigest()
+                
+                try:
+                    status_data = get_file_status(pid, file_id)
+                except Exception:
+                    continue
+                    
+                st = status_data.get("status", "pending")
+                err_msg = status_data.get("error_message", "") or ""
+                
+                # 判断是否是系统故障导致失败的任务
+                is_fault = (
+                    st == "failed" and 
+                    any(keyword in err_msg for keyword in ["超时", "意外终止", "server busy", "connection", "ConnectError"])
+                )
+                
+                if is_fault:
+                    auto_retry_count = status_data.get("auto_retry_count", 0)
+                    if auto_retry_count >= 3:
+                        continue
+                        
+                    recovered_count += 1
+                    basename = path.name
+                    full_path = str(path)
+                    new_retry_count = auto_retry_count + 1
+                    logger.info(f"🕸️ [Watchdog] 发现系统故障失败文件: project={pid} file={f} 重试={new_retry_count}/3，错误: {err_msg}")
+                    
+                    if "知识图谱" in err_msg:
+                        update_file_status(pid, file_id, "graph_queued", error_message=f"系统自动重试 (第 {new_retry_count} 次)")
+                        try:
+                            status_file = Path(settings.UPLOAD_DIR) / pid / ".job_states" / f"{file_id}.json"
+                            if status_file.exists():
+                                with open(status_file, "r+", encoding="utf-8") as sf:
+                                    s_data = json.load(sf)
+                                    s_data["auto_retry_count"] = new_retry_count
+                                    sf.seek(0)
+                                    sf.truncate()
+                                    json.dump(s_data, sf, ensure_ascii=False, indent=2)
+                        except Exception:
+                            pass
+                            
+                        from worker import process_graph_extraction
+                        process_graph_extraction.apply_async(args=[file_id, basename, pid], queue='slow_queue')
+                        
+                    else:
+                        update_file_status(pid, file_id, "pending", error_message=f"系统自动重试 (第 {new_retry_count} 次)")
+                        try:
+                            status_file = Path(settings.UPLOAD_DIR) / pid / ".job_states" / f"{file_id}.json"
+                            if status_file.exists():
+                                with open(status_file, "r+", encoding="utf-8") as sf:
+                                    s_data = json.load(sf)
+                                    s_data["auto_retry_count"] = new_retry_count
+                                    sf.seek(0)
+                                    sf.truncate()
+                                    json.dump(s_data, sf, ensure_ascii=False, indent=2)
+                        except Exception:
+                            pass
+                            
+                        from worker import process_document
+                        file_size = os.path.getsize(full_path) if os.path.exists(full_path) else 0
+                        if file_size > 2 * 1024 * 1024 or (file_size > 1 * 1024 * 1024 and basename.lower().endswith(('.xlsx', '.xls'))):
+                            process_document.apply_async(args=[full_path, file_id, basename, pid], queue='slow_queue')
+                        else:
+                            process_document.delay(full_path, file_id, basename, pid)
+
+    logger.info(f"🕸️ [Watchdog] 扫描结束，共拉起恢复了 {recovered_count} 个故障任务。")
+    return {"status": "success", "recovered_tasks": recovered_count}

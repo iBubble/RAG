@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Save, Download, FileSpreadsheet, Loader2, FileText,
   Bold, Italic, Table as TableIcon, Trash2, Plus, 
-  ChevronDown, ChevronUp, Columns, Layers, Sparkles
+  ChevronDown, ChevronUp, Columns, Layers, Sparkles, Printer
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useProjectStore } from '../../store/projectStore';
@@ -13,6 +13,7 @@ import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import Placeholder from '@tiptap/extension-placeholder';
+import TextAlign from '@tiptap/extension-text-align';
 
 
 const CustomTable = Table.extend({
@@ -74,7 +75,7 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
   const checkedFileIds = useProjectStore(state => state.checkedFileIds);
   const checkedRefIds = useProjectStore(state => state.checkedRefIds);
   const selectedModel = useProjectStore(state => state.selectedModel);
-  const [refGlobalLib, setRefGlobalLib] = useState(false);
+  const [refGlobalLib] = useState(false);
   const [isAIFilling, setIsAIFilling] = useState(false);
 
   const [categories, setCategories] = useState<AICategory[]>([]);
@@ -84,6 +85,7 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  const hasInitializedContentRef = useRef(false);
   const pendingDocRef = useRef<any>(null);
   const [pendingLoadDoc, setPendingLoadDoc] = useState<any>(null);
 
@@ -94,6 +96,9 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
       TableRow,
       CustomTableHeader,
       CustomTableCell,
+      TextAlign.configure({
+        types: ['heading', 'paragraph', 'tableCell', 'tableHeader'],
+      }),
       Placeholder.configure({ placeholder: '在此处编辑生成的表格与分析文档...' })
     ],
     content: '',
@@ -134,20 +139,46 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
     },
   });
 
+  const loadLatestSavedTableDocument = async (tableName: string, defaultTemplate: string) => {
+    if (!editor || !tableName) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/projects/${projectId || 'default'}/documents?t=${Date.now()}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const docs = await res.json();
+        if (Array.isArray(docs)) {
+          const matchedDocs = docs
+            .filter(d => d.title && d.title.startsWith(tableName + '_'))
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          
+          if (matchedDocs.length > 0) {
+            const targetDoc = matchedDocs[0];
+            const detailRes = await fetch(`${API_BASE}/api/projects/${projectId || 'default'}/documents/${targetDoc.id}`, {
+              headers: getAuthHeaders()
+            });
+            if (detailRes.ok) {
+              const fullDoc = await detailRes.json();
+              if (fullDoc && fullDoc.content) {
+                editor.commands.setContent(fullDoc.content);
+                return;
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('加载项目下已保存的表格文档失败', e);
+    }
+    editor.commands.setContent(defaultTemplate || '');
+  };
+
   const fetchTemplates = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/admin/ai-templates?t=${Date.now()}`, { headers: getAuthHeaders() });
       if (res.ok) {
         const data: AICategory[] = await res.json();
         setCategories(data || []);
-        if (data && data.length > 0 && !pendingDocRef.current) {
-          const firstCat = data[0];
-          setSelectedCategory(firstCat.name);
-          if (firstCat.tables && firstCat.tables.length > 0) {
-            setSelectedTable(firstCat.tables[0].name);
-            editor?.commands.setContent(firstCat.tables[0].template);
-          }
-        }
       }
     } catch (e) { console.error("加载模板失败", e); }
     finally { setLoading(false); }
@@ -156,6 +187,22 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
   useEffect(() => {
     fetchTemplates();
   }, [editor]);
+
+  useEffect(() => {
+    hasInitializedContentRef.current = false;
+  }, [projectId]);
+
+  useEffect(() => {
+    if (editor && categories.length > 0 && !pendingLoadDoc && !pendingDocRef.current && !hasInitializedContentRef.current) {
+      const firstCat = categories[0];
+      setSelectedCategory(firstCat.name);
+      if (firstCat.tables && firstCat.tables.length > 0) {
+        setSelectedTable(firstCat.tables[0].name);
+        loadLatestSavedTableDocument(firstCat.tables[0].name, firstCat.tables[0].template);
+      }
+      hasInitializedContentRef.current = true;
+    }
+  }, [editor, categories, pendingLoadDoc]);
 
   const loadDocToTable = (fullDoc: any) => {
     if (!editor || !fullDoc) return;
@@ -226,7 +273,7 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
     const cat = categories.find(c => c.name === catName);
     if (cat && cat.tables && cat.tables.length > 0) {
       setSelectedTable(cat.tables[0].name);
-      editor?.commands.setContent(cat.tables[0].template);
+      loadLatestSavedTableDocument(cat.tables[0].name, cat.tables[0].template);
     } else {
       setSelectedTable('');
       editor?.commands.setContent('');
@@ -238,12 +285,12 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
     setSelectedTable(tblName);
     const cat = categories.find(c => c.name === selectedCategory);
     const tbl = cat?.tables?.find(t => t.name === tblName);
-    editor?.commands.setContent(tbl?.template || '');
+    loadLatestSavedTableDocument(tblName, tbl?.template || '');
   };
 
-  const handleSave = async () => {
+  const saveDocumentContent = async (htmlContent: string, quiet: boolean = false) => {
     if (!editor) return;
-    setIsSaving(true);
+    if (!quiet) setIsSaving(true);
     try {
       const now = new Date();
       const year = now.getFullYear();
@@ -255,16 +302,15 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
       const title = `${selectedTable || '智能表单'}_${formattedTime}`;
       
       const docId = 'doc_' + Math.random().toString(36).substr(2, 9);
-      const fullText = editor.getHTML();
       
       const docData = {
         id: docId,
         title: title,
-        content: fullText,
+        content: htmlContent,
         timestamp: Date.now(),
-        tokens: fullText.length,
+        tokens: htmlContent.length,
         sections: [],
-        isAutoSave: false
+        isAutoSave: quiet
       };
       
       const res = await fetch(`${API_BASE}/api/projects/${projectId || 'default'}/documents`, {
@@ -281,13 +327,22 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
       }
       
       window.dispatchEvent(new CustomEvent('documentSaved'));
-      alert('🎉 模板数据保存成功！');
+      if (!quiet) {
+        alert('🎉 模板数据保存成功！');
+      }
     } catch (e: any) {
       console.error(e);
-      alert(`❌ 保存失败: ${e.message}`);
+      if (!quiet) {
+        alert(`❌ 保存失败: ${e.message}`);
+      }
     } finally {
-      setIsSaving(false);
+      if (!quiet) setIsSaving(false);
     }
+  };
+
+  const handleSave = async () => {
+    if (!editor) return;
+    await saveDocumentContent(editor.getHTML(), false);
   };
 
   const handleExport = () => {
@@ -341,6 +396,140 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
     }
   };
 
+  const handlePrint = () => {
+    const contentHtml = editor?.getHTML() || '';
+    
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+    
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(`
+        <html>
+          <head>
+            <title>打印文档</title>
+            <style>
+              @page {
+                size: A4;
+                margin: 0; /* 强制消除页眉页脚（消除 localhost 等 URL 及日期信息） */
+              }
+              html, body {
+                max-height: 296mm; /* A4物理高度为 297mm，限制在此范围内绝对防止分出第二页 */
+                overflow: hidden;
+              }
+              body {
+                margin: 0;
+                padding: 12mm 20mm 12mm 20mm; /* 稍微缩减上下内边距，提供更充裕的高度安全冗余 */
+                box-sizing: border-box;
+                background: #ffffff;
+                color: #000000;
+                font-family: 宋体, SimSun, STSong, serif;
+                font-size: 14px;
+                line-height: 1.52;
+                white-space: pre-wrap;
+              }
+              /* 自动隐藏编辑器末尾不小心多按出来的空段落，防止其挤占高度产生空白页 */
+              .ProseMirror > p:empty,
+              .ProseMirror > p:last-child:empty,
+              .ProseMirror > p:last-child:has(br:only-child) {
+                display: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                height: 0 !important;
+              }
+              h1 {
+                text-align: center !important;
+                font-size: 26px !important; /* 稍微缩小标题字号提供单页更多空间 */
+                font-family: 黑体, SimHei, sans-serif !important;
+                font-weight: bold !important;
+                letter-spacing: 6px !important;
+                margin-top: 5mm !important; /* 缩小顶部外边距，紧凑排版 */
+                margin-bottom: 8mm !important;
+                color: #000000 !important;
+              }
+              table {
+                border-collapse: collapse !important;
+                border: 2px solid #000000 !important;
+                width: 100% !important;
+                margin: 8px 0 !important;
+                table-layout: fixed !important;
+                background: transparent !important;
+              }
+              tr {
+                border: none !important;
+                background-color: #ffffff !important;
+              }
+              td, th {
+                border: 1px solid #000000 !important;
+                padding: 8px 6px !important; /* 缩小内边距保证一页排下 */
+                text-align: center !important;
+                vertical-align: middle !important;
+                color: #000000 !important;
+                font-family: 宋体, SimSun, STSong, serif !important;
+              }
+              table[noborder="true"],
+              table[noborder],
+              table:has(td[noborder="true"]),
+              table:has(td[noborder]) {
+                border: none !important;
+              }
+              table[noborder="true"] tr,
+              table[noborder] tr,
+              table[noborder="true"] td,
+              table[noborder] td,
+              table[noborder="true"] th,
+              table[noborder] th,
+              table td[noborder="true"],
+              table th[noborder="true"],
+              table td[noborder],
+              table th[noborder] {
+                border: none !important;
+                background: transparent !important;
+                background-color: transparent !important;
+              }
+              table[noborder="true"] td:first-child:nth-last-child(2),
+              table[noborder] td:first-child:nth-last-child(2) {
+                text-align: left !important;
+              }
+              table[noborder="true"] td:first-child:nth-last-child(2) ~ td,
+              table[noborder] td:first-child:nth-last-child(2) ~ td {
+                text-align: right !important;
+              }
+              p {
+                margin: 4px 0 !important; /* 缩小段落的上下间距 */
+              }
+              tr, img {
+                page-break-inside: avoid;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="ProseMirror">
+              ${contentHtml}
+            </div>
+            <script>
+              window.onload = function() {
+                window.focus();
+                window.print();
+                setTimeout(function() {
+                  window.parent.document.body.removeChild(window.frameElement);
+                }, 500);
+              };
+            </script>
+          </body>
+        </html>
+      `);
+      doc.close();
+    }
+  };
+
   const handleAIFill = async () => {
     if (!editor) return;
     setIsAIFilling(true);
@@ -367,6 +556,8 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
       const data = await res.json();
       if (data.html) {
         editor.commands.setContent(data.html);
+        // AI 填充成功后，自动且静默地进行持久化保存
+        await saveDocumentContent(data.html, true);
       } else {
         alert('⚠️ 未能生成有效的内容，请检查勾选的参考文件。');
       }
@@ -416,18 +607,6 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
                 ))}
               </select>
             </div>
-            <div className="flex-initial flex items-center gap-1.5 self-end pb-2 ml-4">
-              <input
-                type="checkbox"
-                id="refGlobalLib"
-                checked={refGlobalLib}
-                onChange={(e) => setRefGlobalLib(e.target.checked)}
-                className="w-4 h-4 rounded text-indigo-600 border-gray-300 dark:border-stone-700 bg-gray-50 dark:bg-[#1E1F22] focus:ring-indigo-500 cursor-pointer"
-              />
-              <label htmlFor="refGlobalLib" className="text-[11px] font-semibold text-gray-600 dark:text-stone-300 cursor-pointer select-none whitespace-nowrap">
-                参考全局公共文档库
-              </label>
-            </div>
           </div>
         )}
       </div>
@@ -438,7 +617,6 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
         <div className="px-5 py-3 border-b border-[#E0DCD5] dark:border-[#383A42] flex flex-wrap justify-between items-center bg-[#F9F8F6] dark:bg-[#23242A] gap-3 shrink-0">
           <span className="font-bold text-gray-800 dark:text-stone-200 flex items-center gap-1.5 text-sm">
             <FileText className="w-4.5 h-4.5 text-[#8B7355]" /> 文档编辑窗口
-            <span className="text-[11px] font-normal text-stone-500 dark:text-stone-400">（{selectedCategory || '无'} · {selectedTable || '无'}）</span>
           </span>
 
           {/* 表格操作快捷键 */}
@@ -470,6 +648,7 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
             </button>
             <button onClick={handleSave} disabled={isSaving || !canWrite} className="px-3.5 py-1.5 bg-[#8B7355] hover:bg-[#705c43] text-white rounded-lg flex items-center gap-1 font-medium disabled:opacity-50 text-xs shadow-sm"><Save className="w-3.5 h-3.5" /> 保存</button>
             <button onClick={handleExport} disabled={isExporting} className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-1 font-semibold disabled:opacity-50 text-xs shadow-sm"><Download className="w-3.5 h-3.5" /> 导出</button>
+            <button onClick={handlePrint} disabled={!editor} className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center gap-1 font-semibold text-xs shadow-sm"><Printer className="w-3.5 h-3.5" /> 打印</button>
           </div>
         </div>
 
@@ -501,6 +680,9 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
             }
             .ProseMirror * {
               color: #000000 !important;
+            }
+            .ProseMirror, .ProseMirror p, .ProseMirror td, .ProseMirror th, .ProseMirror div {
+              white-space: pre-wrap !important;
             }
             .ProseMirror .tableWrapper {
               padding: 4px !important;
@@ -555,6 +737,12 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
             .ai-document-editor .ProseMirror table tr:last-child td {
               border-bottom: 1px solid #000000 !important;
             }
+            .ai-document-editor .ProseMirror table:has(td[noborder]) tr:last-child td,
+            .ai-document-editor .ProseMirror table:has(td[noborder="true"]) tr:last-child td,
+            .ai-document-editor .ProseMirror table tr:last-child td[noborder],
+            .ai-document-editor .ProseMirror table tr:last-child td[noborder="true"] {
+              border-bottom: none !important;
+            }
             /* 强力消除 index.css 中的斑马纹与悬浮高亮 */
             .ai-document-editor .ProseMirror table tbody tr:nth-child(odd) td,
             .ai-document-editor .ProseMirror table tbody tr:nth-child(even) td,
@@ -588,7 +776,9 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
             
             /* 带有 noborder="true" 或 noborder 属性的排版/布局表格强制无边框 */
             .ai-document-editor .ProseMirror table[noborder="true"],
-            .ai-document-editor .ProseMirror table[noborder] {
+            .ai-document-editor .ProseMirror table[noborder],
+            .ai-document-editor .ProseMirror table:has(td[noborder="true"]),
+            .ai-document-editor .ProseMirror table:has(td[noborder]) {
               border: none !important;
               box-shadow: none !important;
               background: transparent !important;
@@ -599,7 +789,11 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
             .ai-document-editor .ProseMirror table[noborder="true"] td,
             .ai-document-editor .ProseMirror table[noborder] td,
             .ai-document-editor .ProseMirror table[noborder="true"] th,
-            .ai-document-editor .ProseMirror table[noborder] th {
+            .ai-document-editor .ProseMirror table[noborder] th,
+            .ai-document-editor .ProseMirror table td[noborder="true"],
+            .ai-document-editor .ProseMirror table th[noborder="true"],
+            .ai-document-editor .ProseMirror table td[noborder],
+            .ai-document-editor .ProseMirror table th[noborder] {
               border: none !important;
               border-top: none !important;
               border-bottom: none !important;

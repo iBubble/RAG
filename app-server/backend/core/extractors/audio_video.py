@@ -3,8 +3,6 @@ import subprocess
 import tempfile
 import logging
 from pathlib import Path
-import torch
-from transformers import pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +17,8 @@ def _get_asr_pipeline():
     """
     global _asr_pipeline
     if _asr_pipeline is None:
+        import torch
+        from transformers import pipeline
         try:
             # 自动选择最快的推理后端
             device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
@@ -81,6 +81,7 @@ def _extract_audio_video(file_path: str) -> str:
         
         # 2. 调用 ASR 语音识别
         asr = _get_asr_pipeline()
+        import torch
         # 优化点：使用 torch.inference_mode() 避免计算和追踪梯度，以降低显存占用并提升推理响应速度
         with torch.inference_mode():
             # 增加 chunk_length_s=30 以启用长音频的滑动窗口转写，并通过 generate_kwargs 指定中文，避免错认成英文或输出空白/标点符号

@@ -288,7 +288,7 @@ async def _segmented_sse_generator(
         _seg_predict = 4096
 
         # 流式生成当前段落
-        raw_stream = stream_ollama(prompt, model=model, num_predict=_seg_predict, num_ctx=_seg_ctx)
+        raw_stream = stream_ollama(prompt, model=model, num_predict=_seg_predict, num_ctx=_seg_ctx, priority=1)
         filtered_stream = filter_think_stream(raw_stream)
 
         queue = asyncio.Queue()
@@ -418,7 +418,7 @@ async def _sse_generator(
         current_project_id.set(project_id)
     from core.llm_engine import stream_ollama
     images = [image] if image else None
-    raw_stream = stream_ollama(prompt, model=model, num_predict=num_predict, num_ctx=num_ctx, images=images)
+    raw_stream = stream_ollama(prompt, model=model, num_predict=num_predict, num_ctx=num_ctx, images=images, priority=1)
 
     if think_mode == "filter":
         from core.think_filter import filter_think_stream
@@ -1141,7 +1141,7 @@ async def _collaborative_sse_generator(
         await asyncio.sleep(0.005)
 
     from core.llm_engine import stream_ollama
-    raw_stream = stream_ollama(prompt, model=model, num_predict=24576, num_ctx=32768)
+    raw_stream = stream_ollama(prompt, model=model, num_predict=24576, num_ctx=32768, priority=1)
     from core.think_filter import filter_think_stream
     filtered_stream = filter_think_stream(raw_stream)
 
@@ -2728,6 +2728,7 @@ async def recommend_persona(req: RecommendPersonaRequest, user: dict = Depends(g
                 async for chunk in stream_ollama(
                     meta_prompt, model=req.model,
                     num_predict=24576, num_ctx=32768,
+                    priority=1
                 ):
                     full_text += chunk
                     yield " "
@@ -3121,6 +3122,31 @@ async def fill_table(req: FillTableRequest, user: dict = Depends(get_current_use
     if not search_query:
         search_query = "表格填写背景资料与事实信息"
 
+    # ── [NEW] 智能填表 Redis 缓存机制 ──
+    # WHY: 在资料和模板未发生任何变化时，多次点击智能填表无需重复推理大模型，
+    #      通过计算模板 HTML + 文档组合的哈希进行 10分钟热缓存，秒级返回结果。
+    import xxhash
+    from core.redis_client import get_redis
+    
+    r = get_redis()
+    cache_key = None
+    if r:
+        try:
+            sorted_case = ",".join(sorted(req.file_ids or []))
+            sorted_pub = ",".join(sorted(req.ref_ids or []))
+            tpl_hash = xxhash.xxh64(req.template_html.encode("utf-8")).hexdigest()
+            # 缓存 key：包含项目 id、模板哈希、勾选的案件和公共文件 id
+            cache_key = f"fill_table_cache:{req.project_id}:{tpl_hash}:{sorted_case}:{sorted_pub}"
+            
+            cached_html = r.get(cache_key)
+            if cached_html:
+                if isinstance(cached_html, bytes):
+                    cached_html = cached_html.decode("utf-8")
+                logger.info(f"⚡ [FILL TABLE CACHE HIT] 命中智能填表缓存，秒级返回已生成结果 (key={cache_key})")
+                return {"html": cached_html}
+        except Exception as cache_err:
+            logger.warning(f"智能填表缓存读取失败 (跳过): {cache_err}")
+
     # 2. 筛选本案勾选的文件
     _case_fids = list(req.file_ids) if req.file_ids else []
 
@@ -3181,11 +3207,20 @@ async def fill_table(req: FillTableRequest, user: dict = Depends(get_current_use
                     fid = hashlib.md5(f"{req.project_id}_{rel_path}".encode("utf-8")).hexdigest()
                     if fid in _case_fids:
                         try:
-                            text = extract_text(str(fpath))
+                            # 优先尝试从全文检索虚拟表中拉取已存入库的已解析纯文本
+                            from core.database import get_fts_text_by_file_id
+                            db_text = get_fts_text_by_file_id(fid)
+                            if db_text and db_text.strip():
+                                text = db_text
+                                logger.info(f"⚡ [FTS CACHE HIT] 从全文检索表直接加载文件已提取内容: {f} (fid={fid})")
+                            else:
+                                text = extract_text(str(fpath))
+                                logger.info(f"📥 [DISK FALLBACK] 从磁盘实时读取并提取文件内容: {f} (fid={fid})")
+                            
                             if text and text.strip():
                                 fid_map[fid] = (text, f)
                         except Exception as e:
-                            logger.warning(f"从磁盘读取文件 {f} 失败: {e}")
+                            logger.warning(f"获取文件内容失败 {f} (fid={fid}): {e}")
             docs = []
             for fid in _case_fids:
                 if fid in fid_map:
@@ -3254,12 +3289,28 @@ async def fill_table(req: FillTableRequest, user: dict = Depends(get_current_use
 请直接输出替换后的完整 HTML：
 """
 
+    logger.info(
+        f"[PERF_DIAG] 智能填表 - 案件文档数: {len(case_docs)}, 公共文档数: {len(pub_docs)}, "
+        f"Prompt 长度: {len(prompt)} 字符，其中 HTML 模板长度: {len(req.template_html)} 字符，context_str 长度: {len(context_str)} 字符"
+    )
+
+    import httpx
     response_text = ""
     try:
-        async for chunk in stream_ollama(prompt, model=llm_model, temperature=0.2, num_ctx=32768, num_predict=24576):
+        async for chunk in stream_ollama(
+            prompt, model=llm_model, temperature=0.2, num_ctx=32768, num_predict=24576,
+            timeout=httpx.Timeout(300.0, connect=10.0), priority=1
+        ):
             response_text += chunk
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM 填表生成失败: {e}")
+
+    # 识别错误提示语并抛出异常，防止静默错误污染最终生成的 HTML
+    if "❌ AI 服务" in response_text or not response_text.strip():
+        raise HTTPException(
+            status_code=500,
+            detail=f"LLM 填表生成失败: {response_text.strip() or '大模型未生成任何内容'}"
+        )
 
     filled_html = response_text.strip()
     if filled_html.startswith("```"):
@@ -3279,4 +3330,45 @@ async def fill_table(req: FillTableRequest, user: dict = Depends(get_current_use
     if html_match:
         filled_html = html_match.group(1).strip()
         
+    # ── [NEW] 写入智能填表缓存 ──
+    if r and cache_key and filled_html:
+        try:
+            r.setex(cache_key, 600, filled_html)
+            logger.info(f"💾 [FILL TABLE CACHE SET] 成功缓存填表结果 600 秒 (key={cache_key})")
+        except Exception as cache_err:
+            logger.warning(f"智能填表缓存写入失败: {cache_err}")
+
+    # ── [NEW] 持久化保存填表结果到项目 metadata 中 ──
+    if filled_html:
+        try:
+            # 提取 HTML 模板中的标题作为 Key
+            table_title = "默认表单"
+            title_match = re.search(r'<(?:h\d|title)[^>]*>(.*?)</(?:h\d|title)>', req.template_html, re.IGNORECASE | re.DOTALL)
+            if title_match:
+                table_title = re.sub(r'<[^>]+>', '', title_match.group(1)).strip()
+                table_title = re.sub(r'\s+', ' ', table_title)
+            
+            # 使用 tpl_hash 做保底 Key
+            tpl_hash_key = xxhash.xxh64(req.template_html.encode("utf-8")).hexdigest()
+            
+            with get_db() as conn:
+                p_row = conn.execute(
+                    "SELECT metadata_json FROM projects WHERE id = ?", (req.project_id,)
+                ).fetchone()
+                if p_row:
+                    meta = json.loads(dict(p_row).get("metadata_json") or "{}")
+                    if "filled_tables" not in meta:
+                        meta["filled_tables"] = {}
+                    # 同时记录以标题和哈希为 Key 的值以兼容各种匹配策略
+                    meta["filled_tables"][table_title] = filled_html
+                    meta["filled_tables"][tpl_hash_key] = filled_html
+                    
+                    conn.execute(
+                        "UPDATE projects SET metadata_json = ? WHERE id = ?",
+                        (json.dumps(meta, ensure_ascii=False), req.project_id)
+                    )
+                    logger.info(f"💾 [FILL TABLE PERSIST] 成功持久化保存表单 '{table_title}' (hash={tpl_hash_key}) 到项目元数据中")
+        except Exception as persist_err:
+            logger.warning(f"智能填表持久化保存失败: {persist_err}")
+
     return {"html": filled_html}
