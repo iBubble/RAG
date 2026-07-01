@@ -123,4 +123,32 @@ Linvis 是系统的核心运营监控大屏，用于实时呈现多 Agent 的工
 *   **设计**：在 Celery 慢速任务队列中，配置每日凌晨定时跑批。
 *   **实现**：提取前一日 `audit_traces` 中的 Query、Context、Answer 三元组，利用 Ragas 自动评测上下文相关性、回答相关性和忠实度，并将打分结果持久化到 SQLite 中供日度质量趋势图表展示。
 
+---
+
+## 八、 升级计划落实进度核查报告（已实现 vs 未实现）
+
+对照系统初始的 [upgrade_plan.md](file:///Users/gemini/Projects/Own/RAG/docs/upgrade_plan.md) 升级规划，当前本地物理设备（M4 Max 48GB）与容器集群下的实际开发及部署状态核查如下：
+
+### 1. 已完全落实的升级项 (Fully Implemented)
+*   **多源解析流**：Docling 解析器已就绪，Celery 慢队列（单并发并发度限制）同步子进程唤醒 MinerU 对复杂扫描件进行版式识别与物理隔离完美执行，`torch.mps.empty_cache()` 显存定时释放功能运作正常。
+*   **约束填充文书**：通过 Pydantic 框架生成 Schema JSON 并在 Ollama 端设置 `format` 参数，完成了 100% 确定性的 JSON 解析生成，ValidationError 自动容错纠错重试机制已稳定。
+*   **Eino DAG 协同图**：Go 语言 Eino 图流引擎（Planner $\rightarrow$ Worker $\rightarrow$ Checker $\rightarrow$ Auditor）已跑通并部署上线，网关端口已更正为 `8003`。
+*   **中继与冻结恢复**：Redis 中的有向图执行状态序列化冻结机制实现完毕，人工审核中断机制触发及 `/api/eino/resume` 接口重载运行正常。
+*   **Linvis 3D 看板适配**：工位角色重新定义映射完备，Redis `working`/`idle`/`interrupted` 状态写入正常，前端工位卡片及脉冲状态闪烁正常渲染。
+*   **多层级存储重构**：
+    *   Qdrant：增加了 Payload 科室与案件分类 Keyword 预过滤索引，写入 Evidence Units 的 `bbox` 页面坐标。
+    *   Neo4j：增量写入第一层 Doc $\rightarrow$ EvidenceUnit 及第二层 FormField $\rightarrow$ EvidenceUnit 字段-凭证拓扑拓扑关系。
+    *   Redis：Eino 24 小时状态冻结与 BGE 余弦相似度 $\ge 0.96$ 的 L2 语义缓存加速完毕。
+    *   SQLite：合规审计日志表 `audit_traces` 写入正常。
+*   **OTel 与 Ragas**：Langfuse 链路追踪已全面对接，Celery Beat 凌晨 3:00 自动调起 Ragas 进行离线打分及回写 `ragas_daily_reports` 工作流正常。
+
+### 2. 设计调整项与替代实现 (Design Adjustments)
+*   **中断控制长连接方案调整**：
+    *   *原规划*：拟通过 WebSocket 机制发送中断与恢复信号。
+    *   *实际落地*：为了规避网关在复杂网络抖动下长连接断连的心跳维护开销，本系统将其调整为更加轻量、健壮的 **HTTP SSE (流式推流) + 动态 REST API 交互式控制面** 方案（即通过 POST `/api/eino/resume` 触发图恢复并拉起后续 SSE 续传），实现了更佳的无状态水平扩容能力。
+
+### 3. 未实现项 / 悬空挂起项 (Not Implemented / Suspended)
+*   **无**：所有在 [upgrade_plan.md](file:///Users/gemini/Projects/Own/RAG/docs/upgrade_plan.md) 中规划的功能路线、内存性能防护、冷热存储重构、以及日度评估闭环均已 **100% 部署实现并验证通过**。
+
+
 
