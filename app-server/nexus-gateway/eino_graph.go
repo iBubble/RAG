@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -87,13 +88,19 @@ func getBestMultimodalModel() string {
 	return bestMultimodalModel
 }
 
+type ChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 type EinoAgentRequest struct {
-	Message   string   `json:"message"`
-	ProjectID string   `json:"project_id"`
-	FileIDs   []string `json:"file_ids"`
-	Model     string   `json:"model"`
-	ChatMode  string   `json:"chat_mode"`
-	Image     string   `json:"image"`
+	Message   string        `json:"message"`
+	ProjectID string        `json:"project_id"`
+	FileIDs   []string      `json:"file_ids"`
+	Model     string        `json:"model"`
+	ChatMode  string        `json:"chat_mode"`
+	Image     string        `json:"image"`
+	History   []ChatMessage `json:"history"`
 	// 新角色名（Go Eino DAG）
 	PlannerName string `json:"planner_name"`
 	CheckerName string `json:"checker_name"`
@@ -106,6 +113,91 @@ type EinoAgentRequest struct {
 	LegalName      string `json:"collab_legal_name"`
 	ContrarianName string `json:"collab_contrarian_name"`
 	ArbiterName    string `json:"collab_arbiter_name"`
+}
+
+var coreferenceTriggers = []string{"上面", "之前", "那个", "这个", "刚才", "前面", "它的", "这些", "那些", "上述"}
+
+var contextIndicators = []string{
+	"前文回答", "之前回答", "刚才的回答", "上一个回答", "前一个回答",
+	"根据前文", "基于前文", "针对刚才", "根据刚才", "基于刚才", "基于之前",
+	"前文提到", "之前提到", "刚才提到", "上文提到", "基于前一步", "根据前一步",
+	"刚才说的是谁",
+}
+
+var genericWords = map[string]bool{
+	"根据": true, "参考": true, "资料": true, "显示": true, "可以": true, "其中": true, "以下": true,
+	"如下": true, "来源": true, "项目": true, "数据": true, "信息": true, "内容": true, "文件": true,
+	"建议": true, "分析": true, "总结": true, "相关": true, "关于": true, "目前": true, "具体": true,
+}
+
+func resolveCoreferenceGo(message string, history []ChatMessage) string {
+	hasTrigger := false
+	for _, t := range coreferenceTriggers {
+		if strings.Contains(message, t) {
+			hasTrigger = true
+			break
+		}
+	}
+	if !hasTrigger {
+		return message
+	}
+
+	var lastAssistantMsg string
+	for i := len(history) - 1; i >= 0; i-- {
+		role := strings.ToLower(history[i].Role)
+		if role == "agent" || role == "assistant" {
+			lastAssistantMsg = history[i].Content
+			break
+		}
+	}
+	if lastAssistantMsg == "" {
+		return message
+	}
+
+	limit := 500
+	if len(lastAssistantMsg) < limit {
+		limit = len(lastAssistantMsg)
+	}
+	subStr := lastAssistantMsg[:limit]
+
+	reZh := regexp.MustCompile(`[\p{Han}]{2,8}`)
+	zhMatches := reZh.FindAllString(subStr, -1)
+
+	var entities []string
+	seen := make(map[string]bool)
+	for _, match := range zhMatches {
+		if !genericWords[match] && !seen[match] {
+			seen[match] = true
+			entities = append(entities, match)
+			if len(entities) >= 5 {
+				break
+			}
+		}
+	}
+
+	reNum := regexp.MustCompile(`[\d\.]+\s*(?:万元|亿元|元|米|m|km|公里|亩|公顷|ha|%|min|h|d|cm|mm|kg|吨|MPa)`)
+	numMatches := reNum.FindAllString(subStr, -1)
+	var numbers []string
+	seenNum := make(map[string]bool)
+	for _, match := range numMatches {
+		cleanMatch := strings.TrimSpace(match)
+		if !seenNum[cleanMatch] {
+			seenNum[cleanMatch] = true
+			numbers = append(numbers, cleanMatch)
+			if len(numbers) >= 3 {
+				break
+			}
+		}
+	}
+
+	supplements := append(entities, numbers...)
+	if len(supplements) > 0 {
+		resolved := fmt.Sprintf("%s %s", message, strings.Join(supplements, " "))
+		log.Printf("[Go-Gateway] 🔗 [指代消解] %q -> 补充: %v -> 已解析为: %q", message, supplements, resolved)
+		return resolved
+	}
+
+	return message
 }
 
 type InternalRagItem struct {
@@ -507,16 +599,31 @@ func plannerNode(llm *OllamaChat, namePlanner string) *compose.Lambda {
 		}
 
 		plannerPrompt := "你是任务规划专家（Planner），负责分析用户请求并选择执行路径。\n" +
+			"历史会话上下文已作为背景对话提供给您。\n" +
 			"可用路径：\n" +
-			"- ask_rag: 知识检索（问文档/资料内容）\n" +
-			"- ask_expert: 专业分析（政策/法规/文档起草）\n" +
-			"- direct: 简单问答（问候/闲聊/常识）\n" +
-			"只输出路径名，不做任何阐述。"
+			"- ask_rag: 知识检索（如果问题涉及特定的本案证据事实、文件合同细节等，且在前文历史对话中【尚未提及/未给出明确答案】，需要重新查询新文档事实时，选择此路径）\n" +
+			"- ask_expert: 专业分析（分析任何涉及法律概念、公诉流程、司法程序、国家机关职权、实体法规条文、政策起草或抽象概念时选择，即便在前文中有相关背景也应当选择此路径以防漏查法典引用）\n" +
+			"- direct: 简单问答（仅限于与法律和案情无关的日常问候、礼貌闲聊，以及纯粹针对前文历史中【已经给出且完全一致】的非法律非规则名词的字面提取，禁止将任何涉及法律分析、公诉机关判断、条文解释的问题分流到此路径）\n" +
+			"根据历史对话和用户最新提问，只输出路径名，不做任何阐述。"
 
 		plannerMessages := []*schema.Message{
 			{Role: schema.System, Content: plannerPrompt},
-			{Role: schema.User, Content: enrichedMessage},
 		}
+		for _, h := range input.Req.History {
+			role := schema.User
+			if strings.ToLower(h.Role) == "agent" || strings.ToLower(h.Role) == "assistant" {
+				role = schema.Assistant
+			}
+			plannerMessages = append(plannerMessages, &schema.Message{
+				Role:    role,
+				Content: h.Content,
+			})
+		}
+		plannerMessages = append(plannerMessages, &schema.Message{
+			Role:    schema.User,
+			Content: enrichedMessage,
+		})
+
 		planResp, err := llm.Generate(ctx, plannerMessages)
 		if err != nil {
 			return nil, err
@@ -551,8 +658,21 @@ func workerNode(llm *OllamaChat) *compose.Lambda {
 			}
 			messages = []*schema.Message{
 				{Role: schema.System, Content: ragSystemPrompt},
-				{Role: schema.User, Content: fmt.Sprintf("【参考资料】\n%s\n\n【问题】\n%s", contextText, input.Req.Message)},
 			}
+			for _, h := range input.Req.History {
+				role := schema.User
+				if strings.ToLower(h.Role) == "agent" || strings.ToLower(h.Role) == "assistant" {
+					role = schema.Assistant
+				}
+				messages = append(messages, &schema.Message{
+					Role:    role,
+					Content: h.Content,
+				})
+			}
+			messages = append(messages, &schema.Message{
+				Role:    schema.User,
+				Content: fmt.Sprintf("【参考资料】\n%s\n\n【问题】\n%s", contextText, input.Req.Message),
+			})
 		} else if strings.Contains(input.Route, "ask_expert") {
 			setLinvisStatus("checker", "working", "专家分析中...", input.Req.ProjectID)
 			writeEvent(input.Writer, "checker", "executing", "📋 专家正在分析...")
@@ -560,9 +680,50 @@ func workerNode(llm *OllamaChat) *compose.Lambda {
 			if input.Req.Image != "" {
 				expertSystemPrompt += " 请务必使用中文进行回复，并结合图片内容详细分析。"
 			}
-			messages = []*schema.Message{
-				{Role: schema.System, Content: expertSystemPrompt},
-				{Role: schema.User, Content: input.Req.Message},
+			if len(input.Req.FileIDs) > 0 {
+				var contextText string
+				var docContents []string
+				contextText, input.Sources, docContents, err = callPythonInternalRag(ctx, input.Req.Message, input.Req.ProjectID, input.Req.FileIDs)
+				if err != nil {
+					return nil, err
+				}
+				input.RetrievalContext = docContents
+				expertSystemPrompt += " 基于参考资料和已知事实进行分析，确保结论有据可依。"
+				messages = []*schema.Message{
+					{Role: schema.System, Content: expertSystemPrompt},
+				}
+				for _, h := range input.Req.History {
+					role := schema.User
+					if strings.ToLower(h.Role) == "agent" || strings.ToLower(h.Role) == "assistant" {
+						role = schema.Assistant
+					}
+					messages = append(messages, &schema.Message{
+						Role:    role,
+						Content: h.Content,
+					})
+				}
+				messages = append(messages, &schema.Message{
+					Role:    schema.User,
+					Content: fmt.Sprintf("【参考资料】\n%s\n\n【问题】\n%s", contextText, input.Req.Message),
+				})
+			} else {
+				messages = []*schema.Message{
+					{Role: schema.System, Content: expertSystemPrompt},
+				}
+				for _, h := range input.Req.History {
+					role := schema.User
+					if strings.ToLower(h.Role) == "agent" || strings.ToLower(h.Role) == "assistant" {
+						role = schema.Assistant
+					}
+					messages = append(messages, &schema.Message{
+						Role:    role,
+						Content: h.Content,
+					})
+				}
+				messages = append(messages, &schema.Message{
+					Role:    schema.User,
+					Content: input.Req.Message,
+				})
 			}
 		} else {
 			setLinvisStatus("checker", "working", "直接回答中...", input.Req.ProjectID)
@@ -573,8 +734,22 @@ func workerNode(llm *OllamaChat) *compose.Lambda {
 			}
 			messages = []*schema.Message{
 				{Role: schema.System, Content: directSystemPrompt},
-				{Role: schema.User, Content: input.Req.Message},
 			}
+			for _, h := range input.Req.History {
+				role := schema.User
+				if strings.ToLower(h.Role) == "agent" || strings.ToLower(h.Role) == "assistant" {
+					role = schema.Assistant
+				}
+				messages = append(messages, &schema.Message{
+					Role:    role,
+					Content: h.Content,
+				})
+			}
+			messages = append(messages, &schema.Message{
+				Role:    schema.User,
+				Content: input.Req.Message,
+			})
+			input.Sources = []string{"历史会话上下文"}
 		}
 
 		resp, err := llm.Generate(ctx, messages)
@@ -592,7 +767,7 @@ func workerNode(llm *OllamaChat) *compose.Lambda {
 func checkerNode(llm *OllamaChat, nameChecker string) *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *EinoContext) (*EinoContext, error) {
 		ctx = context.WithValue(ctx, "chat_image", "") // 清除图片上下文，避免非视觉节点图片污染
-		if input.FinalAnswer != "" {
+		if input.FinalAnswer != "" || input.Route == "direct" {
 			return input, nil
 		}
 
@@ -626,6 +801,21 @@ func checkerNode(llm *OllamaChat, nameChecker string) *compose.Lambda {
 func auditorNode(llm *OllamaChat, nameAuditor string) *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *EinoContext) (*EinoContext, error) {
 		ctx = context.WithValue(ctx, "chat_image", "") // 清除图片上下文，避免非视觉节点图片污染
+		if input.Route == "direct" {
+			if input.FinalAnswer == "" {
+				input.FinalAnswer = input.Draft
+				_ = writeSSE(input.Writer, map[string]interface{}{"type": "token", "content": input.FinalAnswer})
+				setLinvisStatus("auditor", "idle", "审计完成", input.Req.ProjectID)
+				writeEvent(input.Writer, "auditor", "done", "⚖️ 审计完成")
+				if len(input.Sources) > 0 {
+					_ = writeSSE(input.Writer, map[string]interface{}{"sources": input.Sources})
+				}
+				_ = writeSSE(input.Writer, map[string]interface{}{"type": "done"})
+				savePythonChatCache(input.Req, input.FinalAnswer, input.Sources)
+			}
+			return input, nil
+		}
+
 		if input.FinalAnswer != "" || input.Interrupted {
 			return input, nil
 		}
@@ -663,6 +853,9 @@ func auditorNode(llm *OllamaChat, nameAuditor string) *compose.Lambda {
 		input.FinalAnswer = finalBuilder.String()
 		setLinvisStatus("auditor", "idle", "审计完成", input.Req.ProjectID)
 		writeEvent(input.Writer, "auditor", "done", "⚖️ 审计完成")
+		if len(input.Sources) > 0 {
+			_ = writeSSE(input.Writer, map[string]interface{}{"sources": input.Sources})
+		}
 		_ = writeSSE(input.Writer, map[string]interface{}{"type": "done"})
 
 		endTime := float64(time.Now().UnixNano()) / 1e9
@@ -721,6 +914,9 @@ func RunEinoResumeOrchestration(ctx context.Context, req *EinoAgentRequest, draf
 
 	setLinvisStatus("auditor", "idle", "审计完成", req.ProjectID)
 	writeEvent(w, "auditor", "done", "⚖️ 审计完成")
+	if len(sources) > 0 {
+		_ = writeSSE(w, map[string]interface{}{"sources": sources})
+	}
 	_ = writeSSE(w, map[string]interface{}{"type": "done"})
 
 	endTime := float64(time.Now().UnixNano()) / 1e9

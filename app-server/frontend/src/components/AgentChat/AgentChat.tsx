@@ -806,10 +806,10 @@ export default function AgentChat({ projectId }: { projectId: string }) {
                 }
                 
                 {((msg.isStreaming ? streamingSources : msg.sources) || []).length > 0 && (
-                  <div className="mt-3 pt-2 border-t border-gray-100 flex flex-wrap gap-1.5 items-center text-gray-500">
-                    <span className="text-[11px] text-gray-400 mr-0.5 whitespace-nowrap">参考来源：</span>
+                  <div className="mt-3 pt-2 border-t border-gray-100 dark:border-[#2E313A] flex flex-wrap gap-1.5 items-center text-gray-500">
+                    <span className="text-[11px] text-gray-400 dark:text-stone-400 mr-0.5 whitespace-nowrap">参考来源：</span>
                     {(msg.isStreaming ? streamingSources : msg.sources)!.map((src, i) => (
-                      <span key={i} className="text-[11px] px-1.5 py-0.5 bg-gray-200/50 rounded text-gray-600 border border-gray-200/60 max-w-[180px] truncate" title={src}>
+                      <span key={i} className="text-[11px] px-1.5 py-0.5 bg-gray-200/50 dark:bg-[#282A31] rounded text-gray-600 dark:text-stone-300 border border-gray-200/60 dark:border-[#2E313A] max-w-[180px] truncate" title={src}>
                         {src}
                       </span>
                     ))}
@@ -867,15 +867,14 @@ export default function AgentChat({ projectId }: { projectId: string }) {
       </div>
 
       <div className="p-4 border-t border-[#E0DCD5]/60 bg-transparent shrink-0">
-        {/* Chat Mode Switch Pills */}
-        <div className="flex items-center gap-1 mb-3 bg-[#F6F5F2] border border-[#E0DCD5] rounded-full p-0.5 w-fit select-none">
+        <div className="flex items-center gap-1 mb-3 bg-[#F6F5F2] dark:bg-[#282A31] border border-[#E0DCD5] dark:border-[#2E313A] rounded-full p-0.5 w-fit select-none">
           <button
             type="button"
             onClick={() => setChatMode('fast')}
             className={`flex items-center gap-1 px-4 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition-all duration-200 ${
               chatMode === 'fast'
-                ? 'bg-[#1F2937] text-white shadow-sm'
-                : 'text-gray-500 hover:text-gray-800'
+                ? 'bg-[#1F2937] dark:bg-[#1E2025] text-white shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
             }`}
           >
             <span>⚡</span>
@@ -886,8 +885,8 @@ export default function AgentChat({ projectId }: { projectId: string }) {
             onClick={() => setChatMode('smart')}
             className={`flex items-center gap-1 px-4 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition-all duration-200 ${
               chatMode === 'smart'
-                ? 'bg-[#1F2937] text-white shadow-sm'
-                : 'text-gray-500 hover:text-gray-800'
+                ? 'bg-[#1F2937] dark:bg-[#1E2025] text-white shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
             }`}
           >
             <span>🧠</span>
@@ -946,7 +945,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
               <button
                 onClick={handleSend}
                 disabled={!input.trim() && !pastedImage}
-                className="w-9 h-9 rounded-full bg-[#5F6368] text-white hover:bg-[#474B4F] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center justify-center transition-colors shadow-sm"
+                className="w-9 h-9 rounded-full bg-[#5F6368] text-white hover:bg-[#474B4F] disabled:bg-gray-200 dark:disabled:bg-[#2E313A]/60 disabled:text-gray-400 dark:disabled:text-[#5F6368] disabled:cursor-not-allowed flex items-center justify-center transition-colors shadow-sm"
               >
                 <ArrowUp className="w-4 h-4" />
               </button>

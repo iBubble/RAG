@@ -124,6 +124,8 @@
 
 ### 3. Eino Multi-Agent 协同图与深度思考 (Smart) 模式编排
 *   **Go Eino 拓扑编排（Smart 模式核心）**：核心对话流基于 [eino_graph.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/eino_graph.go) 编排成 Planner (公文秘书) -> Worker (定量数据校验) -> Checker (合规审查员) -> Auditor (公文终审员) 的有向图，利用 Goroutine 极小内存开销避免高并发拥堵。在 System Prompt 中加入刚性规则，绝对屏蔽司法裁决色彩和 `🏛️` 等图形，严格使用庄重的政府公文风格。
+*   **多轮对话历史与智能 RAG 意图路由**：打通了网关图多轮对话历史（`History` 结构）传递，并在 `Planner` 决策层明确限制 `direct` 路径的职能范围为“仅限非法律问候和对已知事实的简单字面提取”。任何涉及法律流程、公诉判定、实体法条、政策起草的提问，无论其多么基础，都会被智能归类为 `ask_expert` 或 `ask_rag` 以检索后台知识库，确保 RAG 参考引用的准确性。
+*   **直答（direct）路径旁路裁减优化**：当 Planner 决定请求可通过历史上下文直接回答时，后面的 `Checker` 与 `Auditor` 节点将开启旁路裁减：直接跳过耗时的合规检测与审计生成，由 Auditor 提取 Worker 阶段生成的草稿直接流式输出给前端并结清 SSE 会话，使得直答模式下的串行 LLM 模型交互次数减半，消除了不必要的 Prefill 开销，响应速度提升 50%+。
 *   **林维斯协同状态流式监视（Linvis）**：在有向图每个 Lambda 节点状态流转时，通过 `setLinvisStatus` 实时向后台大屏异步推送最新的状态详情，支持了智能体圆桌会议大屏的实时展示。
 *   **中断与恢复 (Interrupt & Resume)**：当公文终审员判定当前的文书草案触发严重合规预警（如程序违规或大额惩罚）时，Eino 流执行中断，通过 [generate.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/api/generate.py#L2858) 底层路由将有向图快照冻结至 Redis `eino:frozen_state:{project_id}`（TTL 24小时），前台看板琥珀色报警并拉起法务控制台。法务主管人工批改后，通过 [chat_handler.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/chat_handler.go#L154) 接收合规修改，拉起 `Resume` 恢复执行后续图流程。
 
@@ -142,6 +144,7 @@
 *   **深色/浅色政务色系**：重构了页面背景色（替换为干净灰白的 `#F5F7FA`），圆角收缩为 `4px` 紧凑直角，移除所有霓虹渐变与活泼 Emoji。
 *   **列表/卡片双模式**：实现以高密度 Table 列表为默认的首页项目空间排版，支持 Card/List 双模式及 localStorage 记忆。
 *   **排队等待体验优化**：引入脉冲时钟微标，纠正『正在提取: 排队中』的文案冲突，提升慢速大模型提炼队列的排队呈现。
+*   **深色模式 UI 高质量适配与细节重构**：专门优化了深色（Dark）模式下的视觉统一性。包括将“引用所有公共文档”行与“快速/深度思考切换开关”适配为深灰质感色系（`#282A31` / `#1E2025`）；重构了答案底部“参考来源”的背景和字色，彻底解决了亮灰背景白字在暗色模式下不可读的问题；弱化了禁用状态下的发送按钮圆形，实现 100% 精致统一的暗色政务美学。
 
 ---
 

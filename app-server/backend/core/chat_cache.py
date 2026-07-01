@@ -210,6 +210,7 @@ def set_answer_cache(
         key = _l2_key(project_id, message, chat_mode, file_ids)
         payload = json.dumps(
             {
+                "message": message,
                 "answer": answer,
                 "source_files": source_files,
                 "data_analysis_meta": data_analysis_meta or {},
@@ -268,3 +269,87 @@ def invalidate_chat_cache(project_id: str) -> int:
     except Exception as e:
         logger.warning(f"Chat 缓存失效异常（非致命）: {e}")
         return 0
+
+
+def delete_single_chat_cache(
+    project_id: str,
+    message: Optional[str] = None,
+    answer: Optional[str] = None,
+) -> bool:
+    """
+    删除指定项目下匹配提问内容（message）或回答内容（answer）的 L2 缓存和对应的语义缓存。
+    只在用户主动在界面上删除单条对话记录时触发。
+    """
+    r = get_redis()
+    if not r:
+        return False
+    try:
+        idx_key = _project_pattern(project_id)
+        keys = r.smembers(idx_key)
+        if not keys:
+            return False
+            
+        keys_to_delete = []
+        msg_stripped = message.strip() if message else None
+        ans_stripped = answer.strip() if answer else None
+        
+        if not msg_stripped and not ans_stripped:
+            return False
+            
+        # ── [CRITICAL FIX] 收集所有候选 exact_keys ──
+        # 包含：1. 直接在 project 集合中的 L2 key
+        #       2. 在语义缓存哈希字段中关联的 L2 key (应对老版本或间接关联的 L2 key)
+        candidate_keys = set()
+        semantic_keys = []
+        for k_bytes in keys:
+            k = k_bytes.decode("utf-8") if isinstance(k_bytes, bytes) else k_bytes
+            if k.startswith("chat_ans:"):
+                candidate_keys.add(k)
+            elif k.startswith("semantic_cache:"):
+                semantic_keys.append(k)
+                try:
+                    hfields = r.hkeys(k)
+                    for hf_bytes in hfields:
+                        hf = hf_bytes.decode("utf-8") if isinstance(hf_bytes, bytes) else hf_bytes
+                        if hf.startswith("chat_ans:"):
+                            candidate_keys.add(hf)
+                except Exception:
+                    pass
+
+        # 1. 扫描所有候选 exact_keys
+        for k in candidate_keys:
+            val = r.get(k)
+            if val:
+                try:
+                    payload = json.loads(val)
+                    cached_msg = payload.get("message", "")
+                    cached_ans = payload.get("answer", "")
+                    
+                    match_msg = msg_stripped and cached_msg and cached_msg.strip() == msg_stripped
+                    match_ans = ans_stripped and cached_ans and cached_ans.strip() == ans_stripped
+                    
+                    if match_msg or match_ans:
+                        keys_to_delete.append(k)
+                except Exception:
+                    pass
+                    
+        if not keys_to_delete:
+            return False
+            
+        # 2. 从 Redis 删除这些精确缓存 Key
+        pipe = r.pipeline()
+        for k in keys_to_delete:
+            pipe.delete(k)
+            pipe.srem(idx_key, k)
+            
+        # 3. 从对应的 semantic_cache 哈希中清理掉这几个 exact_key 映射
+        for k in semantic_keys:
+            for exact_key in keys_to_delete:
+                pipe.hdel(k, exact_key)
+                
+        pipe.execute()
+        logger.info(f"🗑️ 已从 Redis 中清理匹配的精确及语义缓存共 {len(keys_to_delete)} 项")
+        return True
+    except Exception as e:
+        logger.warning(f"删除单条 Chat 缓存异常: {e}")
+        return False

@@ -2295,6 +2295,7 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
                 context, source_files, da_meta,
             )
 
+
     elif req.chat_mode == "general":
         context = "（通用模式已开启：已跳过文档检索，仅使用大模型基础知识库进行回答）"
     elif is_simple:
@@ -2804,6 +2805,46 @@ async def save_chat_history(req: SaveChatHistoryRequest, user: dict = Depends(ge
     import json
     from datetime import datetime, timezone, timedelta
     
+    # ── 对话删除缓存失效联动 ──
+    try:
+        from core.chat_cache import delete_single_chat_cache
+        with get_db() as conn:
+            old_row = conn.execute(
+                "SELECT messages_json FROM chat_history WHERE project_id = ? AND user_id = ?",
+                (req.project_id, user["id"])
+            ).fetchone()
+            
+        if old_row and old_row["messages_json"]:
+            old_messages = json.loads(old_row["messages_json"])
+            new_ids = {m.get("id") for m in req.messages if m.get("id")}
+            
+            # 找到被删除的消息
+            deleted_messages = [m for m in old_messages if m.get("id") and m.get("id") not in new_ids]
+            
+            for dm in deleted_messages:
+                # 1. 如果被删除的是 user 提问
+                if dm.get("role") == "user" and dm.get("content"):
+                    ans_content = None
+                    for idx, m in enumerate(old_messages):
+                        if m.get("id") == dm.get("id") and idx < len(old_messages) - 1:
+                            next_m = old_messages[idx + 1]
+                            if next_m.get("role") == "agent":
+                                ans_content = next_m.get("content")
+                            break
+                    delete_single_chat_cache(req.project_id, message=dm["content"], answer=ans_content)
+                # 2. 如果被删除的是 agent 回答，找到其在旧历史中对应的紧邻前面的 user 提问
+                elif dm.get("role") == "agent" and dm.get("content"):
+                    prev_msg = None
+                    for idx, m in enumerate(old_messages):
+                        if m.get("id") == dm.get("id") and idx > 0:
+                            prev_m = old_messages[idx - 1]
+                            if prev_m.get("role") == "user" and prev_m.get("content"):
+                                prev_msg = prev_m["content"]
+                            break
+                    delete_single_chat_cache(req.project_id, message=prev_msg, answer=dm["content"])
+    except Exception as cache_err:
+        logger.warning(f"比较聊天历史并清理缓存异常: {cache_err}")
+
     messages_json = json.dumps(req.messages, ensure_ascii=False)
     now_str = datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None).isoformat()
     

@@ -894,12 +894,12 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
     <div className="flex flex-col gap-2">
       {/* 引用所有公共文档 */}
       {refFiles.length > 0 && (
-        <div className="flex items-center justify-between p-2 mb-1 bg-[#F7F5F0] border border-[#E0DCD5] rounded-md shadow-sm">
+        <div className="flex items-center justify-between p-2 mb-1 bg-[#F7F5F0] dark:bg-[#282A31] border border-[#E0DCD5] dark:border-[#2E313A] rounded-md shadow-sm">
           <div 
             className="flex items-center justify-between w-full cursor-pointer select-none"
             onClick={() => setUsePublicRef(!usePublicRef)}
           >
-            <span className="text-xs font-semibold text-[#8B7355]">
+            <span className="text-xs font-semibold text-[#8B7355] dark:text-[#C4B5A0]">
               引用所有公共文档 ({refFiles.length}个)
             </span>
             {/* 极简 iOS 风格滑动开关 */}
