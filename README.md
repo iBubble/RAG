@@ -115,19 +115,19 @@
 ## 🌟 核心系统功能与技术实现方式
 
 ### 1. 多源文档解析管线与 DoCO 语义归一
-*   **多源智能分流**：重构了文件解析入口，自适应识别文档版式。数字化原生文档通过 [docling_parser.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/extractors/docling_parser.py) 极速清洗；手写图片、复杂扫描件或多维表格重路由至慢任务队列，在 [pdf_parser.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/extractors/pdf_parser.py#L47) 中调用 `MinerU` 进行视觉布局识别与 OCR 提取，配置 4 线程硬限制，并在结束后清空 MPS / CUDA 显存。
-*   **DoCO 节点语义表征**：使用 DoCO 本体将不同解析器的输出映射为标准化节点（`section_header` 标题, `table` 表格, `list_item` 列表, `text_block` 普通文本），空间坐标与逻辑层级在切片时与 Qdrant Point Payload 及 Neo4j 拓扑无缝绑定，实现精准的段落物理位置回溯与前端高亮。
+*   **多源智能分流**：系统内置自适应文档版式识别管线。数字化原生文档通过 [docling_parser.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/extractors/docling_parser.py) 极速清洗；手写图片、复杂扫描件或多维表格自动分流至后台慢速 Celery 任务队列，使用 `MinerU` 进行高保真视觉布局识别与 OCR 提取，配置 4 线程硬限制，并在结束后自动释放 GPU/MPS 显存。
+*   **DoCO 节点语义表征**：使用 DoCO 统一语义本体将不同解析器的输出结构化映射为标准化节点（`section_header` 标题, `table` 表格, `list_item` 列表, `text_block` 普通文本），将空间坐标与逻辑层级在切片时与 Qdrant Point Payload 及 Neo4j 拓扑无缝绑定，实现精准的段落物理位置回溯与前端高亮呈现。
 
 ### 2. 100% 确定性约束填表与自纠错
 *   **Pydantic Schema 模型规约**：在 [market_supervision.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/schemas/market_supervision.py) 中，将市场监督表单（统一社会信用代码、法定处罚种类、裁量金额范围）抽象为标准的 Pydantic 校验模型。
 *   **Ollama 掩码解码约束**：在 [constrained_decode.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/constrained_decode.py#L35-L44) 中，直接提取模型的 JSON Schema 并透传给本地 Ollama 推理服务的 `format` 字段，使模型大类 Token 的输出概率在推理层受状态机强控制，避免输出非 JSON 杂质。若校验失败，系统会自动捕获 `ValidationError` 堆栈，作为上下文提示词发回大模型，在毫秒级内自动闭环修正生成。
 
 ### 3. Eino Multi-Agent 协同图与深度思考 (Smart) 模式编排
-*   **Go Eino 拓扑编排（Smart 模式核心）**：核心对话流基于 [eino_graph.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/eino_graph.go) 编排成 Planner (公文秘书) -> Worker (定量数据校验) -> Checker (合规审查员) -> Auditor (公文终审员) 的有向图，利用 Goroutine 极小内存开销避免高并发拥堵。在 System Prompt 中加入刚性规则，绝对屏蔽司法裁决色彩和 `🏛️` 等图形，严格使用庄重的政府公文风格。
-*   **多轮对话历史与智能 RAG 意图路由**：打通了网关图多轮对话历史（`History` 结构）传递，并在 `Planner` 决策层明确限制 `direct` 路径的职能范围为“仅限非法律问候和对已知事实的简单字面提取”。任何涉及法律流程、公诉判定、实体法条、政策起草的提问，无论其多么基础，都会被智能归类为 `ask_expert` 或 `ask_rag` 以检索后台知识库，确保 RAG 参考引用的准确性。
-*   **直答（direct）路径旁路裁减优化**：当 Planner 决定请求可通过历史上下文直接回答时，后面的 `Checker` 与 `Auditor` 节点将开启旁路裁减：直接跳过耗时的合规检测与审计生成，由 Auditor 提取 Worker 阶段生成的草稿直接流式输出给前端并结清 SSE 会话，使得直答模式下的串行 LLM 模型交互次数减半，消除了不必要的 Prefill 开销，响应速度提升 50%+。
-*   **林维斯协同状态流式监视（Linvis）**：在有向图每个 Lambda 节点状态流转时，通过 `setLinvisStatus` 实时向后台大屏异步推送最新的状态详情，支持了智能体圆桌会议大屏的实时展示。
-*   **中断与恢复 (Interrupt & Resume)**：当公文终审员判定当前的文书草案触发严重合规预警（如程序违规或大额惩罚）时，Eino 流执行中断，通过 [generate.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/api/generate.py#L2858) 底层路由将有向图快照冻结至 Redis `eino:frozen_state:{project_id}`（TTL 24小时），前台看板琥珀色报警并拉起法务控制台。法务主管人工批改后，通过 [chat_handler.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/chat_handler.go#L154) 接收合规修改，拉起 `Resume` 恢复执行后续图流程。
+*   **Go Eino 拓扑编排（Smart 模式核心）**：核心对话流基于 [eino_graph.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/eino_graph.go) 编排成 Planner (公文秘书) $\rightarrow$ Worker (定量数据校验) $\rightarrow$ Checker (合规审查员) $\rightarrow$ Auditor (公文终审员) 的有向图结构，利用 Goroutine 极小内存开销避免高并发拥堵。System Prompt 中内置刚性公文风格约束，严格规范生成用语。
+*   **多轮对话历史与智能 RAG 意图路由**：支持网关图多轮对话历史（`History` 结构）传递，并在 `Planner` 决策层根据上下文动态判断路由。`direct`（直答）路径职能严格限制为“非法律问候及历史已知事实的简单提取”。任何涉及法律流程、公诉判定、实体法条、政策分析的提问，均智能引导至 `ask_expert` 或 `ask_rag`，以保障法典引用的严肃性。
+*   **直答（direct）路径旁路裁减优化**：若 Planner 决定请求可通过上下文直接回答，则有向图将自适应跳过 `Checker` 与 `Auditor` 节点的 LLM 耗时生成，由 Auditor 提取 Worker 阶段的草稿直接向前端推流并结清 SSE 会话。串行 LLM 计算层级减半，消除重复的 Prefill 耗时，响应速度提升 50% 以上。
+*   **林维斯协同状态流式监视（Linvis）**：在有向图每个 Lambda 节点状态流转时，通过 `setLinvisStatus` 实时向后台大屏异步推送最新的状态详情，支持智能体圆桌会议大屏的实时展示。
+*   **中断与恢复 (Interrupt & Resume)**：当公文终审员判定当前的文书草案触发严重合规预警（如程序违规或大额惩罚）时，Eino 流执行自动中断，将有向图状态快照冻结至 Redis `eino:frozen_state:{project_id}`（TTL 24小时），前台看板显示琥珀色报警并拉起法务控制台。法务主管人工审阅批改后，通过 [chat_handler.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/chat_handler.go#L154) 接收修改，拉起 `Resume` 恢复执行后续图流程。
 
 ### 4. 向量级 Redis 语义缓存网络 (L2 Answer Cache)
 *   **高维语义相似度命中**：在 [semantic_cache.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/semantic_cache.py) 中，对用户的提问进行 BGE-M3 稠密向量转换并归一化，通过 `np.dot` 与 Redis Hash 结构中历史提问向量计算余弦相似度。若大于匹配阈值 `0.96`，直接从缓存获取最终文书，返回时间从大模型推理的 2分多钟骤降至 **0.37s**，配置 1 小时过期 TTL 自动释放空闲哈希。
@@ -141,10 +141,10 @@
 *   **Ragas 离线跑批打分**：在 [worker.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/worker.py#L155) 中配置 Celery 凌晨定时打分任务，废除随机数 Mock，使用 Ragas 框架计算上下文相关性、回答相关性及忠实度指标，并将计算平均值回写至 SQLite 的 `ragas_daily_reports` 日报表中，保障系统生成公文与决策的严肃质量。
 
 ### 7. 全新政务化 UI/UX 视觉重塑与卡片/列表双模式
-*   **深色/浅色政务色系**：重构了页面背景色（替换为干净灰白的 `#F5F7FA`），圆角收缩为 `4px` 紧凑直角，移除所有霓虹渐变与活泼 Emoji。
-*   **列表/卡片双模式**：实现以高密度 Table 列表为默认的首页项目空间排版，支持 Card/List 双模式及 localStorage 记忆。
-*   **排队等待体验优化**：引入脉冲时钟微标，纠正『正在提取: 排队中』的文案冲突，提升慢速大模型提炼队列的排队呈现。
-*   **深色模式 UI 高质量适配与细节重构**：专门优化了深色（Dark）模式下的视觉统一性。包括将“引用所有公共文档”行与“快速/深度思考切换开关”适配为深灰质感色系（`#282A31` / `#1E2025`）；重构了答案底部“参考来源”的背景和字色，彻底解决了亮灰背景白字在暗色模式下不可读的问题；弱化了禁用状态下的发送按钮圆形，实现 100% 精致统一的暗色政务美学。
+*   **深色/浅色政务色系**：系统支持统一的政务色系方案（背景采用干净灰白的 `#F5F7FA`，圆角收缩为 `4px` 紧凑直角，移除霓虹渐变与活泼 Emoji，呈现严肃风范）。
+*   **列表/卡片双模式**：提供以高密度 Table 列表为默认的首页项目空间排版，支持 Card/List 双模式切换及 localStorage 状态持久化记忆。
+*   **排队等待体验优化**：采用脉冲时钟微标展示状态，实时呈现慢速大模型提炼队列的排队与执行进度，信息传递清晰。
+*   **深色模式政务美学适配**：全站 100% 适配深色（Dark）模式，为“引用所有公共文档”行、模式选择开关、发送按钮禁用态、参考来源标签等细节提供专属深灰色系（`#282A31` / `#1E2025`）及高对比度排版，消除白边和不可读隐患。
 
 ---
 
