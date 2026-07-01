@@ -31,7 +31,6 @@ class Utf8CharsetMiddleware(BaseHTTPMiddleware):
 from core.config import settings
 from core.watchdog import ReadOnlyMiddleware, start_watchdog
 from api.files import router as files_router
-from api.ingest import router as ingest_router
 from api.generate import router as generate_router
 from api.export import router as export_router
 from api.template import router as template_router
@@ -148,7 +147,6 @@ app.add_middleware(ReadOnlyMiddleware)
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(files_router)
-app.include_router(ingest_router)
 app.include_router(generate_router)
 app.include_router(export_router)
 app.include_router(template_router)

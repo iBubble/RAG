@@ -17,8 +17,6 @@ func main() {
 	// 2. 初始化 JWT 模块
 	initJWT()
 
-	// 3. 移除 NATS 消息总线连接（本系统核心业务已废弃 NATS 订阅机制）
-	log.Println("[Go-Gateway] NATS 模块已在重构中废弃，跳过连接初始化")
 
 	// 4. 路由配置与启动
 	gin.SetMode(gin.ReleaseMode)

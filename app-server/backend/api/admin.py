@@ -1537,8 +1537,9 @@ async def get_service_status(admin: dict = Depends(require_admin)):
     gateway_online = False
     gateway_detail = "未就绪 (连接失败)"
     try:
+        gateway_port = os.getenv("GATEWAY_PORT", "8003")
         async with httpx.AsyncClient(timeout=1.5) as c:
-            resp = await c.get("http://127.0.0.1:8001/api/chat")
+            resp = await c.get(f"http://127.0.0.1:{gateway_port}/api/chat")
             if resp.status_code in (200, 401, 404, 405):
                 gateway_online = True
                 gateway_detail = "正常监听中 · Eino DAG 图流引擎就绪"

@@ -58,3 +58,4 @@ docker-data/
 
 # 备份文件
 *.tar.gz
+readytodel/
