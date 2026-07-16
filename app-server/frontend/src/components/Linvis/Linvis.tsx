@@ -812,7 +812,7 @@ export default function Linvis() {
                   {/* (A) 角色小人层：使用 pos (支持行走移动) */}
                   {/* (A) 角色小人层：使用 pos (支持行走移动，并以 scale 缩小身型) */}
                   <g 
-                    transform={`translate(${pos.x}, ${pos.y}) scale(0.55)`}
+                    transform={`translate(${pos.x}, ${pos.y}) scale(1.1)`}
                     style={{
                       transition: 'transform 1.5s ease-in-out'
                     }}
