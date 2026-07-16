@@ -241,4 +241,23 @@
   transform: scale(0.9) rotate(-3deg); /* 按压效果 */
 }
 
+/* ===== 獬豸独立双腿交替走路迈步动画 ===== */
+.sdx-walking-legs line:nth-child(1) {
+  animation: sdxLeftLegSwing 0.3s infinite ease-in-out alternate;
+  transform-origin: -8px 0px;
+}
+.sdx-walking-legs line:nth-child(2) {
+  animation: sdxRightLegSwing 0.3s infinite ease-in-out alternate;
+  transform-origin: 8px 0px;
+}
+
+@keyframes sdxLeftLegSwing {
+  0% { transform: rotate(-22deg); }
+  100% { transform: rotate(22deg); }
+}
+@keyframes sdxRightLegSwing {
+  0% { transform: rotate(22deg); }
+  100% { transform: rotate(-22deg); }
+}
+
 
