@@ -7,204 +7,17 @@ import './Linvis3D.css';
 
 // 导入2D卡通虚拟办公室美术资源
 import deskSprite from '../../assets/office/desk.webp';
-// 獬豸办公室大屏纯手绘 10 角色免版权 SVG 卡通角色渲染组件
-const LinvisAgentSvg: React.FC<{
-  agentKey: string;
-  status: string;
-  isWalking: boolean;
-}> = ({ agentKey, status, isWalking }) => {
-  const isSleeping = status === 'sleeping';
-  const isIdle = status === 'idle';
-
-  // 10 个角色专属配置 (主色调, 领口色, 以及职业徽章 Accessory)
-  const configs: Record<string, { bodyColor: string; collarColor: string; accessory?: React.ReactNode }> = {
-    chat: {
-      bodyColor: '#3b82f6', // 浅蓝格子衫风
-      collarColor: '#1d4ed8',
-      accessory: (
-        // 括号印章
-        <text x={0} y={-30} fill="#ffffff" fontSize="10" fontWeight="bold" textAnchor="middle" dominantBaseline="middle">{"{}"}</text>
-      )
-    },
-    planner: {
-      bodyColor: '#22c55e', // 草绿色卫衣
-      collarColor: '#15803d',
-      accessory: (
-        // 橙色小领结
-        <path d="M -5 -38 L -1 -34 L -5 -30 Z M 5 -38 L 1 -34 L 5 -30 Z" fill="#ea580c" stroke="#2f2a26" strokeWidth="0.8" />
-      )
-    },
-    summary: {
-      bodyColor: '#f59e0b', // 橙黄色外套
-      collarColor: '#b45309',
-      accessory: (
-        // 红色细长领带
-        <polygon points="-2,-36 2,-36 1,-24 -1,-24" fill="#dc2626" />
-      )
-    },
-    checker: {
-      bodyColor: '#ec4899', // 捉虫粉色卫衣
-      collarColor: '#be185d',
-      accessory: (
-        // 放大镜胸章
-        <g transform="translate(0, -32) scale(0.9)">
-          <circle cx={0} cy={0} r={3} fill="none" stroke="#ffffff" strokeWidth="1.2" />
-          <line x1={2} y1={2} x2={4.5} y2={4.5} stroke="#ffffff" strokeWidth="1.2" strokeLinecap="round" />
-        </g>
-      )
-    },
-    auditor: {
-      bodyColor: '#4b5563', // 灰色商务西装
-      collarColor: '#111827',
-      accessory: (
-        // 白衬衫小翻领+红色小领带
-        <g>
-          <polygon points="-4,-40 4,-40 0,-34" fill="#ffffff" />
-          <polygon points="-1.8,-34 1.8,-34 1.2,-25 -1.2,-25" fill="#dc2626" />
-        </g>
-      )
-    },
-    service: {
-      bodyColor: '#eab308', // 黄色客服制服
-      collarColor: '#a16207',
-      accessory: (
-        // 绿色小话筒客服小圆胸章
-        <circle cx={0} cy={-30} r={2.5} fill="#10b981" />
-      )
-    },
-    precompute: {
-      bodyColor: '#6366f1', // 靛蓝色太空服
-      collarColor: '#4338ca',
-      accessory: (
-        // 亮黄色闪电徽章
-        <polygon points="-1.5,-35 1,-35 -0.5,-30 1.5,-30 -1.5,-23" fill="#facc15" />
-      )
-    },
-    vectorizer: {
-      bodyColor: '#0d9488', // 深青色夹克
-      collarColor: '#0f766e',
-      accessory: (
-        // 向上向量指针
-        <path d="M -2.5 -27 L 0 -31 L 2.5 -27 M 0 -31 L 0 -24" fill="none" stroke="#ffffff" strokeWidth="1.2" strokeLinecap="round" />
-      )
-    },
-    legal: {
-      bodyColor: '#1e293b', // 庄重法袍黑
-      collarColor: '#991b1b', // 红色襟子
-      accessory: (
-        // 金色双圆扣
-        <g>
-          <circle cx={-2.5} cy={-37} r={1.2} fill="#fbbf24" />
-          <circle cx={2.5} cy={-37} r={1.2} fill="#fbbf24" />
-        </g>
-      )
-    },
-    graph: {
-      bodyColor: '#8b5cf6', // 知识图谱紫色
-      collarColor: '#6d28d9',
-      accessory: (
-        // 三节点连线星空图谱徽章
-        <g transform="translate(0, -31) scale(0.7)">
-          <circle cx={-4} cy={3} r={1.5} fill="#ffffff" />
-          <circle cx={4} cy={3} r={1.5} fill="#ffffff" />
-          <circle cx={0} cy={-3} r={1.5} fill="#ffffff" />
-          <line x1={-3} y1={2} x2={0} y2={-1.5} stroke="#ffffff" strokeWidth="0.8" />
-          <line x1={3} y1={2} x2={0} y2={-1.5} stroke="#ffffff" strokeWidth="0.8" />
-          <line x1={-3} y1={3} x2={3} y2={3} stroke="#ffffff" strokeWidth="0.8" />
-        </g>
-      )
-    }
-  };
-
-  const config = configs[agentKey] || configs.chat;
-
-  return (
-    <g style={{ filter: (isSleeping || isIdle) ? 'grayscale(0.2)' : 'none' }}>
-      {/* 1. 身体阴影 */}
-      <ellipse cx={0} cy={16} rx={22} ry={6} fill="rgba(0,0,0,0.15)" />
-
-      {/* 2. 双腿与摆动走路动画 (isWalking 触发 CSS 交替摆腿动画) */}
-      <g className={isWalking ? 'sdx-walking-legs' : ''}>
-        {/* 左腿 */}
-        <line x1={-8} y1={0} x2={-8} y2={15} stroke="#2f2a26" strokeWidth="5.5" strokeLinecap="round" />
-        <circle cx={-8} cy={15} r={3} fill="#2f2a26" />
-        {/* 右腿 */}
-        <line x1={8} y1={0} x2={8} y2={15} stroke="#2f2a26" strokeWidth="5.5" strokeLinecap="round" />
-        <circle cx={8} cy={15} r={3} fill="#2f2a26" />
-      </g>
-
-      {/* 3. 卡通躯干衣服 */}
-      {/* 衣服主体 */}
-      <path d="M -18 -48 L 18 -48 C 22 -35, 20 -20, 16 0 L -16 0 C -20 -20, -22 -35, -18 -48 Z" fill={config.bodyColor} stroke="#2f2a26" strokeWidth="2.5" />
-      {/* 领口底衬 */}
-      <polygon points="-8,-48 8,-48 0,-38" fill={config.collarColor} stroke="#2f2a26" strokeWidth="1.5" />
-
-      {/* 4. 手臂和手 */}
-      {!isWalking && !isSleeping && status !== 'funny' ? (
-        // 坐在工位打字态：两只小胖手向前伸出
-        <g>
-          <path d="M -17 -36 Q -28 -30 -16 -22" fill="none" stroke="#fdd7bd" strokeWidth="5.5" strokeLinecap="round" />
-          <path d="M -17 -36 Q -28 -30 -16 -22" fill="none" stroke="#2f2a26" strokeWidth="9" strokeLinecap="round" style={{ opacity: 0.15 }} />
-          <path d="M 17 -36 Q 28 -30 16 -22" fill="none" stroke="#fdd7bd" strokeWidth="5.5" strokeLinecap="round" />
-        </g>
-      ) : (
-        // 闲置/走动垂落态：手臂挂在身侧
-        <g>
-          <path d="M -18 -36 C -24 -24, -22 -12, -20 -4" fill="none" stroke={config.bodyColor} strokeWidth="5.5" strokeLinecap="round" />
-          <circle cx={-20} cy={-4} r={3.5} fill="#fdd7bd" stroke="#2f2a26" strokeWidth="1.5" />
-          <path d="M 18 -36 C 24 -24, 22 -12, 20 -4" fill="none" stroke={config.bodyColor} strokeWidth="5.5" strokeLinecap="round" />
-          <circle cx={20} cy={-4} r={3.5} fill="#fdd7bd" stroke="#2f2a26" strokeWidth="1.5" />
-        </g>
-      )}
-
-      {/* 5. 獬豸头部与五官 */}
-      {/* 脖子 */}
-      <rect x={-5} y={-56} width={10} height={10} fill="#fdd7bd" stroke="#2f2a26" strokeWidth="2.2" />
-      {/* 头部大包子脸 */}
-      <ellipse cx={0} cy={-76} rx={26} ry={22} fill="#fdd7bd" stroke="#2f2a26" strokeWidth="2.5" />
-
-      {/* 獬豸耳发 */}
-      <path d="M -26 -76 Q -34 -85 -24 -92 Q -22 -85 -20 -82" fill="#2f2a26" stroke="#2f2a26" strokeWidth="1.5" />
-      <path d="M 26 -76 Q 34 -85 24 -92 Q 22 -85 20 -82" fill="#2f2a26" stroke="#2f2a26" strokeWidth="1.5" />
-
-      {/* 头顶亮黄色断案独角 */}
-      <polygon points="-3.5,-96 3.5,-96 0,-112" fill="#fbbf24" stroke="#2f2a26" strokeWidth="2.2" />
-
-      {/* 眼睛表情分发 */}
-      {isSleeping ? (
-        // 睡觉弯弯眼
-        <g>
-          <path d="M -13 -76 Q -9 -80 -5 -76" fill="none" stroke="#2f2a26" strokeWidth="2.2" strokeLinecap="round" />
-          <path d="M 5 -76 Q 9 -80 13 -76" fill="none" stroke="#2f2a26" strokeWidth="2.2" strokeLinecap="round" />
-        </g>
-      ) : (
-        // 有神黑色大眼睛带明亮白高光
-        <g>
-          <circle cx={-9} cy={-76} r={3.5} fill="#2f2a26" />
-          <circle cx={-10.2} cy={-77.2} r={1} fill="#ffffff" />
-          <circle cx={9} cy={-76} r={3.5} fill="#2f2a26" />
-          <circle cx={7.8} cy={-77.2} r={1} fill="#ffffff" />
-        </g>
-      )}
-
-      {/* 卡通浅色红腮晕 */}
-      <ellipse cx={-17} cy={-70} rx={3} ry={1.5} fill="#f43f5e" opacity="0.4" />
-      <ellipse cx={17} cy={-70} rx={3} ry={1.5} fill="#f43f5e" opacity="0.4" />
-
-      {/* 嘴巴表情分发 */}
-      {isSleeping ? (
-        // 呼呼小气泡口
-        <circle cx={0} cy={-69} r={1.8} fill="#ffffff" stroke="#2f2a26" strokeWidth="1.2" />
-      ) : (
-        // 浅浅微笑
-        <path d="M -4 -69 Q 0 -66 4 -69" fill="none" stroke="#2f2a26" strokeWidth="2.0" strokeLinecap="round" />
-      )}
-
-      {/* 职业徽章装饰 */}
-      {config.accessory}
-    </g>
-  );
-};
+import roleChat from '../../assets/office/role_chat.png';
+import rolePlanner from '../../assets/office/role_planner.png';
+import roleSummary from '../../assets/office/role_summary.png';
+import roleChecker from '../../assets/office/role_checker.png';
+import roleAuditor from '../../assets/office/role_auditor.png';
+import roleService from '../../assets/office/role_service.png';
+import rolePrecompute from '../../assets/office/role_precompute.png';
+import roleVectorizer from '../../assets/office/role_vectorizer.png';
+import roleGraph from '../../assets/office/role_graph.png';
+import roleLegal from '../../assets/office/role_legal.png';
+import roleSlacking from '../../assets/office/role_slacking.png';
 
 
 
@@ -970,7 +783,25 @@ export default function Linvis() {
               const agent = data.agents[key as keyof typeof data.agents];
               const dPos = DEFAULT_POS[key];
               
-
+              // 映射到高精角色原画
+              let sprite = roleChat;
+              if (pos.isSlacking) {
+                sprite = roleSlacking;
+              } else {
+                switch(key) {
+                  case 'chat': sprite = roleChat; break;
+                  case 'planner': sprite = rolePlanner; break;
+                  case 'summary': sprite = roleSummary; break;
+                  case 'checker': sprite = roleChecker; break;
+                  case 'auditor': sprite = roleAuditor; break;
+                  case 'service': sprite = roleService; break;
+                  case 'precompute': sprite = rolePrecompute; break;
+                  case 'vectorizer': sprite = roleVectorizer; break;
+                  case 'graph': sprite = roleGraph; break;
+                  case 'legal': sprite = roleLegal; break;
+                  default: sprite = roleChat;
+                }
+              }
 
               const isW = agent.status === 'working' && !pos.isWalking;
               const isI = agent.status === 'interrupted';
@@ -1045,11 +876,17 @@ export default function Linvis() {
                         </foreignObject>
                       )}
 
-                      {/* 獬豸办公室大屏纯手绘免版权 SVG 卡通角色组件 */}
-                      <LinvisAgentSvg 
-                        agentKey={key} 
-                        status={agent.status} 
-                        isWalking={pos.isWalking} 
+                      {/* 角色正面贴图，脚对齐于局部原点(0, 0)，通过y偏移下移人物，使桌子完美遮挡整个下半身 */}
+                      <image 
+                        xlinkHref={sprite}
+                        href={sprite} 
+                        x={-40.5} 
+                        y={-120} 
+                        width={81} 
+                        height={168} 
+                        style={{
+                          filter: (agent.status === 'sleeping' || agent.status === 'idle') ? 'grayscale(0.25)' : 'none'
+                        }}
                       />
 
                       {/* 警报灯和独角辉光 */}
