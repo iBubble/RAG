@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -27,7 +28,7 @@ var jwtSecret []byte
 func initJWT() {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		secret = "FALLBACK_INSECURE_KEY_CHECK_ENV"
+		log.Fatalf("[Go-Gateway] 致命错误: JWT_SECRET 环境变量未设置，网关拒绝启动。请在 ecosystem.config.js 或 .env 中配置 JWT_SECRET。")
 	}
 	jwtSecret = []byte(secret)
 }

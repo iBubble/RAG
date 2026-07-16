@@ -13,22 +13,33 @@ const HF_MIRROR_ENV = {
   HF_ENDPOINT: 'https://hf-mirror.com'
 };
 
-const JWT_SECRET_VAL = (() => {
+// WHY: 从 .env 统一读取敏感凭据，禁止在代码中硬编码密码
+const dotenv = (() => {
   try {
     const content = require('fs').readFileSync('/app/backend/.env', 'utf8');
-    const match = content.match(/JWT_SECRET="([^"]+)"/);
-    return match ? match[1] : 'FALLBACK_INSECURE_KEY_CHECK_ENV';
-  } catch { return 'FALLBACK_INSECURE_KEY_CHECK_ENV'; }
- biographical_secret = 'FALLBACK_INSECURE_KEY_CHECK_ENV';
+    const parse = (key) => {
+      const m = content.match(new RegExp(key + '="([^"]+)"'));
+      return m ? m[1] : '';
+    };
+    return {
+      JWT_SECRET:      parse('JWT_SECRET')      || 'FALLBACK_INSECURE_KEY_CHECK_ENV',
+      ADMIN_INIT_PWD:  parse('ADMIN_INIT_PASSWORD'),
+      REDIS_PASSWORD:  parse('REDIS_PASSWORD')   || 'FALLBACK_REDIS_PWD',
+      NEO4J_PASSWORD:  parse('NEO4J_PASSWORD')   || '',
+    };
+  } catch {
+    return {
+      JWT_SECRET: 'FALLBACK_INSECURE_KEY_CHECK_ENV',
+      ADMIN_INIT_PWD: '',
+      REDIS_PASSWORD: 'FALLBACK_REDIS_PWD',
+      NEO4J_PASSWORD: '',
+    };
+  }
 })();
 
-const ADMIN_INIT_PASSWORD_VAL = (() => {
-  try {
-    const content = require('fs').readFileSync('/app/backend/.env', 'utf8');
-    const match = content.match(/ADMIN_INIT_PASSWORD="([^"]+)"/);
-    return match ? match[1] : '';
-  } catch { return ''; }
-})();
+const JWT_SECRET_VAL       = dotenv.JWT_SECRET;
+const ADMIN_INIT_PASSWORD_VAL = dotenv.ADMIN_INIT_PWD;
+const REDIS_URL_VAL        = `redis://:${dotenv.REDIS_PASSWORD}@genrag-redis:6379/0`;
 
 module.exports = {
   apps: [
@@ -50,12 +61,13 @@ module.exports = {
         OMP_NUM_THREADS: '1',
         OPENBLAS_NUM_THREADS: '1',
         MKL_NUM_THREADS: '1',
-        REDIS_URL: 'redis://:Sy2026@sy@genrag-redis:6379/0',
+        REDIS_URL: REDIS_URL_VAL,
         QDRANT_URL: 'http://genrag-database:6333',
         VISION_MODEL: 'qwen2.5vl:7b',
+        ASR_MODEL: 'openai/whisper-base',
         ...NO_PROXY_ENV,
         ...HF_MIRROR_ENV,
-        HF_HUB_OFFLINE: '1',
+        HF_HUB_OFFLINE: '0',
       }
     },
     {
@@ -89,14 +101,15 @@ module.exports = {
         OPENBLAS_NUM_THREADS: '1',
         MKL_NUM_THREADS: '1',
         OMP_WAIT_POLICY: 'PASSIVE',
-        REDIS_URL: 'redis://:Sy2026@sy@genrag-redis:6379/0',
+        REDIS_URL: REDIS_URL_VAL,
         QDRANT_URL: 'http://genrag-database:6333',
         VISION_MODEL: 'qwen2.5vl:7b',
+        ASR_MODEL: 'openai/whisper-base',
         TASK_TIME_LIMIT: '1200',
         TASK_SOFT_TIME_LIMIT: '900',
         ...NO_PROXY_ENV,
         ...HF_MIRROR_ENV,
-        HF_HUB_OFFLINE: '1',
+        HF_HUB_OFFLINE: '0',
       }
     },
     {
@@ -116,14 +129,15 @@ module.exports = {
         OPENBLAS_NUM_THREADS: '1',
         MKL_NUM_THREADS: '1',
         OMP_WAIT_POLICY: 'PASSIVE',
-        REDIS_URL: 'redis://:Sy2026@sy@genrag-redis:6379/0',
+        REDIS_URL: REDIS_URL_VAL,
         QDRANT_URL: 'http://genrag-database:6333',
         VISION_MODEL: 'qwen2.5vl:7b',
+        ASR_MODEL: 'openai/whisper-base',
         TASK_TIME_LIMIT: '18000',
         TASK_SOFT_TIME_LIMIT: '14400',
         ...NO_PROXY_ENV,
         ...HF_MIRROR_ENV,
-        HF_HUB_OFFLINE: '1',
+        HF_HUB_OFFLINE: '0',
       }
     },
     {

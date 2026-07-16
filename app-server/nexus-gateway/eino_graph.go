@@ -19,6 +19,20 @@ import (
 	"sync"
 )
 
+// WHY: Go 官方推荐使用未导出的自定义类型作为 context key，
+//      避免跨包冲突。裸字符串 key 在大型项目中极易碰撞。
+type ctxKeyType struct{}
+
+var chatImageKey = ctxKeyType{}
+
+// WHY: http.DefaultClient 没有超时，LLM 推理卡死时 goroutine 会永远挂起。
+//      internalClient 用于 Python 内部 API 调用（短超时），
+//      llmClient 用于 Ollama LLM 调用（长超时）。
+var (
+	internalClient = &http.Client{Timeout: 15 * time.Second}
+	llmClient      = &http.Client{Timeout: 300 * time.Second}
+)
+
 var (
 	bestMultimodalModel string
 	lastModelCheck      time.Time
@@ -225,12 +239,23 @@ func writeSSE(w io.Writer, payload map[string]interface{}) bool {
 }
 
 func writeEvent(w io.Writer, agent, status, message string) bool {
-	return writeSSE(w, map[string]interface{}{
+	payload := map[string]interface{}{
 		"type":    "agent_event",
 		"agent":   agent,
 		"status":  status,
 		"message": message,
-	})
+	}
+	ok := writeSSE(w, payload)
+
+	// 异步广播给 WebSocket 客户端池
+	go func() {
+		jsonBytes, err := json.Marshal(payload)
+		if err == nil {
+			BroadcastMessage(jsonBytes)
+		}
+	}()
+
+	return ok
 }
 
 func cleanGovernmentRoleName(name string, defaultName string) string {
@@ -302,7 +327,7 @@ func freezeEinoState(sessionID string, req *EinoAgentRequest, draft string, chec
 	if err != nil {
 		return err
 	}
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
+	resp, err := internalClient.Post(url, "application/json", bytes.NewBuffer(payload))
 	if err != nil {
 		return err
 	}
@@ -321,7 +346,7 @@ func getFrozenState(projectID string) (map[string]interface{}, error) {
 		backendURL = "http://127.0.0.1:8002"
 	}
 	url := fmt.Sprintf("%s/api/eino/frozen/%s", backendURL, projectID)
-	resp, err := http.Get(url)
+	resp, err := internalClient.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -363,10 +388,12 @@ func reportSpanToPython(traceID, nodeName, input, output string, startTime, endT
 	}
 	// 在后台 goroutine 中发送请求，绝对不阻塞 DAG 主逻辑
 	go func() {
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
-		if err == nil {
-			resp.Body.Close()
+		resp, err := internalClient.Post(url, "application/json", bytes.NewBuffer(payload))
+		if err != nil {
+			log.Printf("[Go-Gateway] ⚠️ reportSpanToPython 失败: %v", err)
+			return
 		}
+		resp.Body.Close()
 	}()
 }
 
@@ -392,10 +419,12 @@ func reportAuditTraceToPython(traceID, userQuery, llmResponse, projectID, sessio
 		return
 	}
 	go func() {
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
-		if err == nil {
-			resp.Body.Close()
+		resp, err := internalClient.Post(url, "application/json", bytes.NewBuffer(payload))
+		if err != nil {
+			log.Printf("[Go-Gateway] ⚠️ reportAuditTraceToPython 失败: %v", err)
+			return
 		}
+		resp.Body.Close()
 	}()
 }
 
@@ -416,10 +445,22 @@ func setLinvisStatus(agent, status, msg, projectName string) {
 		"project_name": projectName,
 	})
 	go func() {
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
-		if err == nil {
-			resp.Body.Close()
+		resp, err := internalClient.Post(url, "application/json", bytes.NewBuffer(payload))
+		if err != nil {
+			log.Printf("[Go-Gateway] ⚠️ setLinvisStatus 失败: %v", err)
+			return
 		}
+		resp.Body.Close()
+
+		// 成功设置状态后，同时推送单点状态变更广播到前端 WebSocket
+		wsEvent, _ := json.Marshal(map[string]interface{}{
+			"type":         "linvis_status_update",
+			"agent":        agent,
+			"status":       status,
+			"message":      msg,
+			"project_name": projectName,
+		})
+		BroadcastMessage(wsEvent)
 	}()
 }
 
@@ -465,7 +506,7 @@ func RunEinoOrchestration(ctx context.Context, req *EinoAgentRequest, w io.Write
 	}
 
 	if req.Image != "" {
-		ctx = context.WithValue(ctx, "chat_image", req.Image)
+		ctx = context.WithValue(ctx, chatImageKey, req.Image)
 	}
 
 	_, err = r.Invoke(ctx, initCtx)
@@ -479,6 +520,24 @@ func coalesce(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// convertHistory 将请求中的聊天历史转换为 Eino schema.Message 切片。
+// WHY: workerNode 中多个分支（ask_rag/ask_expert/direct）有完全相同的
+//      History 转换循环，抽取为辅助函数消除重复代码。
+func convertHistory(history []ChatMessage) []*schema.Message {
+	var messages []*schema.Message
+	for _, h := range history {
+		role := schema.User
+		if strings.ToLower(h.Role) == "agent" || strings.ToLower(h.Role) == "assistant" {
+			role = schema.Assistant
+		}
+		messages = append(messages, &schema.Message{
+			Role:    role,
+			Content: h.Content,
+		})
+	}
+	return messages
 }
 
 func callPythonInternalRag(ctx context.Context, query, projectID string, fileIDs []string) (string, []string, []string, error) {
@@ -505,7 +564,7 @@ func callPythonInternalRag(ctx context.Context, query, projectID string, fileIDs
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := llmClient.Do(req)
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -569,7 +628,7 @@ func savePythonChatCache(req *EinoAgentRequest, answer string, sources []string)
 	}
 
 	go func() {
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(bodyBytes))
+		resp, err := internalClient.Post(url, "application/json", bytes.NewBuffer(bodyBytes))
 		if err != nil {
 			log.Printf("[Go-Gateway] ⚠️ 异步保存 Python 缓存 HTTP 失败: %v", err)
 			return
@@ -588,7 +647,7 @@ func savePythonChatCache(req *EinoAgentRequest, answer string, sources []string)
 
 func plannerNode(llm *OllamaChat, namePlanner string) *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *EinoContext) (*EinoContext, error) {
-		ctx = context.WithValue(ctx, "chat_image", "") // 清除图片上下文，避免非视觉节点图片污染
+		ctx = context.WithValue(ctx, chatImageKey, "") // 清除图片上下文，避免非视觉节点图片污染
 		startTime := float64(time.Now().UnixNano()) / 1e9
 		setLinvisStatus("planner", "working", "规划任务路由中...", input.Req.ProjectID)
 		writeEvent(input.Writer, "planner", "routing", fmt.Sprintf("🧠 %s 正在分析任务...", namePlanner))
@@ -766,7 +825,7 @@ func workerNode(llm *OllamaChat) *compose.Lambda {
 
 func checkerNode(llm *OllamaChat, nameChecker string) *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *EinoContext) (*EinoContext, error) {
-		ctx = context.WithValue(ctx, "chat_image", "") // 清除图片上下文，避免非视觉节点图片污染
+		ctx = context.WithValue(ctx, chatImageKey, "") // 清除图片上下文，避免非视觉节点图片污染
 		if input.FinalAnswer != "" || input.Route == "direct" {
 			return input, nil
 		}
@@ -800,7 +859,7 @@ func checkerNode(llm *OllamaChat, nameChecker string) *compose.Lambda {
 
 func auditorNode(llm *OllamaChat, nameAuditor string) *compose.Lambda {
 	return compose.InvokableLambda(func(ctx context.Context, input *EinoContext) (*EinoContext, error) {
-		ctx = context.WithValue(ctx, "chat_image", "") // 清除图片上下文，避免非视觉节点图片污染
+		ctx = context.WithValue(ctx, chatImageKey, "") // 清除图片上下文，避免非视觉节点图片污染
 		if input.Route == "direct" {
 			if input.FinalAnswer == "" {
 				input.FinalAnswer = input.Draft
@@ -869,7 +928,7 @@ func auditorNode(llm *OllamaChat, nameAuditor string) *compose.Lambda {
 }
 
 func RunEinoResumeOrchestration(ctx context.Context, req *EinoAgentRequest, draft string, checkResult string, sources []string, w io.Writer, traceID string, retrievalContext []string) error {
-	ctx = context.WithValue(ctx, "chat_image", "") // 清除图片上下文，避免非视觉节点图片污染
+	ctx = context.WithValue(ctx, chatImageKey, "") // 清除图片上下文，避免非视觉节点图片污染
 	startTime := float64(time.Now().UnixNano()) / 1e9
 	nameAuditor := cleanGovernmentRoleName(coalesce(req.AuditorName, req.ArbiterName, ""), "【协同】公文终审员")
 	llmModel := coalesce(req.Model, "qwen3.6:35b-q4")

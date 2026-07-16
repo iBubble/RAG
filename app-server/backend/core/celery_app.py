@@ -28,10 +28,9 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="Asia/Shanghai",
     enable_utc=True,
-    # WHY: Vision LLM 处理期间每个 Worker 子进程独占 GPU 推理，
-    #       concurrency=2 会导致两个并发进程互抢 Ollama 推理槽位，
-    #       引发大量 Vision 超时和 OOM。concurrency=1 确保串行处理，
-    #       同时配合 max_tasks_per_child=500 减少不必要的进程轮转。
+    # WHY: 此处为 Python 侧默认值。实际运行时由 PM2 ecosystem.config.js 中的
+    #       --concurrency 命令行参数覆盖（fast=2, slow=1）。
+    #       如需调整 Worker 并发数，请修改 ecosystem.config.js。
     worker_concurrency=1,
     worker_prefetch_multiplier=1,
     # WHY: 超时由 PM2 env 注入，fast=600s slow=3600s。

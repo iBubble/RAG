@@ -107,16 +107,16 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
+  gap: 2px;
   z-index: 6;
   margin-top: -4px;
 }
-.label-name { font-size: 12px; font-weight: 700; color: #444; }
-.label-role { font-size: 9px; color: #999; }
+.label-name { font-size: 13.5px; font-weight: 700; color: #2d3748; }
+.label-role { font-size: 10px; color: #718096; }
 .label-status {
   display: inline-flex; align-items: center;
-  padding: 1px 7px; border-radius: 6px;
-  font-size: 10px; font-weight: 700; margin-top: 2px;
+  padding: 1px 6px; border-radius: 6px;
+  font-size: 10.5px; font-weight: 700; margin-top: 2px;
 }
 
 /* ===== Zzz 飘浮 ===== */
@@ -128,9 +128,9 @@
   position: absolute;
   font-weight: 900; color: #818cf8;
 }
-.zzz-1 { font-size: 18px; animation: zzz-up 2.5s ease-in-out infinite; right: 0; top: 0; }
-.zzz-2 { font-size: 13px; animation: zzz-up 2.5s ease-in-out infinite 0.8s; right: -6px; top: -4px; }
-.zzz-3 { font-size: 9px; animation: zzz-up 2.5s ease-in-out infinite 1.6s; right: -10px; top: -2px; }
+.zzz-1 { font-size: 22px; animation: zzz-up 2.5s ease-in-out infinite; right: 0; top: 0; }
+.zzz-2 { font-size: 16px; animation: zzz-up 2.5s ease-in-out infinite 0.8s; right: -6px; top: -4px; }
+.zzz-3 { font-size: 12px; animation: zzz-up 2.5s ease-in-out infinite 1.6s; right: -10px; top: -2px; }
 @keyframes zzz-up {
   0% { transform: translate(0,4px) scale(0.5); opacity: 0; }
   30% { opacity: 0.9; }
@@ -166,24 +166,79 @@
 .task-bubble-w, .task-bubble-f {
   position: absolute;
   top: -32px; left: 50%; transform: translateX(-50%);
-  z-index: 30; width: 150px;
+  z-index: 30; width: 190px;
   text-align: center;
-  padding: 3px 8px;
-  border-radius: 8px;
-  font-size: 10px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.12);
 }
 .task-bubble-w {
-  background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46;
+  background: #ecfdf5; border: 1.5px solid #a7f3d0; color: #065f46;
 }
 .task-bubble-f {
-  background: #fffbeb; border: 1px solid #fde68a; color: #92400e;
+  background: #fffbeb; border: 1.5px solid #fde68a; color: #92400e;
 }
 .task-bubble-w p, .task-bubble-f p {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-weight: 700; margin: 0;
+  font-weight: 700; margin: 2px 0 0 0;
 }
 .task-bubble-w span, .task-bubble-f span {
-  font-weight: 700; font-size: 9px;
+  font-weight: 700; font-size: 12px;
 }
+
+/* ===== 新增：2.5D 卡通剧场动效 ===== */
+.sdx-breathe {
+  animation: sdx-breathe 3.4s ease-in-out infinite;
+}
+@keyframes sdx-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+.sdx-walk {
+  animation: sdx-walk 300ms ease-in-out infinite;
+}
+@keyframes sdx-walk {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  25% { transform: rotate(-3.5deg) translateY(-2px); }
+  75% { transform: rotate(3.5deg) translateY(-2px); }
+}
+
+.sdx-steam {
+  animation: sdx-steam 1.8s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+@keyframes sdx-steam {
+  0%, 100% { transform: translateY(0) scaleY(1); opacity: 0.3; }
+  50% { transform: translateY(-4px) scaleY(1.2); opacity: 1; }
+}
+
+/* ===== 拟物化红头公文案卷审批面板 ===== */
+.audit-kraft-folder {
+  background: #fdfaf2; /* 复古米白色 */
+  border: 12px double #b91c1c; /* 红色复古双边框 */
+  box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+  font-family: 'STKaiti', 'KaiTi', 'SimSun', serif;
+}
+.audit-header-red {
+  color: #b91c1c;
+  border-bottom: 2px solid #b91c1c;
+  letter-spacing: 4px;
+}
+.seal-stamp {
+  position: relative;
+  background: #dc2626;
+  border: 4px solid #fef2f2;
+  box-shadow: 0 4px 10px rgba(220, 38, 38, 0.4);
+  transition: transform 0.1s ease-in-out, background-color 0.2s;
+}
+.seal-stamp:hover {
+  transform: scale(1.05);
+  background-color: #b91c1c;
+}
+.seal-stamp:active {
+  transform: scale(0.9) rotate(-3deg); /* 按压效果 */
+}
+
 

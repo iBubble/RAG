@@ -18,7 +18,7 @@ from pydantic import BaseModel
 import zipfile
 import io
 
-from core.config import settings
+from core.config import settings, STORAGE_ROOT
 from core.extractors import extract_text, extract_tables
 from core.vector_store import ingest_text, get_chunk_count
 from core.table_registry import register_tables
@@ -105,6 +105,14 @@ async def upload_files(
     WHY: 上传是写操作，仅 Owner/Admin 可执行。
     """
     require_project_access(project_id, user, write=True)
+    
+    # WHY: 显式检查外置存储根目录是否存在，避免外置硬盘不在线导致写入崩溃
+    if not os.path.exists(STORAGE_ROOT):
+        raise HTTPException(
+            status_code=503,
+            detail="🚨 [存储服务离线] 外部 NAS 存储阵列断连或未正确挂载，暂时无法上传/解析文档，请联系管理员检查外置挂载盘状态。"
+        )
+        
     saved = []
 
     for file in files:
@@ -433,6 +441,14 @@ async def delete_file(file_path: str, project_id: str = "default", user: dict = 
     WHY: 删除是写操作，仅 Owner/Admin 可执行。
     """
     require_project_access(project_id, user, write=True)
+    
+    # WHY: 显式检查外置存储根目录是否存在，避免外置硬盘不在线导致删除崩溃
+    if not os.path.exists(STORAGE_ROOT):
+        raise HTTPException(
+            status_code=503,
+            detail="🚨 [存储服务离线] 外部 NAS 存储阵列断连或未正确挂载，暂时无法删除文档，请联系管理员检查外置挂载盘状态。"
+        )
+        
     import shutil
 
     target = _safe_resolve(UPLOAD_ROOT, file_path)
@@ -483,6 +499,14 @@ async def delete_folder(folder_path: str, project_id: str = "default", user: dic
     WHY: 删除是写操作，仅 Owner/Admin 可执行。
     """
     require_project_access(project_id, user, write=True)
+    
+    # WHY: 显式检查外置存储根目录是否存在，避免外置硬盘不在线导致删除崩溃
+    if not os.path.exists(STORAGE_ROOT):
+        raise HTTPException(
+            status_code=503,
+            detail="🚨 [存储服务离线] 外部 NAS 存储阵列断连或未正确挂载，暂时无法删除目录，请联系管理员检查外置挂载盘状态。"
+        )
+        
     import shutil
 
     target = _safe_resolve(UPLOAD_ROOT, folder_path)

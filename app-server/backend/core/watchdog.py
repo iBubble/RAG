@@ -47,15 +47,6 @@ def start_watchdog():
 
 class ReadOnlyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        global SYSTEM_READ_ONLY
-        
-        # 如果系统是只读模式，拦截所有非 GET 的修改型请求
-        if SYSTEM_READ_ONLY:
-            if request.method in ["POST", "PUT", "DELETE", "PATCH"]:
-                return JSONResponse(
-                    status_code=503,
-                    content={"detail": "🚨 [系统防灾熔断警告] 外部 NAS 存储阵列离线，为防止造成数据幽灵覆盖及损坏，系统已强制进入只读(Read-Only)保护模式，暂时无法处理新建/修改/生成指派。"},
-                )
-        
+        # WHY: 根据最新方案，不再限制非文档类的其它写操作，外置硬盘不在线只在文件上传时熔断。
         response = await call_next(request)
         return response

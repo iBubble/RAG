@@ -84,7 +84,7 @@ def extract_text(file_path: str, is_slow_queue: bool = False) -> Optional[str]:
         return text
     except Exception as e:
         logger.error(f"提取 {path.name} 失败: {e}")
-        return None
+        raise e
 
 
 def extract_tables(file_path: str) -> List[dict]:

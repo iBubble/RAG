@@ -126,7 +126,11 @@
 *   **Go Eino 拓扑编排（Smart 模式核心）**：核心对话流基于 [eino_graph.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/eino_graph.go) 编排成 Planner (公文秘书) $\rightarrow$ Worker (定量数据校验) $\rightarrow$ Checker (合规审查员) $\rightarrow$ Auditor (公文终审员) 的有向图结构，利用 Goroutine 极小内存开销避免高并发拥堵。System Prompt 中内置刚性公文风格约束，严格规范生成用语。
 *   **多轮对话历史与智能 RAG 意图路由**：支持网关图多轮对话历史（`History` 结构）传递，并在 `Planner` 决策层根据上下文动态判断路由。`direct`（直答）路径职能严格限制为“非法律问候及历史已知事实的简单提取”。任何涉及法律流程、公诉判定、实体法条、政策分析的提问，均智能引导至 `ask_expert` 或 `ask_rag`，以保障法典引用的严肃性。
 *   **直答（direct）路径旁路裁减优化**：若 Planner 决定请求可通过上下文直接回答，则有向图将自适应跳过 `Checker` 与 `Auditor` 节点的 LLM 耗时生成，由 Auditor 提取 Worker 阶段的草稿直接向前端推流并结清 SSE 会话。串行 LLM 计算层级减半，消除重复的 Prefill 耗时，响应速度提升 50% 以上。
-*   **林维斯协同状态流式监视（Linvis）**：在有向图每个 Lambda 节点状态流转时，通过 `setLinvisStatus` 实时向后台大屏异步推送最新的状态详情，支持智能体圆桌会议大屏的实时展示。
+*   **林维斯协同状态流式监视大屏 (Linvis)**：有向图每个 Lambda 节点状态流转时，通过 `setLinvisStatus` 实时向后台大屏推送状态详情。Linvis 搭载了极高表现力的 2D 卡通虚拟办公室系统，支持以下高级特性：
+  - *微缩精致卡通重塑*：顶部墙面高度收窄至 `130px`，大屏纵向 viewBox 压缩至 `750px`，手绘木门、窗外飘窗、植物等挂饰尺寸缩小一半，使下部工位及休闲区同频上移，大幅提升可视密度与画面精致度；
+  - *系统时间同步动态挂钟*：顶部卡通圆挂钟尺寸扩大一倍，通过 React 状态定时器与当地系统真实时间建立秒级同步，分针/时针依据 rotate 矩阵随物理时间平滑流逝，极具微缩世界交互乐趣；
+  - *排重防重叠三排休闲区*：第一排新增手绘带红色咖啡机的茶水柜、第二三排配备大小规格一致的粉蓝/暖橘大沙发，通过随机选座与物理坐标占坑排重，**同一时间每个茶水桌/沙发只能容纳 1 个角色**，杜绝重合；
+  - *消除门口闪现的顺滑步行*：通过 50ms 渲染防抖延时，将“开始迈步”与“位移大门打卡”解耦渲染，彻底消除突然瞬移闪现 Bug，实现小人们由工位/摸鱼点至门口往返的 100% 顺滑位移动画；
 *   **中断与恢复 (Interrupt & Resume)**：当公文终审员判定当前的文书草案触发严重合规预警（如程序违规或大额惩罚）时，Eino 流执行自动中断，将有向图状态快照冻结至 Redis `eino:frozen_state:{project_id}`（TTL 24小时），前台看板显示琥珀色报警并拉起法务控制台。法务主管人工审阅批改后，通过 [chat_handler.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/chat_handler.go#L154) 接收修改，拉起 `Resume` 恢复执行后续图流程。
 
 ### 4. 向量级 Redis 语义缓存网络 (L2 Answer Cache)

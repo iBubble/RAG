@@ -14,20 +14,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+import asyncio
+from contextlib import asynccontextmanager
 
-class Utf8CharsetMiddleware(BaseHTTPMiddleware):
-    """强制所有 JSON 响应声明 charset=utf-8。
-
-    WHY: FRP 代理 + 服务端 Nginx 转发时，如果 Content-Type 缺少 charset，
-    中间环节可能按系统默认编码（如 latin-1）重解释字节流，导致中文乱码。
-    """
-
-    async def dispatch(self, request: Request, call_next) -> Response:
-        response = await call_next(request)
-        ct = response.headers.get("content-type", "")
-        if "application/json" in ct and "charset" not in ct:
-            response.headers["content-type"] = "application/json; charset=utf-8"
-        return response
 from core.config import settings
 from core.watchdog import ReadOnlyMiddleware, start_watchdog
 from api.files import router as files_router
@@ -42,8 +31,20 @@ from api.web_ingest import router as web_ingest_router
 from api.knowledge import router as knowledge_router
 from api.ai_templates import router as ai_templates_router
 
-import asyncio
-from contextlib import asynccontextmanager
+
+class Utf8CharsetMiddleware(BaseHTTPMiddleware):
+    """强制所有 JSON 响应声明 charset=utf-8。
+
+    WHY: FRP 代理 + 服务端 Nginx 转发时，如果 Content-Type 缺少 charset，
+    中间环节可能按系统默认编码（如 latin-1）重解释字节流，导致中文乱码。
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        ct = response.headers.get("content-type", "")
+        if "application/json" in ct and "charset" not in ct:
+            response.headers["content-type"] = "application/json; charset=utf-8"
+        return response
 
 
 @asynccontextmanager

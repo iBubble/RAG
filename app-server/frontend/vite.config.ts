@@ -27,6 +27,7 @@ function noStoreHtmlPlugin(): Plugin {
 const sseProxyConfig = {
   target: 'http://127.0.0.1:8003', // 指向网关新端口 8003
   changeOrigin: true,
+  ws: true,
   timeout: 600000,
   proxyTimeout: 600000,
   selfHandleResponse: false,

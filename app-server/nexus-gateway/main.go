@@ -17,8 +17,10 @@ func main() {
 	// 2. 初始化 JWT 模块
 	initJWT()
 
+	// 启动 WebSocket 广播中心
+	go globalHub.Run()
 
-	// 4. 路由配置与启动
+	// 3. 路由配置与启动
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -40,6 +42,9 @@ func main() {
 	// 核心对话流式接口：由 Go 本地 Eino.Graph 编排处理
 	r.POST("/api/chat", AuthMiddleware(), ChatHandler())
 	r.POST("/api/eino/resume", AuthMiddleware(), ResumeHandler())
+	
+	// WebSocket 实时看板推送端点
+	r.GET("/api/eino/ws-status", ServeWs)
 
 	// 针对前端资源和 API 分流代理
 	frontendURL := "http://127.0.0.1:2028"

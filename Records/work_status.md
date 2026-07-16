@@ -1,21 +1,26 @@
 # 工作状态记录
 
-## 📅 2026-07-01 19:46
-*   **全站深色（Dark）模式不协调 UI 元素重构与适配**：
-    - **问题诊断**：用户指出在深色模式下，界面有四处元素依然呈现高亮刺眼的淡色背景，或者前景色文字与背景色对比度不足。
-    - **实施适配**：
-      1. **公共文档引用行**（[TreeView.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/TreeView/TreeView.tsx)）：添加 `dark:bg-[#282A31] dark:border-[#2E313A]` 使得底色融入左侧栏，文字适配 `dark:text-[#C4B5A0]`。
-      2. **快速/深度思考切换开关**（[AgentChat.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/AgentChat/AgentChat.tsx)）：容器适配 `dark:bg-[#282A31] dark:border-[#2E313A]`，选中按钮适配 `dark:bg-[#1E2025]`（使对比度回归温和），未选中文字适配 `dark:text-gray-400 dark:hover:text-gray-200`。
-      3. **发送按钮禁用态**（[AgentChat.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/AgentChat/AgentChat.tsx)）：添加 `dark:disabled:bg-[#2E313A]/60` 和 `dark:disabled:text-[#5F6368]`，防止禁用状态下变成极其刺眼的白圆。
-      4. **答案底部参考来源标签**（[AgentChat.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/AgentChat/AgentChat.tsx)）：添加 `dark:bg-[#282A31] dark:border-[#2E313A] dark:text-stone-300`，彻底解决深色模式下“浅灰字 + 浅灰背景”导致的内容几乎不可读问题。
-    - **编译重新加载**：成功打包构建 frontend 并热重启 `genrag-frontend` 节点，全部组件渲染正常。
+## 📅 2026-07-06 23:38
+*   **纠正迁移数据库拷贝源错误**：
+    - ✅ Done:
+      - 数据库拷贝源修正：纠正了先前拷贝 SQLite 数据库时的源路径混淆，将邻居项目（LawRAG 法律知识库）误拷的数据源，重新覆盖为正确的通用 RAG 数据源（`/Volumes/macData/GenRAG_Files/shengyao.db`）；
+      - 验证运行状态：重启后端 PM2 进程并登录，确认系统成功恢复为“市监一体化智能工作体”，项目和文档均已显示正确。
+    - ⏳ To-Do:
+      - 暂无
 
-## 📅 2026-07-01 21:42
-*   **后台管理 Go Gateway 状态检测端口修正**：
-    - **现象诊断**：用户反馈后台管理中，Go Gateway 网关被显示为“已停止/连接失败”，但 PM2 显示其服务在端口 8003 正常监听并且运作良好。
-    - **根因剖析**：`/app-server/backend/api/admin.py` 的服务健康检查中，硬编码查询了 `127.0.0.1:8001/api/chat`。而在该系统中，网关的实际监听端口被设定为了 `8003`。
-    - **修复逻辑**：将 `admin.py` 中 Eino 网关健康检测目标端口更改为 `os.getenv("GATEWAY_PORT", "8003")`，使其自适应真正的监听端口。
-    - **热重启**：重启了 `genrag-backend` 服务，后台状态恢复正常（显示为绿色在线）。
+## 📅 2026-07-10 15:18
+*   **外置磁盘挂载失效导致 RAID 离线问题修复**：
+    - ✅ Done:
+      - 定位脱机原因：排查发现宿主机外置磁盘 `/Volumes/macData` 被重新挂载后，因 Docker 容器（GenRAG-Server）长时间运行，导致其内部 Bind Mount 变为失效的僵尸节点（`d?????????`）。
+      - 重启服务恢复：运行 `docker compose restart genrag-server` 重新绑定挂载点，使系统成功恢复读写，巡检健康状态（RAID 及全链路）重新转为 100% 🟢 Green。
+    - ⏳ To-Do:
+      - 暂无
 
-⏳ To-Do:
-- 无
+## 📅 2026-07-17 01:00
+*   **Linvis 卡通挂钟尺寸翻倍、上移置顶、且与系统真实时间秒级同步刷新最终交付**：
+    - ✅ Done:
+      - 挂钟物理尺寸翻倍与置顶：将顶部墙壁中缝的卡通挂钟半径由 20 扩大一倍至 **`40`**（内径 35），整体大小翻倍醒目。位置上移至 `translate(480, 45)`，精巧贴合于米白色墙壁的最顶端；
+      - 真实时钟同步机制：在 React 中引入了 `currentTime` 时钟状态，通过 `useEffect` 注册了一个每 10 秒刷新一次的高精度时钟定时器（`clockTimer`），并在组件销毁时卸载；
+      - 动态计算指针偏角：时针和分针彻底摆脱静态坐标，分别通过 `rotate` 旋转属性动态计算出当前真实的系统度数（分针每分钟 $6^\circ$，时针每小时 $30^\circ$ + 随分钟微调），完美展示真实的当地时间。
+    - ⏳ To-Do:
+      - 暂无

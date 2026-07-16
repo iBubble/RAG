@@ -9,16 +9,15 @@ import (
 )
 
 // ReverseProxy 返回一个反向代理处理器，将请求转发给 Python 后端
+// WHY: 每次请求创建新的 proxy 实例，避免并发修改共享 Director 导致的 data race。
 func ReverseProxy(targetURL string) gin.HandlerFunc {
 	target, err := url.Parse(targetURL)
 	if err != nil {
 		panic(err)
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(target)
-
 	return func(c *gin.Context) {
-		// 自定义 Director 逻辑，确保转发的 Header 正常
+		proxy := httputil.NewSingleHostReverseProxy(target)
 		originalDirector := proxy.Director
 		proxy.Director = func(req *http.Request) {
 			originalDirector(req)

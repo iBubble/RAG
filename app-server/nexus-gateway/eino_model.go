@@ -49,7 +49,7 @@ func NewOllamaChat(modelName string) *OllamaChat {
 }
 
 func (o *OllamaChat) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
-	imageVal := ctx.Value("chat_image")
+	imageVal := ctx.Value(chatImageKey)
 	var images []string
 	if imageVal != nil {
 		if base64Str, ok := imageVal.(string); ok && base64Str != "" {
@@ -85,7 +85,7 @@ func (o *OllamaChat) Generate(ctx context.Context, input []*schema.Message, opts
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := llmClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func (o *OllamaChat) Generate(ctx context.Context, input []*schema.Message, opts
 }
 
 func (o *OllamaChat) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
-	imageVal := ctx.Value("chat_image")
+	imageVal := ctx.Value(chatImageKey)
 	var images []string
 	if imageVal != nil {
 		if base64Str, ok := imageVal.(string); ok && base64Str != "" {
@@ -145,7 +145,7 @@ func (o *OllamaChat) Stream(ctx context.Context, input []*schema.Message, opts .
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := llmClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

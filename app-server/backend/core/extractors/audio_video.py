@@ -24,21 +24,11 @@ def _get_asr_pipeline():
             device = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
             model_name = os.environ.get("ASR_MODEL", "openai/whisper-tiny")
             logger.info(f"正在初始化 Whisper 本地语音识别模型 ({model_name}, Device: {device})...")
-            # 优先使用离线模式，避免每次加载连接 HuggingFace 官网校验版本导致外网握手挂起
-            try:
-                _asr_pipeline = pipeline(
-                    "automatic-speech-recognition",
-                    model=model_name,
-                    device=device,
-                    local_files_only=True
-                )
-            except Exception as _offline_e:
-                logger.warning(f"本地 Whisper 离线加载失败，尝试在线获取: {_offline_e}")
-                _asr_pipeline = pipeline(
-                    "automatic-speech-recognition",
-                    model=model_name,
-                    device=device
-                )
+            _asr_pipeline = pipeline(
+                "automatic-speech-recognition",
+                model=model_name,
+                device=device
+            )
             logger.info("Whisper 模型初始化成功")
         except Exception as e:
             logger.error(f"初始化 Whisper 模型失败: {e}")

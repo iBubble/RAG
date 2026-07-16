@@ -9,13 +9,14 @@ import sqlite3
 import logging
 from pathlib import Path
 from contextlib import contextmanager
+from typing import Optional
 
 from core.config import settings, STORAGE_ROOT
 
 logger = logging.getLogger(__name__)
 
-# WHY: 放在 RAID 卷根目录下，与 uploads 同级，容量充裕
-DB_PATH = Path(STORAGE_ROOT) / "shengyao.db"
+# WHY: 核心数据库放到容器内部持久化目录，避免外置硬盘断连导致系统不可用
+DB_PATH = Path("/app/backend/data") / "shengyao.db"
 
 # ── Schema DDL ──────────────────────────────────────────────
 
@@ -163,56 +164,24 @@ def _init_db():
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(_SCHEMA_SQL)
 
-    # ── 增量迁移：projects 表添加 project_type 字段 ──
-    # WHY: 区分普通案件(case)和公共文档库(library)，
-    #      旧数据默认为 'case'，新建公共文档库时设为 'library'。
+    # ── 增量迁移：projects 表批量字段检查 ──
+    # WHY: 只查询一次 PRAGMA table_info，避免 N 个字段 = N 次重复 I/O。
+    _MIGRATIONS = [
+        # (字段名, SQL 类型和默认值, WHY 注释)
+        ("project_type", "TEXT DEFAULT 'case'",     "区分普通案件(case)和公共文档库(library)"),
+        ("icon",         "TEXT DEFAULT ''",          "允许用户为项目选择自定义 emoji 图标"),
+        ("sort_order",   "INTEGER DEFAULT 0",        "支持项目卡片的拖拽排序"),
+        ("priority",     "INTEGER DEFAULT 2",        "引入项目/案件的优先级（1最优先，2其次，3最末）"),
+        ("is_paused",    "INTEGER DEFAULT 0",        "允许暂停项目的后台学习"),
+    ]
     try:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()]
-        if "project_type" not in cols:
-            conn.execute("ALTER TABLE projects ADD COLUMN project_type TEXT DEFAULT 'case'")
-            logger.info("迁移完成: projects 表新增 project_type 字段")
+        existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()}
+        for field_name, field_def, why in _MIGRATIONS:
+            if field_name not in existing_cols:
+                conn.execute(f"ALTER TABLE projects ADD COLUMN {field_name} {field_def}")
+                logger.info(f"迁移完成: projects 表新增 {field_name} 字段 ({why})")
     except Exception as e:
-        logger.warning(f"project_type 迁移检查失败(非致命): {e}")
-
-    # ── 增量迁移：projects 表添加 icon 字段 ──
-    # WHY: 允许用户为项目选择自定义 emoji 图标。
-    try:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()]
-        if "icon" not in cols:
-            conn.execute("ALTER TABLE projects ADD COLUMN icon TEXT DEFAULT ''")
-            logger.info("迁移完成: projects 表新增 icon 字段")
-    except Exception as e:
-        logger.warning(f"icon 迁移检查失败(非致命): {e}")
-
-    # ── 增量迁移：projects 表添加 sort_order 字段 ──
-    # WHY: 支持项目卡片的拖拽排序。
-    try:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()]
-        if "sort_order" not in cols:
-            conn.execute("ALTER TABLE projects ADD COLUMN sort_order INTEGER DEFAULT 0")
-            logger.info("迁移完成: projects 表新增 sort_order 字段")
-    except Exception as e:
-        logger.warning(f"sort_order 迁移检查失败(非致命): {e}")
-
-    # ── 增量迁移：projects 表添加 priority 字段 ──
-    # WHY: 引入项目/案件的优先级，默认为 2（1最优先，2其次，3最末）。
-    try:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()]
-        if "priority" not in cols:
-            conn.execute("ALTER TABLE projects ADD COLUMN priority INTEGER DEFAULT 2")
-            logger.info("迁移完成: projects 表新增 priority 字段")
-    except Exception as e:
-        logger.warning(f"priority 迁移检查失败(非致命): {e}")
-
-    # ── 增量迁移：projects 表添加 is_paused 字段 ──
-    # WHY: 允许暂停项目的后台学习。
-    try:
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(projects)").fetchall()]
-        if "is_paused" not in cols:
-            conn.execute("ALTER TABLE projects ADD COLUMN is_paused INTEGER DEFAULT 0")
-            logger.info("迁移完成: projects 表新增 is_paused 字段")
-    except Exception as e:
-        logger.warning(f"is_paused 迁移检查失败(非致命): {e}")
+        logger.warning(f"projects 表增量迁移检查失败(非致命): {e}")
 
     conn.commit()
     conn.close()

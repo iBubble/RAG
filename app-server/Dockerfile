@@ -4,6 +4,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
 
 # Mac Studio 是 ARM64 架构，其 Ubuntu 包源地址是 ports.ubuntu.com
+# 构建时通过 --build-arg 传入 root 密码，避免硬编码
+ARG ROOT_PASSWORD
+
 RUN apt-get update && \
     apt-get install -y python3 python3-pip curl vim sudo git ca-certificates openssh-server \
         poppler-utils tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra \
@@ -11,9 +14,8 @@ RUN apt-get update && \
     fc-cache -fv && \
     mkdir -p /run/sshd && \
     mkdir -p /root/.ssh && chmod 700 /root/.ssh && \
-    echo 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDNuNL4c45/5NHVELswRacN5eeBxzk90RYK0fja1uYqeAOLkROTLx8MrDhBm5ZpxDOICQiAWEoGFOvvrwOIjHx/YH+koST11+BeFonNOhqp5VLW1sxvmDPuLR2WjPwlhfWD1OPmuMBYGqJklntLODBJjV8AGH3ZEyqNT/SmMWwMPKYPvh0MbS9V1i5meiZircZ9bbY0dXFwl3COPfEs6p3Q87CGZYahP/XwRKNDz1oiX74+VPmxaI2PE6JJpvUQ6Ew7Z1lPxfEBY8urVDAODLnKxgMDsrcUYDwNiMITVV/Kzw4tCg6/SNJjTznMOcwXHy3wgCBxHQ8QtiQ+PmAZnCR7kSuD93y9xzKB9IVlZLVJdVVBZF8PARQ4kPcbd4EqwdKlkaDTKOevc7+WyTSX4JKyqb3ijKHYo3o4CT5e1hjODb2jjuOTzjyTjks6LCY9Bu02gkgh5l7BD3/04gQM5sax0XmjeFwVpCCPfhg9yxegwUERs/clOsfHnaUUMHqoIGRoT6tVsHVpRfglZSYdRMV+kiy50YpvHB8E4D/dbQPgjQaHxGP7wjkQjNuEFaWg+/KvmV4A0xqYAIv4HYqOHdQY5XR9wmaMpc5GgmlF++FEMZi8WP3D6i75togVuCgcKJ9Fj94oTxdgmlQLhVsBptA+0iI41Y605J9lc11NnZnkKw== kiro-ssh-key' > /root/.ssh/authorized_keys && \
-    chmod 600 /root/.ssh/authorized_keys && \
-    echo 'root:Sy2026@sy' | chpasswd && \
+    chmod 600 /root/.ssh/authorized_keys 2>/dev/null || true && \
+    echo "root:${ROOT_PASSWORD}" | chpasswd && \
     sed -i '1iPermitRootLogin yes' /etc/ssh/sshd_config && \
     sed -i '1iPasswordAuthentication yes' /etc/ssh/sshd_config && \
     sed -i '1iPubkeyAuthentication yes' /etc/ssh/sshd_config && \

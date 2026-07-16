@@ -100,7 +100,7 @@ func checkPythonChatCache(bodyBytes []byte) (*InternalCacheGetResponse, error) {
 	}
 	url := fmt.Sprintf("%s/api/internal/chat/cache/get", backendURL)
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(bodyBytes))
+	resp, err := internalClient.Post(url, "application/json", bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return nil, err
 	}

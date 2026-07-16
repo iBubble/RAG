@@ -54,10 +54,10 @@ class Settings(BaseSettings):
     # WHY: 核心元数据（生成的文档、模板等）优先存放在 RAID 卷的 data/ 目录下以保证持久性。
     DATA_DIR: str = os.path.join(STORAGE_ROOT, "data") if IS_RAID_ACTIVE else f"{_LOCAL_ROOT}/data"
 
-    JWT_SECRET: str = "FALLBACK_INSECURE_KEY_CHECK_ENV"
-    ADMIN_INIT_PASSWORD: str = "changeme"
+    JWT_SECRET: str = ""
+    ADMIN_INIT_PASSWORD: str = ""
     NEO4J_URI: str = "bolt://genrag-graphdb:7687"
     NEO4J_USER: str = "neo4j"
-    NEO4J_PASSWORD: str = "syrag_secure_pwd"
+    NEO4J_PASSWORD: str = ""
 
 settings = Settings()
