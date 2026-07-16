@@ -17,7 +17,6 @@ import rolePrecompute from '../../assets/office/role_precompute.png';
 import roleVectorizer from '../../assets/office/role_vectorizer.png';
 import roleGraph from '../../assets/office/role_graph.png';
 import roleLegal from '../../assets/office/role_legal.png';
-import roleSlacking from '../../assets/office/role_slacking.png';
 
 
 
@@ -785,22 +784,18 @@ export default function Linvis() {
               
               // 映射到高精角色原画
               let sprite = roleChat;
-              if (pos.isSlacking) {
-                sprite = roleSlacking;
-              } else {
-                switch(key) {
-                  case 'chat': sprite = roleChat; break;
-                  case 'planner': sprite = rolePlanner; break;
-                  case 'summary': sprite = roleSummary; break;
-                  case 'checker': sprite = roleChecker; break;
-                  case 'auditor': sprite = roleAuditor; break;
-                  case 'service': sprite = roleService; break;
-                  case 'precompute': sprite = rolePrecompute; break;
-                  case 'vectorizer': sprite = roleVectorizer; break;
-                  case 'graph': sprite = roleGraph; break;
-                  case 'legal': sprite = roleLegal; break;
-                  default: sprite = roleChat;
-                }
+              switch(key) {
+                case 'chat': sprite = roleChat; break;
+                case 'planner': sprite = rolePlanner; break;
+                case 'summary': sprite = roleSummary; break;
+                case 'checker': sprite = roleChecker; break;
+                case 'auditor': sprite = roleAuditor; break;
+                case 'service': sprite = roleService; break;
+                case 'precompute': sprite = rolePrecompute; break;
+                case 'vectorizer': sprite = roleVectorizer; break;
+                case 'graph': sprite = roleGraph; break;
+                case 'legal': sprite = roleLegal; break;
+                default: sprite = roleChat;
               }
 
               const isW = agent.status === 'working' && !pos.isWalking;
@@ -809,7 +804,6 @@ export default function Linvis() {
 
               return (
                 <g key={`station-${key}`}>
-                  {/* (A) 角色小人层：使用 pos (支持行走移动) */}
                   {/* (A) 角色小人层：使用 pos (支持行走移动，并以 scale 缩小身型) */}
                   <g 
                     transform={`translate(${pos.x}, ${pos.y}) scale(0.55)`}
@@ -839,7 +833,7 @@ export default function Linvis() {
                             left: 0, 
                             transform: 'none',
                             border: agent.status === 'interrupted' ? '1.5px solid #ef4444' : 
-                                    agent.status === 'sleeping' ? '1.5px solid #3b82f6' : 
+                                    (agent.status === 'sleeping' || (pos.isSlacking && !pos.isWalking)) ? '1.5px solid #3b82f6' : 
                                     agent.status === 'idle' ? '1.5px solid #9ca3af' : undefined
                           }}>
                             {agent.status === 'working' && (
@@ -854,19 +848,18 @@ export default function Linvis() {
                                 <p title={agent.current_task || ''}>{agent.current_task || '等待人工通过...'}</p>
                               </>
                             )}
-                            {agent.status === 'funny' && (
+                            {agent.status === 'funny' && !pos.isSlacking && (
                               <>
                                 <span>💭 摸鱼</span>
                                 <p title={agent.funny_event || ''}>{agent.funny_event || '舒适咖啡时间...'}</p>
                               </>
                             )}
-                            {agent.status === 'sleeping' && (
+                            {(agent.status === 'sleeping' || (pos.isSlacking && !pos.isWalking)) ? (
                               <>
                                 <span style={{ backgroundColor: '#eff6ff', color: '#1d4ed8' }}>💤 眯一下</span>
                                 <p>打个盹，正在充电中...</p>
                               </>
-                            )}
-                            {agent.status === 'idle' && (
+                            ) : agent.status === 'idle' && (
                               <>
                                 <span style={{ backgroundColor: '#f3f4f6', color: '#4b5563' }}>☕ 待命中</span>
                                 <p>工位空闲，静候新指令...</p>
@@ -885,9 +878,18 @@ export default function Linvis() {
                         width={162} 
                         height={336} 
                         style={{
-                          filter: (agent.status === 'sleeping' || agent.status === 'idle') ? 'grayscale(0.25)' : 'none'
+                          filter: (agent.status === 'sleeping' || agent.status === 'idle' || (pos.isSlacking && !pos.isWalking)) ? 'grayscale(0.25) opacity(0.85)' : 'none'
                         }}
                       />
+
+                      {/* Zzz 睡觉冒泡气泡动效 */}
+                      {(agent.status === 'sleeping' || (pos.isSlacking && !pos.isWalking)) && (
+                        <g transform="translate(35, -200)">
+                          <text className="zzz zzz-1" x={0} y={0} fill="#818cf8" fontSize="26" fontWeight="bold">z</text>
+                          <text className="zzz zzz-2" x={8} y={-10} fill="#818cf8" fontSize="20" fontWeight="bold">z</text>
+                          <text className="zzz zzz-3" x={14} y={-18} fill="#818cf8" fontSize="14" fontWeight="bold">z</text>
+                        </g>
+                      )}
 
                       {/* 警报灯和独角辉光 (随角色高度向上位移至头顶独角处) */}
                       {isI && <circle cx={30} cy={-180} r={6} fill="#ef4444" className="alert-lamp" style={{ position: 'static' }} />}
