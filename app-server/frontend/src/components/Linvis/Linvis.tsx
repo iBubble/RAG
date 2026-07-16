@@ -18,7 +18,39 @@ import roleVectorizer from '../../assets/office/role_vectorizer.png';
 import roleGraph from '../../assets/office/role_graph.png';
 import roleLegal from '../../assets/office/role_legal.png';
 
+// 针对 10 个角色计算其特异化的状态文案分发器，消除千篇一律的单调描述
+const getAgentText = (key: string, type: 'sleeping' | 'idle') => {
+  const sleepingTexts = [
+    "呼呼，大脑降温中...",
+    "打个盹，正在充电中...",
+    "做个好梦，调参中勿扰...",
+    "系统离线，正在深度自检...",
+    "偷偷梦到数字羊...",
+    "正在休眠吸收午间能量...",
+    "呼呼，电量正在慢速回升..."
+  ];
 
+  const idleTexts = [
+    "工位空闲，静候指令...",
+    "服务器畅通，随时可以出发...",
+    "待命状态，下一份文书在哪...",
+    "已坐正，准备迎接挑战...",
+    "算力就绪，急等投喂数据...",
+    "空闲中，正在擦拭键盘...",
+    "万事俱备，只欠新任务..."
+  ];
+
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash += key.charCodeAt(i);
+  }
+
+  if (type === 'sleeping') {
+    return sleepingTexts[hash % sleepingTexts.length];
+  } else {
+    return idleTexts[hash % idleTexts.length];
+  }
+};
 
 interface SystemStatus {
   active_tasks: number;
@@ -857,12 +889,12 @@ export default function Linvis() {
                             {(agent.status === 'sleeping' || (pos.isSlacking && !pos.isWalking)) ? (
                               <>
                                 <span style={{ backgroundColor: '#eff6ff', color: '#1d4ed8' }}>💤 眯一下</span>
-                                <p>打个盹，正在充电中...</p>
+                                <p>{getAgentText(key, 'sleeping')}</p>
                               </>
                             ) : agent.status === 'idle' && (
                               <>
                                 <span style={{ backgroundColor: '#f3f4f6', color: '#4b5563' }}>☕ 待命中</span>
-                                <p>工位空闲，静候新指令...</p>
+                                <p>{getAgentText(key, 'idle')}</p>
                               </>
                             )}
                           </div>
