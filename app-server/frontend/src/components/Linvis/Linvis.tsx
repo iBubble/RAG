@@ -812,7 +812,7 @@ export default function Linvis() {
                   {/* (A) 角色小人层：使用 pos (支持行走移动) */}
                   {/* (A) 角色小人层：使用 pos (支持行走移动，并以 scale 缩小身型) */}
                   <g 
-                    transform={`translate(${pos.x}, ${pos.y}) scale(1.1)`}
+                    transform={`translate(${pos.x}, ${pos.y}) scale(0.55)`}
                     style={{
                       transition: 'transform 1.5s ease-in-out'
                     }}
@@ -829,7 +829,7 @@ export default function Linvis() {
                     >
                       {/* 状态悬浮气泡 - 只有在回到工位静止状态下才常驻显示，去门口路上隐去 */}
                       {!pos.isWalking && (
-                        <foreignObject x={-95} y={-165} width={190} height={70}>
+                        <foreignObject x={-95} y={-340} width={190} height={70}>
                           <div className={
                             agent.status === 'working' ? 'task-bubble-w' :
                             agent.status === 'funny' ? 'task-bubble-f' : 'task-bubble-w'
@@ -880,18 +880,18 @@ export default function Linvis() {
                       <image 
                         xlinkHref={sprite}
                         href={sprite} 
-                        x={-40.5} 
-                        y={-120} 
-                        width={81} 
-                        height={168} 
+                        x={-81} 
+                        y={-288} 
+                        width={162} 
+                        height={336} 
                         style={{
                           filter: (agent.status === 'sleeping' || agent.status === 'idle') ? 'grayscale(0.25)' : 'none'
                         }}
                       />
 
-                      {/* 警报灯和独角辉光 */}
-                      {isI && <circle cx={30} cy={-115} r={6} fill="#ef4444" className="alert-lamp" style={{ position: 'static' }} />}
-                      {isW && <circle cx={0} cy={-115} r={10} fill="none" className="horn-glow" style={{ position: 'static' }} />}
+                      {/* 警报灯和独角辉光 (随角色高度向上位移至头顶独角处) */}
+                      {isI && <circle cx={30} cy={-280} r={6} fill="#ef4444" className="alert-lamp" style={{ position: 'static' }} />}
+                      {isW && <circle cx={0} cy={-280} r={10} fill="none" className="horn-glow" style={{ position: 'static' }} />}
 
                     </g>
                   </g>
