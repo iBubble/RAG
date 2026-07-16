@@ -829,7 +829,7 @@ export default function Linvis() {
                     >
                       {/* 状态悬浮气泡 - 只有在回到工位静止状态下才常驻显示，去门口路上隐去 */}
                       {!pos.isWalking && (
-                        <foreignObject x={-95} y={-340} width={190} height={70}>
+                        <foreignObject x={-95} y={-250} width={190} height={70}>
                           <div className={
                             agent.status === 'working' ? 'task-bubble-w' :
                             agent.status === 'funny' ? 'task-bubble-f' : 'task-bubble-w'
@@ -881,7 +881,7 @@ export default function Linvis() {
                         xlinkHref={sprite}
                         href={sprite} 
                         x={-81} 
-                        y={-288} 
+                        y={-195} 
                         width={162} 
                         height={336} 
                         style={{
@@ -890,8 +890,8 @@ export default function Linvis() {
                       />
 
                       {/* 警报灯和独角辉光 (随角色高度向上位移至头顶独角处) */}
-                      {isI && <circle cx={30} cy={-280} r={6} fill="#ef4444" className="alert-lamp" style={{ position: 'static' }} />}
-                      {isW && <circle cx={0} cy={-280} r={10} fill="none" className="horn-glow" style={{ position: 'static' }} />}
+                      {isI && <circle cx={30} cy={-180} r={6} fill="#ef4444" className="alert-lamp" style={{ position: 'static' }} />}
+                      {isW && <circle cx={0} cy={-180} r={10} fill="none" className="horn-glow" style={{ position: 'static' }} />}
 
                     </g>
                   </g>
