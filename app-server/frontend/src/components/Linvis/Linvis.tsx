@@ -829,7 +829,7 @@ export default function Linvis() {
                     >
                       {/* 状态悬浮气泡 - 只有在回到工位静止状态下才常驻显示，去门口路上隐去 */}
                       {!pos.isWalking && (
-                        <foreignObject x={-95} y={-190} width={190} height={70}>
+                        <foreignObject x={-95} y={-170} width={190} height={70}>
                           <div className={
                             agent.status === 'working' ? 'task-bubble-w' :
                             agent.status === 'funny' ? 'task-bubble-f' : 'task-bubble-w'
