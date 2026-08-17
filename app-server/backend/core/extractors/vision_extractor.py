@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import httpx
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -270,10 +270,10 @@ def extract_pdf_vision(
     try:
         httpx.post(
             f"{_ollama_url}/api/generate",
-            json={"model": "qwen3.6:35b-q4", "keep_alive": 0},
+            json={"model": settings.DEFAULT_LLM_MODEL, "keep_alive": 0},
             timeout=10.0,
         )
-        logger.info("🔄 已卸载 qwen3.6:35b-q4，为 Vision 模型腾出显存")
+        logger.info(f"🔄 已卸载 {settings.DEFAULT_LLM_MODEL}，为 Vision 模型腾出显存")
     except Exception:
         pass  # 模型本就未加载时忽略
 
@@ -365,13 +365,13 @@ def extract_pdf_vision(
         httpx.post(
             f"{_ollama_url}/api/generate",
             json={
-                "model": "qwen3.6:35b-q4",
+                "model": settings.DEFAULT_LLM_MODEL,
                 "keep_alive": -1,
                 "prompt": "",
             },
             timeout=30.0,
         )
-        logger.info("🔄 已重新预热 qwen3.6:35b-q4（Vision 完成）")
+        logger.info(f"🔄 已重新预热 {settings.DEFAULT_LLM_MODEL}（Vision 完成）")
     except Exception:
         pass  # 预热失败由 heartbeat 兜底
 

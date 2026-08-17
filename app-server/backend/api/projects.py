@@ -1181,7 +1181,7 @@ async def recommend_refs(case_id: str, user: dict = Depends(get_current_user)):
             )
             raw_stream = stream_ollama(
                 prompt=prompt,
-                model="qwen3.6:35b-q4",
+                model=settings.DEFAULT_LLM_MODEL,
                 temperature=0.1,
                 num_predict=32
             )
@@ -1502,7 +1502,7 @@ async def generate_case_info(
             yield "data: {\"token\": \"\"}\n\n"
             raw_stream = stream_ollama(
                 prompt=prompt,
-                model="qwen3.6:35b-q4",
+                model=settings.DEFAULT_LLM_MODEL,
                 temperature=0.3,
                 num_ctx=16384,
                 num_predict=4096,
@@ -1611,7 +1611,7 @@ async def stream_retrospective(project_id: str, req: RetrospectiveRequest, user:
             yield "data: {\"token\": \"\"}\n\n"
             raw_stream = stream_ollama(
                 prompt=prompt,
-                model="qwen3.6:35b-q4",
+                model=settings.DEFAULT_LLM_MODEL,
                 temperature=0.3,
                 num_ctx=16384,
                 num_predict=4096,

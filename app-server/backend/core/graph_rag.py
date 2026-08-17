@@ -269,7 +269,7 @@ class GraphRAGEngine:
         from core.llm_engine import stream_ollama
         from core.llm_cache import get_llm_cache, set_llm_cache
 
-        model = "qwen3.6:35b-q4"
+        model = settings.DEFAULT_LLM_MODEL
         prompt = EXTRACT_PROMPT.format(
             text=text_chunk[:2000]
         )
@@ -485,7 +485,7 @@ class GraphRAGEngine:
             from core.llm_engine import stream_ollama
             from core.llm_cache import get_llm_cache, set_llm_cache
 
-            model = "qwen3.6:35b-q4"
+            model = settings.DEFAULT_LLM_MODEL
             # WHY: 路径精排的 prompt 包含固定候选列表，相同查询+相同路径会命中缓存
             cached = get_llm_cache(model, prompt)
             if cached is not None:

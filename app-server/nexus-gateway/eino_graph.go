@@ -470,7 +470,7 @@ func RunEinoOrchestration(ctx context.Context, req *EinoAgentRequest, w io.Write
 	nameChecker := cleanGovernmentRoleName(coalesce(req.CheckerName, req.ContrarianName, ""), "【协同】数据核校员")
 	nameAuditor := cleanGovernmentRoleName(coalesce(req.AuditorName, req.ArbiterName, ""), "【协同】公文终审员")
 
-	llmModel := coalesce(req.Model, "qwen3.6:35b-q4")
+	llmModel := coalesce(req.Model, "qwen3.8:27b-q4")
 	if req.Image != "" {
 		lowerModel := strings.ToLower(llmModel)
 		if !strings.Contains(lowerModel, "moondream") && !strings.Contains(lowerModel, "minicpm") && !strings.Contains(lowerModel, "vl") {
@@ -931,7 +931,7 @@ func RunEinoResumeOrchestration(ctx context.Context, req *EinoAgentRequest, draf
 	ctx = context.WithValue(ctx, chatImageKey, "") // 清除图片上下文，避免非视觉节点图片污染
 	startTime := float64(time.Now().UnixNano()) / 1e9
 	nameAuditor := cleanGovernmentRoleName(coalesce(req.AuditorName, req.ArbiterName, ""), "【协同】公文终审员")
-	llmModel := coalesce(req.Model, "qwen3.6:35b-q4")
+	llmModel := coalesce(req.Model, "qwen3.8:27b-q4")
 	if req.Image != "" {
 		lowerModel := strings.ToLower(llmModel)
 		if !strings.Contains(lowerModel, "moondream") && !strings.Contains(lowerModel, "minicpm") && !strings.Contains(lowerModel, "vl") {

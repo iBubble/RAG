@@ -245,7 +245,7 @@ export const useProjectStore = create<ProjectState>()(
   removeSavedDocument: (id) => set((state) => ({
     savedDocuments: state.savedDocuments.filter(r => r.id !== id)
   })),
-  selectedModel: 'qwen3.6:35b-q4',
+  selectedModel: 'qwen3.8:27b-q4',
   setSelectedModel: (model) => set({ selectedModel: model }),
   isUploadModalOpen: false,
   setUploadModalOpen: (open) => set({ isUploadModalOpen: open }),

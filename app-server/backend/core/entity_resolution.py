@@ -195,7 +195,7 @@ class EntityResolver:
             for i, (a, b) in enumerate(batch)
         )
         prompt = RESOLUTION_PROMPT.format(pairs_text=pairs_text)
-        model = "qwen3.6:35b-q4"
+        model = settings.DEFAULT_LLM_MODEL
 
         # WHY: 相同候选对组合会产生相同 prompt，重试时命中缓存
         cached = get_llm_cache(model, prompt)

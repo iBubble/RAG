@@ -4,6 +4,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+from core.config import settings
 from .image import _extract_image
 from .utils import _table_to_markdown
 
@@ -167,10 +168,10 @@ def _extract_pdf(file_path: str) -> str:
     try:
         httpx.post(
             f"{_ollama_url}/api/generate",
-            json={"model": "qwen3.6:35b-q4", "keep_alive": 0},
+            json={"model": settings.DEFAULT_LLM_MODEL, "keep_alive": 0},
             timeout=5.0,
         )
-        logger.info("🔄 已卸载 qwen3.6:35b-q4，为 PDF 逐页 Vision 解析腾出显存")
+        logger.info(f"🔄 已卸载 {settings.DEFAULT_LLM_MODEL}，为 PDF 逐页 Vision 解析腾出显存")
     except Exception:
         pass
 
@@ -182,13 +183,13 @@ def _extract_pdf(file_path: str) -> str:
             httpx.post(
                 f"{_ollama_url}/api/generate",
                 json={
-                    "model": "qwen3.6:35b-q4",
+                    "model": settings.DEFAULT_LLM_MODEL,
                     "keep_alive": -1,
                     "prompt": "",
                 },
                 timeout=10.0,
             )
-            logger.info("🔄 已重新预热 qwen3.6:35b-q4（PDF 逐页 Vision 解析完成）")
+            logger.info(f"🔄 已重新预热 {settings.DEFAULT_LLM_MODEL}（PDF 逐页 Vision 解析完成）")
         except Exception:
             pass
 

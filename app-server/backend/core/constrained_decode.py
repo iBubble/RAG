@@ -10,7 +10,7 @@ def generate_constrained_json(
     response_model: Type[BaseModel],
     system_prompt: Optional[str] = None,
     max_retries: int = 3,
-    model_name: str = "qwen3.6:35b-q4"
+    model_name: Optional[str] = None
 ) -> BaseModel:
     """
     通过 Ollama 的 format 字段（支持 JSON Schema），
@@ -18,6 +18,8 @@ def generate_constrained_json(
     """
     from core.config import settings
     import httpx
+    if not model_name:
+        model_name = settings.DEFAULT_LLM_MODEL
 
     # Pydantic v2 中使用 model_json_schema 提取模型的 JSON Schema
     schema_dict = response_model.model_json_schema()

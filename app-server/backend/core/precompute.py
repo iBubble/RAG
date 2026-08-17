@@ -802,7 +802,7 @@ async def do_precompute_v2(project_id: str, mode: str):
         cache_dir = _get_cache_dir(project_id, mode)
         cache_dir.mkdir(parents=True, exist_ok=True)
 
-        model = "qwen3.6:35b-q4"
+        model = settings.DEFAULT_LLM_MODEL
         total = len(sections)
         prior_context = ""
 

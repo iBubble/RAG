@@ -20,6 +20,7 @@ import re
 import numpy as np
 from sklearn.mixture import GaussianMixture
 
+from core.config import settings
 from core.llm_cache import get_llm_cache, set_llm_cache
 
 logger = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ class RaptorSummarizer:
         prompt = RAPTOR_SUMMARY_PROMPT.format(
             cluster_content=cluster_content
         )
-        model = "qwen3.6:35b-q4"
+        model = settings.DEFAULT_LLM_MODEL
 
         try:
             # 先查 LLM 缓存

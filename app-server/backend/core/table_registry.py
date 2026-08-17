@@ -53,7 +53,7 @@ def _generate_table_summary(title: str, markdown: str) -> str:
 仅输出总结的一句话，不要解释，不要输出“根据表格”等废话。"""
 
     payload = {
-        "model": "qwen3.6:35b-q4",
+        "model": settings.DEFAULT_LLM_MODEL,
         "prompt": prompt,
         "stream": False,
         "options": {

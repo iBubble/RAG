@@ -65,7 +65,7 @@ export default function SystemSettings() {
           const data = await res.json();
           if (data.status === 'online' && Array.isArray(data.models)) {
             const qwenModels = data.models.filter((m: any) =>
-              m.name.toLowerCase().includes('qwen3.6')
+              m.name.toLowerCase().includes('qwen3.8') || m.name.toLowerCase().includes('qwen3.6') || m.name.toLowerCase().includes('qwen')
             );
             setAvailableModels(qwenModels);
           }

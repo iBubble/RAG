@@ -164,13 +164,13 @@ export function SystemStatusIndicator({ mode = 'dot' }: { mode?: 'dot' | 'capsul
         if (data.status === 'online' && Array.isArray(data.models)) {
           const qwenModels = data.models
             .map((m: any) => m.name)
-            .filter((name: string) => name.toLowerCase().includes('qwen3.6'));
+            .filter((name: string) => name.toLowerCase().includes('qwen3.8') || name.toLowerCase().includes('qwen3.6') || name.toLowerCase().includes('qwen'));
           
           if (qwenModels.length > 0) {
             const currentSelected = selectedModelRef.current;
-            if (!qwenModels.includes(currentSelected)) {
-              const defaultModel = qwenModels.find((name: string) => name.includes('qwen3.6:35b-q4')) || qwenModels[0];
-              setSelectedModel(defaultModel);
+            const targetModel = qwenModels.find((name: string) => name.includes('qwen3.8:27b-q4')) || qwenModels[0];
+            if (!currentSelected || !qwenModels.includes(currentSelected) || currentSelected.includes('qwen3.6')) {
+              setSelectedModel(targetModel);
             }
           }
         }

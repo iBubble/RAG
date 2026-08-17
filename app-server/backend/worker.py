@@ -762,7 +762,7 @@ def evaluate_nightly_ragas(self):
                 import httpx
                 url = f"{settings.OLLAMA_BASE_URL}/api/generate"
                 payload = {
-                    "model": "qwen3.6:35b-q4",
+                    "model": settings.DEFAULT_LLM_MODEL,
                     "prompt": prompt,
                     "stream": False,
                     "options": {"temperature": 0.0}
@@ -807,8 +807,8 @@ def evaluate_nightly_ragas(self):
                 "contexts": contexts_list
             })
             
-            llm = ChatOllama(model="qwen3.6:35b-q4", base_url=settings.OLLAMA_BASE_URL)
-            embeddings = OllamaEmbeddings(model="qwen3.6:35b-q4", base_url=settings.OLLAMA_BASE_URL)
+            llm = ChatOllama(model=settings.DEFAULT_LLM_MODEL, base_url=settings.OLLAMA_BASE_URL)
+            embeddings = OllamaEmbeddings(model=settings.DEFAULT_LLM_MODEL, base_url=settings.OLLAMA_BASE_URL)
             
             for metric in [faithfulness, answer_relevance, context_relevance]:
                 metric.llm = llm

@@ -519,6 +519,7 @@ async def _sse_generator(
 
 # ---------- 范文风格匹配（Track B）----------
 _EXEMPLAR_MAX_CHARS = {
+    "qwen3.8:27b-q4": 3000,
     "qwen3.6:35b-q4": 3000,
 }
 
@@ -1797,10 +1798,9 @@ graph TD
     #      将推演过程转化为引用块直通前端，保持连接活跃让前端可见思考过程。
     prompt += "\n\n/no_think"
 
-    # WHY: 【Slot-Filling Phase 1】Replace/Clone 模式下将 num_ctx 提升到 16384。
-    #      范文底稿(~1000 tok) + 全局指标(~500 tok) + 精准检索(~2000 tok) + Prompt 指令(~500 tok)
-    #      总计 ~4000 tok，16K 窗口有充裕余量。M4 Max 64GB 的 KV Cache 仅增加 ~3GB。
-    ctx_size = 16384
+    # WHY: 动态适应 Prompt 长度分配 KV Cache 窗口，避免固定大窗口导致 27B 模型推理变慢
+    needed_tokens = (len(prompt) // 2) + 4096
+    ctx_size = max(8192, min(needed_tokens, 16384))
 
     # ── 超长范文分段生成（方案 A）──
     # WHY: 超长章节（如"水源工程" 29736 字）无法一次性放入 Prompt 窗口。

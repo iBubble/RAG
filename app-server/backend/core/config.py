@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     ALLOW_ORIGINS: list[str] = ["http://localhost:8008", "https://rag.syhsgis.com"]
     
     OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
-    DEFAULT_LLM_MODEL: str = "qwen3.6:35b-q4"
+    DEFAULT_LLM_MODEL: str = "qwen3.8:27b-q4"
     COLLAB_LLM_MODEL: str = "qwen3:8b"
     CHROMA_DB_PATH: str = "/app/vector_db"
     QDRANT_URL: str = "http://localhost:6333"

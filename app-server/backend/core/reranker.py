@@ -24,7 +24,7 @@ from core.config import settings
 logger = logging.getLogger(__name__)
 
 # WHY: 与 llm_engine.py 保持一致的模型名
-_RERANK_MODEL = "qwen3.6:35b-q4"
+_RERANK_MODEL = settings.DEFAULT_LLM_MODEL
 
 # WHY: 限制每段摘要长度，30 个候选 * 150 字 ≈ 4500 字，加 Prompt 约 5000 tokens
 _MAX_SNIPPET_LEN = 150

@@ -19,7 +19,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Optional
 
-from starlette.concurrency import run_in_threadpool
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -697,7 +697,7 @@ async def run_retrieval(
     project_id: str,
     file_ids: list[str],
     strategy: dict,
-    model: str = "qwen3.6:35b-q4",
+    model: str = settings.DEFAULT_LLM_MODEL,
 ) -> RetrievalResult:
     """
     并行执行多条检索路径，融合为统一 context。
@@ -852,19 +852,20 @@ async def run_retrieval(
 
     result.context = "\n\n".join(context_parts)
 
-    # 智能截断
-    if len(result.context) > 25000:
+    # 智能截断（针对 27B 稠密模型限制极长无用上下文，降低 Prefill 延迟）
+    max_context_limit = 10000 if (model and ("27b" in model.lower() or "qwen3.8" in model.lower())) else 25000
+    if len(result.context) > max_context_limit:
         parts = result.context.split('\n\n')
         truncated = []
         current_len = 0
         for p in parts:
-            if current_len + len(p) + 2 > 25000:
+            if current_len + len(p) + 2 > max_context_limit:
                 break
             truncated.append(p)
             current_len += len(p) + 2
         result.context = (
             "\n\n".join(truncated)
-            + "\n\n...[参考资料过长，已被按区块智能截断]"
+            + "\n\n...[参考资料过长，已智能截断精简，保留最高相关度片段]"
         )
 
     logger.info(
