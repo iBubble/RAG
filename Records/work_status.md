@@ -18,10 +18,10 @@
       - 暂无
 
 ## 📅 2026-08-18 23:33
-*   **深度更新 README.md 详述核心算法技术实现（四大核心模块架构落地）**：
+*   **深度重构 README.md 详述四大核心技术架构并推送到 GitHub**：
     - ✅ Done:
-      - 查验源码技术细节：深入检阅 [vector_store.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/vector_store.py)、[retrieval_pipeline.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/retrieval_pipeline.py)、[reranker.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/reranker.py) 及 Go Eino DAG 网关实现；
       - 详述四大核心体系：系统化梳理并扩充“法律专属语义分块”、“六路并行混合召回与过滤”、“GPU 常驻 LLM-based 极速重排”及“端到端工程落地全景架构”四大重磅章节；
-      - 更新文档版本：升级 [README.md](file:///Users/gemini/Projects/Own/RAG/README.md) 版本至 v4.3.0，完成严密的结构化全景技术表述。
+      - 文档升级与版本归档：升级 [README.md](file:///Users/gemini/Projects/Own/RAG/README.md) 至 v4.3.0，归档 [work_records_20260818_2333.md](file:///Users/gemini/Projects/Own/RAG/Records/work_records_20260818_2333.md)；
+      - GitHub 远程推送：执行 `git commit` 与 `git push` 成功同步至远程仓库 `https://github.com/iBubble/RAG.git` (main 分支)。
     - ⏳ To-Do:
       - 暂无
