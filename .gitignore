@@ -17,10 +17,14 @@ persistent/
 frpc
 frpc.toml
 app-server/nexus-gateway/nexus-gateway
+app-server/nexus-gateway/nexus-gateway-linux
 
-# 日志文件
+# 日志文件与运行输出
 *.log
 frpc.log
+*.out
+*.err
+.qoder/
 
 # Python
 __pycache__/

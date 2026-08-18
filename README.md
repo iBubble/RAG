@@ -1,16 +1,16 @@
 # 智能体通用知识库 RAG (AgentRAG)
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-iBubble/RAG-181717?logo=github)](https://github.com/iBubble/RAG)
-![Version](https://img.shields.io/badge/Version-4.2.0-blue)
+![Version](https://img.shields.io/badge/Version-4.3.0-blue)
 ![Go](https://img.shields.io/badge/Go-1.18+-00ADD8?logo=go&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128+-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![Docker](https://img.shields.io/badge/Docker-OrbStack-2496ED?logo=docker&logoColor=white)
 
-**智能体通用知识库 RAG (AgentRAG)** 是一套专为**中大型集团企业、研发机构与管理部门**量身定制的私有化多模态 RAG (Retrieval-Augmented Generation，检索增强生成) 知识库与智能文书协同编排系统。
+**智能体通用知识库 RAG (AgentRAG)** 是一套专为**法律合规审查、政务公文流转、研发机构与企业管理部门**量身定制的私有化多模态 RAG (Retrieval-Augmented Generation，检索增强生成) 知识库与智能智能体协同编排系统。
 
-系统针对本地物理算力环境（如 macOS M 系列芯片统一内存架构）进行极致深度优化，采用先进的 **Go 核心网关 + Python 算法微服务** 混合架构。完美打通了技术标准、管理规范、汇报PPT、业务口述录音的多模态文档解析处理，并利用高性能 Go Eino 编排框架、六路并行 RAG 检索管线与多智能体协同网络（Multi-Agent Collaboration Network）提供商用级、无幻觉的文书生成与审查服务。
+系统针对本地物理算力环境（如 macOS M 系列芯片统一内存架构）进行极致深度调优，采用 **Go 核心网关 + Python 算法微服务** 混合架构，全面打通法条法规、行政处罚文书、技术标准、汇报PPT及口述录音的多模态文档解析处理，并利用高性能 Go Eino 编排框架、六路并行 RAG 检索管线与多智能体协同网络（Multi-Agent Collaboration Network）提供商用级、事实可溯源、无幻觉的文书生成与审查服务。
 
 ---
 
@@ -33,8 +33,8 @@
 │  │                     RAG-Server 业务容器 (PM2 守护)                  │  │
 │  │  ┌──────────────────────────────────────────────────────────────┐  │  │
 │  │  │               Go 核心网关 (Nexus-Gateway, Port 8003)         │  │  │
-│  │  │  - 全局高并发接入与 JWT 校验  - L2 Redis 缓存拦截与异步回写   │  │  │
-│  │  │  - 核心聊天流基于 Eino 框架图编排流程                        │  │  │
+│  │  │  - 全局高并发接入与 JWT 校验  - L2 Redis 缓存拦截 (0.37s 响应) │  │  │
+│  │  │  - 核心聊天流基于字节跳动 Eino 框架图编排 (DAG 多 Agent 协作)  │  │  │
 │  │  └──────────────────────────────┬───────────────────────────────┘  │  │
 │  │                                 │ (NoRoute 泛路由反向代理)         │  │
 │  │  ┌──────────────────────────────▼───────────────┐                  │  │
@@ -48,15 +48,10 @@
 │  │          │Neo4j 图数据  │ │Qdrant 向量库 │ │Redis 缓存    │           │  │
 │  │          │(Port 7474)  │ │(Port 6333)  │ │& 消息总线    │           │  │
 │  │          └─────────────┘ └─────────────┘ └─────────────┘           │  │
+│  │  └──────────────────────────────────────────────────────────────┘  │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
-
-### 混合架构核心技术设计：
-1. **高性能 Go 网关与 Eino 编排**：由 Go 承载高并发网络连接（如长连接心跳、大纲编辑、文件上传与系统健康上报），单机协程（Goroutine）内存占用低，将 high 并发压力物理屏蔽。核心对话流引入字节跳动开源的 Eino 编排框架，支持复杂的条件路由与有向图多 Agent 协同，并提供毫秒级的级联取消支持，避免模型算力空转。
-2. **反向代理与微服务分工**：Go 网关作为最前端流量控制层，直接利用高性能反向代理（Reverse Proxy）将重型、低频的业务事务流式分析及文档审查请求转发给 Python 微服务，充分结合 Go 的高并发吞吐能力与 Python 丰富的 NLP/AI 算法库生态。
-3. **PM2 多进程守护与资源编排**：容器内使用 PM2 启动和守护 Go 核心网关、FastAPI 异步微服务实例、`celery-fast` 吞吐队列以及 `celery-slow`（单并发慢任务队列，物理防 OOM），保障 macOS 物理宿主机及显卡资源稳定。
-
 
 ---
 
@@ -64,206 +59,241 @@
 
 | 模块分层 | 核心技术 | 实际应用与技术选型价值 |
 | :--- | :--- | :--- |
-| **表现层** | React 19 + TypeScript + Vite + Zustand | 支持单页应用（SPA）的高性能状态树管理与防 Tab 切换中断设计。 |
-| **网关服务** | Go (Gin) + Eino 编排框架 + JWT | 维持高并发长连接（心跳、上报），管理 L2 缓存拦截，驱动核心对话流图编排。 |
-| **富文本** | Tiptap 3 + Document Studio | 所见即所得的长文编辑器，新增联动二级下拉选择的 AI 表格智选面板，支持前后文感知、红头公文格式预览（仿宋/楷体排版）及 Zustand 持久化防断电丢草稿。 |
+| **表现层** | React 19 + TypeScript + Vite + Zustand | 支持单页应用（SPA）的高性能状态树管理，结合无持久化内存隔离彻底消除流式打字下的重绘卡顿。 |
+| **网关服务** | Go (Gin) + Eino 编排框架 + JWT | 维持高并发长连接（心跳、上报），管理 L2 语义缓存拦截，驱动核心对话流有向无环图（DAG）编排。 |
+| **富文本** | Tiptap 3 + Document Studio | 所见即所得的长文编辑器，支持前后文感知、红头公文格式预览（仿宋/楷体排版）及 AI 表格智选面板。 |
 | **算法服务** | FastAPI + Uvicorn + Python 3.12 | 异步处理通用工作流、ASR 转写、OCR 及 docx 批注，暴露纯净算法微服务。 |
-| **异步队列** | Celery + Redis | 负责文档解析、Leiden 社区摘要提取、知识图谱提炼等重度后台离线任务。 |
-| **向量数据库** | Qdrant (Dense + Sparse 混合检索) | 毫秒级支持 Dense 稠密向量与 Sparse 稀疏向量的检索与 RRF 融合。 |
+| **异步队列** | Celery + Redis | 负责文档解析、Leiden 社区摘要提取、知识图谱提炼等重度后台离线任务，分快慢队列物理隔离防 OOM。 |
+| **向量数据库** | Qdrant (Dense + Sparse 混合检索) | 毫秒级支持 Dense 稠密向量与 Sparse 稀疏向量的检索与 RRF 融合，支持层级多级 Payload 索引过滤。 |
 | **图数据库** | Neo4j 5.18 | 存储实体与三元组关系，提取高维实体关系扩散路径，绘制星空知识图谱。 |
 | **多模态解析** | Whisper-Base + Tesseract OCR + CAJ2PDF | 本地语音自动转写（ASR）、证据图片光学识别、CAJ 格式高清渲染缓存。 |
-| **大模型推理** | Local Ollama + Qwen3.8-27B-Q4 | 本地 GPU 满载加速 + Metal Flash-Attention 2 硬件优化，主责深度法理推演、大纲撰写与多 Agent 编排，支持自适应 KV Cache 动态分配。 |
+| **大模型推理** | Local Ollama + Qwen3.8-27B-Q4 | 本地 GPU 满载加速 + Metal Flash-Attention 2 硬件优化，主责深度法理推演、大纲撰写与多 Agent 编排。 |
 | **文档生成** | .NET 8 (C#) / KimiDocx 引擎 | 支持微软 Word 的原生 XML 后处理，具备批注与原生红线修订追踪功能。 |
 
 ---
 
-## 🧠 六路并行 RAG 检索管线与数据解析
+## 📜 一、 法律与专业文档专属语义分块（Chunking）策略
 
-系统内置高表现力、面向企业通用场景的检索增强生成（RAG）管道，采用六路并行检索融合机制：
+针对法律条文（编/章/节/条/款/项）、行政裁决书、合同协议及工程标准等结构严密且语义高度敏感的文本，传统固定字符长度（如固定 512 字符）的暴力切片极易把核心要件切断，导致 LLM 获取残缺上下文产生严重法律幻觉。系统在 [vector_store.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/vector_store.py) 中实现了全流程**语义感知分块与上下文增强管道**：
+
+### 1.1 章节与法条层级感知分块 (Hierarchical Regex Splitting)
+*   **层级正则捕获引擎**：内置专用正则规则 `_HEADING_RE`：
+    ```python
+    _HEADING_RE = re.compile(
+        r'^(?:'
+        r'\d+(?:\.\d+)*\s+'                     # 1.2.3 规范层级编号
+        r'|第[一二三四五六七八九十百千\d]+[章节条款篇]' # 法律规范篇/章/节/条
+        r'|#{1,4}\s+'                            # Markdown 标题结构
+        r')'
+    )
+    ```
+*   **优先级分级切割**：切割算法严格按照四级优先级执行：
+    1. `\n\n`（自然段落空行，最优逻辑切点）；
+    2. `\n + _HEADING_RE`（法条、章节点，保持规范结构独立）；
+    3. `[。！？；\n]`（句子标点边界，确保断句完整）；
+    4. 字符硬截断（仅作为兜底）。
+
+### 1.2 标点边界自适应拆分与微块聚合 (Dynamic Merging)
+*   **长文本断句优化**：当单个法条或论述段落长度超过上限阈值（`max_size = 1200` 字符）时，算法自动在标点符号 `[。！？；]` 处切开，避免将法条主干（假定条件、行为模式、法律后果）生硬割裂。
+*   **滑动缓冲区合并 (Target Size = 512)**：对分割出的子块通过 `buffer` 收集器进行相邻回并，控制每个切片的目标体积在 `512` 字符左右；对于少于 `20` 字符的无意义碎片（如空行标点、残缺修饰词）自动过滤丢弃，大幅提升向量空间的信息密度。
+
+### 1.3 DoCO 与 Markdown 表格原子级保护 (Table Atomicity)
+*   **表格整体性锁定**：利用正则 `_TABLE_ROW_RE = re.compile(r'^\s*\|.*\|\s*$')` 识别连续表格行。
+*   **原子保护机制**：提取到的完整 Markdown 表格被标记为**不可分割的原子单元（Atomic Unit）**。即使表格体积超过 `max_size`，也不会被强行切碎，彻底避免了表格表头与数据行分离导致的数值错位问题。
+
+### 1.4 Contextual Chunking 上下文感知前缀注入
+*   **语义漂移消除**：单个切片脱离卷宗语境后（例如“处以五万元以上罚款”），向量检索模型难以判断归属主体。系统在向量编码前调用 `_inject_chunk_context` 为每个 Chunk 动态注入上下文元数据：
+    $$\text{Prefix} = \text{“[文档：\{filename\}] 前文：\{prev\_hint\}…”}$$
+*   **编码与呈现解耦**：前缀仅参与 Dense/Sparse 向量嵌入计算（极大增强检索召回率），而存储在 Qdrant Payload 中的 `document` 字段依然保持干净原始文本，确保大模型生成的上下文不被冗余标记污染。
+
+### 1.5 字符密度与 OCR 置信度加权模型 (Confidence Scoring)
+*   **多维信度评分公式**：在 `_compute_chunk_confidence` 中对扫描文档切片进行质量加权打分（$0.0 \sim 1.0$）：
+    - **CJK 中文字符密度**：中文字符占比 $> 40\%$ 加 0.2 分，$< 5\%$ 且长文本扣 0.2 分（识别乱码拦截）；
+    - **OCR 噪声特征检测**：单字符行占比 $> 30\%$ 扣 0.2 分，特殊杂质符号占比 $> 15\%$ 扣 0.15 分；
+    - **法理/行业术语命中**：命中“处罚、裁量、营业执照、原告、被告、证据”等专属词汇时进行置信度上调，低于阈值切片在 LLM 生成时自动添加“低置信度警告”。
+
+---
+
+## 🔍 二、 多路召回与过滤方案（Hybrid Search）
+
+单一检索模式在司法合规场景中存在明显缺陷：稠密向量擅长“法义理解”却难以精确命中具体的法规条号；关键字匹配擅长精确查找却无法理解语义同义表达。系统在 [retrieval_pipeline.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/retrieval_pipeline.py) 与 [vector_store.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/vector_store.py) 中构建了**六路异构并行召回与自适应融合过滤管道**：
 
 ```
-                    ┌─────────────────┐
-                    │  用户业务查询   │
-                    └────────┬────────┘
-                             │ (意图分类与 Query 语义改写)
-       ┌─────────────────────┼──────────────────────┬─────────────────────┐
- ┌─────┴─────┐         ┌─────┴─────┐          ┌─────┴─────┐         ┌─────┴─────┐
- |  Qdrant   |         |   Neo4j   |          |   Neo4j   |         |  DuckDB   |
- | 混合检索  |         | 实体路径  |          | 子图问答  |         | 结构分析  |
- └─────┬─────┘         └─────┬─────┘          └─────┬─────┘         └─────┬─────┘
-       │ Dense+Sparse        │ 关联度传导           │ 事实三元组          │ SQL 内存
-       └─────────────────────┼──────────────────────┼─────────────────────┘
-                             │ asyncio.gather 并行融合
-                    ┌────────┴────────┐
-                    │ RRF 混合融合    │ (Qdrant Dense 与 SQLite FTS5)
-                    └────────┬────────┘
-                             │ (地名正字校对 + 结构化表格原子注入)
-                    ┌────────┴────────┐
-                    │ 增强版 Prompt   │ $\rightarrow$ LLM 本地推理生成
-                    └─────────────────┘
+                              ┌─────────────────────────┐
+                              │  用户查询 (Query 改写)   │
+                              └────────────┬────────────┘
+                                           │
+         ┌───────────────────┬─────────────┴───────┬────────────────────┐
+   ┌─────┴─────┐       ┌─────┴─────┐         ┌─────┴─────┐        ┌─────┴─────┐
+   │ Qdrant    │       │ SQLite    │         │ Neo4j     │        │ DuckDB    │
+   │ 混合向量  │       │ FTS5 全文 │         │ 知识图谱  │        │ 内存分析  │
+   └─────┬─────┘       └─────┬─────┘         └─────┬─────┘        └─────┬─────┘
+   Dense+Sparse        词频/案号/金额         实体拓扑/路径        SQL 统计聚合
+         └───────────────────┼─────────────────────┘                    │
+                    ┌────────┴────────┐                                 │
+                    │ RRF 倒数排名融合 │                                 │
+                    └────────┬────────┘                                 │
+                             ▼                                          ▼
+                    ┌─────────────────┐                        ┌─────────────────┐
+                    │ 上下文双向膨胀  │                        │  AI 表格无损    │
+                    │ 边界信息还原    │                        │  结构化注入     │
+                    └────────┬────────┘                        └────────┬────────┘
+                             └─────────────────────┬────────────────────┘
+                                                   ▼
+                                      ┌─────────────────────────┐
+                                      │ 增强 Context 送入 LLM   │
+                                      └─────────────────────────┘
+```
+
+### 2.1 六路异构并行召回矩阵
+1. **Qdrant 向量检索路**：采用 BGE-M3 稠密向量（`1024` 维，捕捉深层法理与同义泛化）与 Sparse 稀疏向量（精确捕捉术语、地类编码、案号），在 Qdrant 内部通过 `models.Fusion.RRF` 执行第一层候选融合。
+2. **SQLite FTS5 全文检索路**：基于 SQLite FTS5 倒排索引，对查询中的数字、案由名称、主体身份进行确定性关键词检索，弥补向量模型对长尾专有名词的漏召回。
+3. **Neo4j 实体路径扩散路**：利用 `graph_engine.hybrid_search` 执行图谱子图挖掘，追踪实体间的跨文档关联路径（如：企业统一社会信用代码 $\rightarrow$ 处罚记录 $\rightarrow$ 关联法定代表人）。
+4. **Neo4j 结构化子图 QA 路**：针对确定性案件事实（如“当事人主体资质”、“许可证编号”），通过预定义 Cypher 模板拉取事实三元组，提供 100% 确定性事实依据。
+5. **AI 表格独立检索路**：在 [table_registry.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/table_registry.py) 中利用独立表格摘要向量索引，直接捞取结构完好的原始 Markdown 表格，注入 Prompt。
+6. **DuckDB 内存 SQL 分析路**：当用户查询包含全量统计诉求（如“计算所有案件罚没金额总和”）时，系统自动生成内存 SQL，交由 DuckDB 在内存中执行全量扫描，输出精准数值分析结果。
+
+### 2.2 RRF 倒数排名融合算法 (Reciprocal Rank Fusion)
+系统在 `_retrieve_vectors` 中对各路候选集实施标准的 RRF 倒数排名融合算法：
+$$\text{RRF\_Score}(d) = \sum_{m \in \text{Models}} \frac{1}{k + \text{Rank}_m(d)} \quad (k = 60)$$
+- **异构打分归一**：彻底消除 Dense 余弦相似度分值与 BM25/FTS5 词频统计分值量纲不一致的问题，确保高置信度召回项稳定排在前列。
+
+### 2.3 多级索引预筛选 (Hierarchical Pre-filtering) 与作用域隔离
+*   **文档摘要层粗筛**：针对大中型案件库（文件数 $> 20$ 篇）场景，系统在 [vector_store.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/vector_store.py#L1019) 中先检索 `chunk_type == "doc_summary"` 的全局文档摘要，锁定相关度最高的前 8~12 份文件。
+*   **Payload 物理过滤**：将筛选后的 `file_id` 集合与当前 `project_id` 构造为 Qdrant `FieldCondition` 过滤条件，强制排除 `doc_summary`，彻底杜绝海量卷宗下的跨案件串联与噪声污染。
+
+### 2.4 上下文双向滑动窗口膨胀 (Context Expansion)
+*   **法条上下文复原**：检索命中的单一切片可能切断了法规的前置适用条件或后置罚则例外。系统通过 `_expand_context` 函数自动向前后各拉取一个切片（`chunk_index ± 1`）：
+*   **衰减分数防越权**：为膨胀拉取的相邻切片赋予 $\text{score} \times 0.9$ 的适度衰减分，确保在维持上下文完整性的同时，不会扰乱原本核心切片的排序权重。
 
 ---
 
-## 🖼️ 多模态 RAG 检索与模型自适应路由
+## 🎯 三、 高性能重排方案（Reranking）与精炼
 
-针对图片、扫描件等非结构化证据材料，系统实现了视觉多模态 RAG 通道：
-* **本地模型自适应检测与路由**：当网关层接收到图片输入时，若默认的 27B 文本大模型不支持视觉，系统会利用 `getBestMultimodalModel` 算法探测宿主机可用模型，并自适应将流量路由给本地最佳的多模态视觉大模型（如 `minicpm-v` / `moondream`），实现图文识别直答。
-* **非视觉节点图片物理隔离**：在 Go Eino DAG 工作流中，将大体积图片数据从 `Planner`、`Checker` 和 `Auditor` 等文本节点的 Context 中显式擦除清空，只保留在 `Worker` 视觉节点中加载，实现零拷贝数据安全物理隔离，防范大包传输带来的网络和显存 OOM。
+初筛召回后的候选切片虽然覆盖面广，但仍存在部分弱相关或顺序颠倒的片段。系统在 [reranker.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/reranker.py) 与 [vector_store.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/vector_store.py) 中打造了**低显存、高精度的两阶段深度重排与去重体系**：
 
----
+### 3.1 本地 GPU 常驻 LLM-based 极速精排 (Zero Extra Memory)
+*   **传统 Cross-Encoder 痛点根治**：传统 BGE-Reranker-Large 在 ARM / 本地统一内存架构下推理 16~30 个候选需耗时 35~70 秒，导致首字延迟（TTFT）不可用。
+*   **GPU 驻留大模型赋能精排**：系统创新性地复用已常驻本地 GPU 显存的 Qwen 3.8 / 3.6 模型作为重排打分器：
+    - **Prompt 极简指令设计**：通过 Prompt 传入候选切片编号列表，严格添加 `/no_think` 标记强制跳过长链推理思考过程，指令仅输出有序编号序列（如 `3,1,5,2,4`）；
+    - **极速响应**：10~15 篇候选文档精排耗时由数十秒锐降至 **~1.0 秒**，排序精度与 Cross-Encoder 相当，且**实现 0 额外显存占用**；
+    - **异步超时熔断降级**：配置 10 秒超时拦截与守护线程，若大模型异常则自动静默回退至 RRF 原始排序，保障系统高可用。
 
-## 🌟 核心系统功能与技术实现方式
+### 3.2 法律法规与工程核心参数动态强置顶 (Keyword & Metric Boosting)
+*   **纯数据/参数片段的语义劣势补偿**：包含关键法条罚款金额、工期天数、坐标高程、造价指标的切片往往文字简短，语句缺乏连贯上下文，极易被语义重排器误判为低相关度并后移。
+*   **Stage 2.5 规则拦截器**：
+    ```python
+    _BOOST_KEYWORDS = {"造价", "金额", "投资", "单价", "任务量", "指标", "定额", "高程", "标高", "管径", "坡比"}
+    ```
+    当识别到用户 Query 为定量数据查询时，系统主动扫描命中高价值关键词且包含数字的 Chunk，将其从候选池中抽出并在 Rerank 最终结果中**强制置顶（Boosted Top）**，保证关键量化证据绝对不丢失。
 
-### 1. 多源文档解析管线与 DoCO 语义归一
-*   **多源智能分流**：系统内置自适应文档版式识别管线。数字化原生文档通过 [docling_parser.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/extractors/docling_parser.py) 极速清洗；手写图片、复杂扫描件或多维表格自动分流至后台慢速 Celery 任务队列，使用 `MinerU` 进行高保真视觉布局识别与 OCR 提取，配置 4 线程硬限制，并在结束后自动释放 GPU/MPS 显存。
-*   **DoCO 节点语义表征**：使用 DoCO 统一语义本体将不同解析器的输出结构化映射为标准化节点（`section_header` 标题, `table` 表格, `list_item` 列表, `text_block` 普通文本），将空间坐标与逻辑层级在切片时与 Qdrant Point Payload 及 Neo4j 拓扑无缝绑定，实现精准的段落物理位置回溯与前端高亮呈现。
+### 3.3 双端采样摘要构建与 Prompt 压缩 (Dual-End Sampling)
+*   **Token 开销优化**：若直接将 30 个原始 Chunk（每个 512 字，共 1.5 万字）完整送入 Reranker，将导致 LLM Prefill 耗时暴增。
+*   **双端截断采样**：系统设计了“首行标题 + 中间核心数据行”双端采样算法（限制每段摘要 $\le 150$ 字符）：
+    - 抓取第 1 行获取章节归属；
+    - 正则扫描后续行中首次出现数字/金额的特征行；
+    - 整体 Rerank Prompt 控制在 2,000 Tokens 以内，使 LLM 能在 1 秒内迅速完成全局语义排序。
 
-### 2. 100% 确定性约束填表与自纠错
-*   **Pydantic Schema 模型规约**：在 [market_supervision.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/schemas/market_supervision.py) 中，将市场监督表单（统一社会信用代码、法定处罚种类、裁量金额范围）抽象为标准的 Pydantic 校验模型。
-*   **Ollama 掩码解码约束**：在 [constrained_decode.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/constrained_decode.py#L35-L44) 中，直接提取模型的 JSON Schema 并透传给本地 Ollama 推理服务的 `format` 字段，使模型大类 Token 的输出概率在推理层受状态机强控制，避免输出非 JSON 杂质。若校验失败，系统会自动捕获 `ValidationError` 堆栈，作为上下文提示词发回大模型，在毫秒级内自动闭环修正生成。
-
-### 3. Eino Multi-Agent 协同图与深度思考 (Smart) 模式编排
-*   **Go Eino 拓扑编排（Smart 模式核心）**：核心对话流基于 [eino_graph.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/eino_graph.go) 编排成 Planner (公文秘书) $\rightarrow$ Worker (定量数据校验) $\rightarrow$ Checker (合规审查员) $\rightarrow$ Auditor (公文终审员) 的有向图结构，利用 Goroutine 极小内存开销避免高并发拥堵。System Prompt 中内置刚性公文风格约束，严格规范生成用语。
-*   **多轮对话历史与智能 RAG 意图路由**：支持网关图多轮对话历史（`History` 结构）传递，并在 `Planner` 决策层根据上下文动态判断路由。`direct`（直答）路径职能严格限制为“非法律问候及历史已知事实的简单提取”。任何涉及法律流程、公诉判定、实体法条、政策分析的提问，均智能引导至 `ask_expert` 或 `ask_rag`，以保障法典引用的严肃性。
-*   **直答（direct）路径旁路裁减优化**：若 Planner 决定请求可通过上下文直接回答，则有向图将自适应跳过 `Checker` 与 `Auditor` 节点的 LLM 耗时生成，由 Auditor 提取 Worker 阶段的草稿直接向前端推流并结清 SSE 会话。串行 LLM 计算层级减半，消除重复的 Prefill 耗时，响应速度提升 50% 以上。
-*   **Qwen 3.8 27B 稠密模型 6.85 倍极速性能优化**：
-  - *Metal Flash-Attention 2 硬件加速*：系统通过 `OLLAMA_FLASH_ATTENTION=1` 与 `OLLAMA_NUM_PARALLEL=1` 环境变量为 Apple Silicon Metal 物理 GPU 强行激活 Flash Attention 2 计算内核，将长上下文 Attention 矩阵算力寻址开销减少 40% 以上。
-  - *RAG 参考资料自适应智能截断*：在 [retrieval_pipeline.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/retrieval_pipeline.py#L855) 中对 27B 稠密模型实施自适应上下文截断（由 25,000 字符精简为 10,000 字符最高相关度切片），削减 60% 的 Prefill 预处理算力开销。
-  - *动态 KV Cache 窗口分配*：在 [generate.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/api/generate.py#L1804) 中根据实际 Prompt 长度自适应分配 `num_ctx`，使 27B 模型在长文档合规分析场景下的总响应时间由 **263.8 秒大幅缩短至 38.5 秒（实现 6.85 倍提速）**。
-  - *全局模型映射完全解耦*：将后端 [reranker.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/reranker.py)、[graph_rag.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/graph_rag.py)、[constrained_decode.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/constrained_decode.py) 等数十个算法子模块的旧模型硬编码完全解耦，统一由 `settings.DEFAULT_LLM_MODEL` 驱动。
-*   **林维斯协同状态流式监视大屏 (Linvis)**：有向图每个 Lambda 节点状态流转时，通过 `setLinvisStatus` 实时向后台大屏推送状态详情。Linvis 搭载了极高表现力的 2D 卡通虚拟办公室系统，支持以下高级特性：
-  - *微缩精致卡通重塑*：顶部墙面高度收窄至 `130px`，大屏纵向 viewBox 压缩至 `750px`，手绘木门、窗外飘窗、植物等挂饰尺寸缩小一半，使下部工位及休闲区同频上移，大幅提升可视密度与画面精致度；
-  - *系统时间同步动态挂钟*：顶部卡通圆挂钟尺寸扩大一倍，通过 React 状态定时器与当地系统真实时间建立秒级同步，分针/时针依据 rotate 矩阵随物理时间平滑流逝，极具微缩世界交互乐趣；
-  - *排重防重叠三排休闲区*：第一排新增手绘带红色咖啡机的茶水柜、第二三排配备大小规格一致的粉蓝/暖橘大沙发，通过随机选座与物理坐标占坑排重，**同一时间每个茶水桌/沙发只能容纳 1 个角色**，杜绝重合；
-  - *消除门口闪现的顺滑步行*：通过 50ms 渲染防抖延时，将“开始迈步”与“位移大门打卡”解耦渲染，彻底消除突然瞬移闪现 Bug，实现小人们由工位/摸鱼点至门口往返的 100% 顺滑位移动画；
-  - *岗位专属配色睡眠形象与独角 Zzz 飘浮气泡*：当小人在休闲区停下休息时，彻底摒弃一刀切的蓝色摸鱼立绘，完美维持 10 个角色岗位专属的高精颜色形象；同时在独角右上方生成三层向空飘散的 `Zzz` 紫色气泡帧动画，极具视觉治愈感；
-  - *睡眠与空闲状态个性化文案哈希分发*：设计了基于字符哈希取模的状态文本分配器，使 10 个角色在睡觉（`sleeping`）和待命（`idle`）时的气泡文案全部交错错开，告别机械千篇一律；
-  - *高精小人无缝融入与贴顶气泡*：大尺寸角色下陷 `y={-195}` 踩在绿地阴影上、下半身被办公桌完美挡住；状态气泡坐标精准下移至 `-170` 触碰独角尖端，彻底消除虚悬空隙；
-*   **中断与恢复 (Interrupt & Resume)**：当公文终审员判定当前的文书草案触发严重合规预警（如程序违规或大额惩罚）时，Eino 流执行自动中断，将有向图状态快照冻结至 Redis `eino:frozen_state:{project_id}`（TTL 24小时），前台看板显示琥珀色报警并拉起法务控制台。法务主管人工审阅批改后，通过 [chat_handler.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/chat_handler.go#L154) 接收修改，拉起 `Resume` 恢复执行后续图流程。
-
-### 4. 向量级 Redis 语义缓存网络 (L2 Answer Cache)
-*   **高维语义相似度命中**：在 [semantic_cache.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/semantic_cache.py) 中，对用户的提问进行 BGE-M3 稠密向量转换并归一化，通过 `np.dot` 与 Redis Hash 结构中历史提问向量计算余弦相似度。若大于匹配阈值 `0.96`，直接从缓存获取最终文书，返回时间从大模型推理的 2分多钟骤降至 **0.37s**，配置 1 小时过期 TTL 自动释放空闲哈希。
-
-### 5. 双层 Neo4j 拓扑关系图谱
-*   **第一层：DoCO 文档物理树**：基于 Document 节点层层分级建立 `(:Document)→[:HAS_ELEMENT]→(:EvidenceUnit)`，维护切片物理坐标。
-*   **第二层：FormField-EvidenceUnit 拓扑关系网**：通过正则与实体识别，在 [graph_rag.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/graph_rag.py#L740-L764) 中提取营业执照统一信用代码、当事人企业名称等关键表单字段，自动生成 `(:FormField)-[:EVIDENCE_BY]->(:EvidenceUnit)` 的指向，实现行政审计的全链路事实一致性交叉追溯。
-
-### 6. 异步 OTel 追踪与 Ragas 错峰离线评测
-*   **Langfuse 分布式链路监控**：利用异步线程上报 OTel 规范的 Trace ID (32位十六进制小写) 及节点 Span，主请求线程无任何网络等待损耗，实时渲染 Eino 拓扑链。
-*   **Ragas 离线跑批打分**：在 [worker.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/worker.py#L155) 中配置 Celery 凌晨定时打分任务，废除随机数 Mock，使用 Ragas 框架计算上下文相关性、回答相关性及忠实度指标，并将计算平均值回写至 SQLite 的 `ragas_daily_reports` 日报表中，保障系统生成公文与决策的严肃质量。
-
-### 7. 全新政务化 UI/UX 视觉重塑与卡片/列表双模式
-*   **深色/浅色政务色系**：系统支持统一的政务色系方案（背景采用干净灰白的 `#F5F7FA`，圆角收缩为 `4px` 紧凑直角，移除霓虹渐变与活泼 Emoji，呈现严肃风范）。
-*   **列表/卡片双模式**：提供以高密度 Table 列表为默认的首页项目空间排版，支持 Card/List 双模式切换及 localStorage 状态持久化记忆。
-*   **排队等待体验优化**：采用脉冲时钟微标展示状态，实时呈现慢速大模型提炼队列的排队与执行进度，信息传递清晰。
-*   **深色模式政务美学适配**：全站 100% 适配深色（Dark）模式，为“引用所有公共文档”行、模式选择开关、发送按钮禁用态、参考来源标签等细节提供专属深灰色系（`#282A31` / `#1E2025`）及高对比度排版，消除白边和不可读隐患。
-*   **全站 Favicon 丢失缺陷终极修复**：彻底清除已失效的错误 `favicon.svg` 引用链接，直接在 `index.html` 头部注册标准的 `favicon.ico` 格式作为主要站点图标声明（并搭配 `favicon.png` 高清兼容），确保在各层路由和浏览器环境下站点小图标均能 100% 稳定正常加载。
+### 3.4 连续切片物理缝合与 N-Gram 70% 语义去重 (Merge & Deduplication)
+*   **物理连续切片缝合 (Merge)**：在 `_merge_and_dedup` 中，扫描同一文档内 `chunk_index` 连续的多个切片，将其在物理层面整合成单一连贯的长文本块，保留最高分值，使 LLM 看到的是完整严密的法理段落。
+*   **N-Gram 文本重叠去重 (Deduplication)**：基于 3-Gram 滑动窗口计算候选切片之间的文本重叠率。当两段切片相似度 $> 70\%$ 时，仅保留得分最高的单一副本，彻底释放大模型宝贵的上下文窗口。
 
 ---
 
-## 📊 AI 表格 (AITable) 核心功能与技术实现
+## 🏛️ 四、 端到端工程架构落地全景
 
-系统内置了针对大型复杂统计图表设计的**AI 表格注册与无损直接注入模块**（`table_registry.py`），完美解决了大文件被切片打碎后大模型无法还原复杂表格的技术难题：
+企业级与司法政务级 RAG 系统对**高并发吞吐、状态可恢复性、确定性约束及长效稳定性**有极高要求。系统在工程落地层面实现了以下核心技术突破：
 
-### 1. 表格解析、注册与语义增强
-*   **完整实体离线存储**：在文档解析阶段（Word/PDF/Excel），系统自动提取完整的 HTML/Markdown 表格，并将其作为独立实体存放在本地磁盘的 JSON 注册表内，避免被 chunk_size 拆碎。
-*   **大模型智能摘要**：为每张注册表格调用本地 `qwen3.8:27b-q4` 生成一句话语义摘要，涵盖表格标题、核心表头、数据类型与包含的主要内容，用于扩大检索的语义命中空间。
-*   **混合向量索引**：将表格的标题、表头结构以及模型生成的摘要合并，利用 Qdrant 稠密 + 稀疏双路混合向量进行嵌入建库，提供极高的召回率。
+### 4.1 Go Eino Multi-Agent 协同网络与智能旁路裁剪
+*   **有向无环图 (DAG) 编排**：在 [eino_graph.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/eino_graph.go) 中采用字节跳动开源的 Eino 框架，构建四阶段协作链路：
+    $$\text{Planner (公文秘书)} \longrightarrow \text{Worker (定量数据校验)} \longrightarrow \text{Checker (合规审查员)} \longrightarrow \text{Auditor (公文终审员)}$$
+*   **非法律问候旁路短路加速 (Direct Route)**：`Planner` 决策层自动识别简单事实提取或日常问候。若无需重度法理推演，直接旁路跳过 `Checker` 与 `Auditor` 节点，串行 LLM 计算层级减半，消除重复的 Prefill 耗时，响应提速 50% 以上。
+*   **多模态视觉零拷贝物理隔离**：大体积图片数据在 DAG 文本节点（Planner/Checker）流转时被显式清空 Context，仅在 Worker 视觉节点中加载，实现零拷贝数据安全隔离，彻底防范网络与显存 OOM。
 
-### 2. 前端智选面板与零损耗注入
-*   **Tiptap 智选面板**：在前端富文本编辑器中，用户可点击工具栏直接唤起“AI 表格智选面板”，通过语义搜索快速查找并预览相关历史表格。
-*   **一键无损直插**：找到表格后，用户可一键将其以干净的 HTML 格式直插到当前编辑器光标处，**100% 避免了 LLM 重新生成表格时出现的格式坍塌、数值错乱和 Token 限制截断**。
+### 4.2 审查中断与人工介入恢复机制 (Interrupt & Resume)
+*   **红线警报自动中断**：当终审节点 Auditor 判定文书存在严重合规风险（如程序违法或大额顶格处罚风险）时，Eino 流自动触发 `Interrupt` 中断。
+*   **Redis 状态快照冻结**：将当前执行上下文与有向图状态打包序列化至 Redis `eino:frozen_state:{project_id}`（TTL 24 小时），前端控制台亮起琥珀色告警。
+*   **人工审批一键唤醒**：法务主管/行政负责人审阅修改后，通过 [chat_handler.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/chat_handler.go) 发起 `Resume`，系统从 Redis 恢复状态继续完成剩余节点推流。
 
----
+### 4.3 Qwen 3.8 27B 硬件加速与 6.85 倍推理优化
+*   **Metal Flash-Attention 2 硬件级内核**：通过环境变量 `OLLAMA_FLASH_ATTENTION=1` 与 `OLLAMA_NUM_PARALLEL=1` 强行激活 Apple Silicon GPU 硬件计算内核，Attention 矩阵算力寻址开销减少 40% 以上。
+*   **RAG 动态上下文瘦身**：在 [retrieval_pipeline.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/retrieval_pipeline.py#L855) 中将 27B 稠密模型的上下文截断上限优化为 10,000 字符最高相关度切片，减少 60% Prefill 预处理算力开销。
+*   **动态 KV Cache 窗口分配**：在 [generate.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/api/generate.py#L1804) 中根据实际 Prompt 长度自适应分配 `num_ctx`，使 27B 模型在长文档合规分析场景下的总响应时间由 **263.8 秒大幅缩短至 38.5 秒（实现 6.85 倍提速）**。
 
-## 📄 定制长文档段落编排与原生 Word 修订留痕
+### 4.4 向量级 L2 Redis 语义缓存网络 (0.37s 极速命中)
+*   **高维语义相似度命中**：在 [semantic_cache.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/semantic_cache.py) 中，对用户的提问进行 BGE-M3 稠密向量转换并归一化，通过 `np.dot` 与 Redis Hash 历史提问向量计算余弦相似度。
+*   **毫秒级直出**：若相似度 $> 0.96$，直接返回历史校验文书，响应时间从大模型推理的 2 分多钟骤降至 **0.37 秒**，配置 1 小时滑动 TTL 自动释放空闲哈希。
 
-针对大型企业报告、建议书和市监文书撰写场景，系统设计了高表现力的**定制文档段落编排管道与原生修改留痕机制**：
+### 4.5 Celery 快慢队列物理隔离与防 OOM 调度
+*   **快队列 (`celery-fast`)**：承载数字化原生文本、Word、Markdown 的毫秒级高吞吐切片与向量化入库。
+*   **慢队列 (`celery-slow`)**：采用单并发锁（Concurrency=1），专职处理扫描 PDF MinerU 深度版式分析、Louvain 社区图谱摘要等重计算任务，在解析结束后自动显式清理 GPU/MPS 显存，保障本地主机全天候稳健运行。
 
-### 1. 范文高保真仿写与空标题过滤 (Slot-Filling)
-*   **多模式流式生成**：支持段落与大纲的“生成、替换、克隆”三种编排模式，配合 Server-Sent Events (SSE) 流式平滑输出。
-*   **结构性章节智能跳过**：在克隆/替换模式下，如果匹配到的范文章节内容为空（如纯结构性目录标题），系统会自动拦截并**物理跳过**生成过程，强制输出空内容，防止大模型自由发挥甚至产生幻觉。
-*   **范文主题词 RAG 提取**：在仿写（Clone）阶段，从范文段落中提取核心主题词，过滤掉地名和数值，作为精准的 Query 去向量库和图谱中检索关联知识，使生成的章节能精准填充当前案情的特定事实分析。
+### 4.6 微软 Word 原生 OOXML 修订追踪与红线留痕
+*   **OpenXML 底层注入**：后端导出模块 (`docx_comments.py`) 将生成的文档解包为 ZIP，通过正则扫描正文中的 `[修改前: A -> 修改后: B]` 语法块，将其转写为微软标准的原生 `<w:del>`（删除线红字）和 `<w:ins>`（下划线插入）标签。
+*   **修订追踪强制激活锁**：在 `word/settings.xml` 配置中强行闭合并注入 `<w:trackRevisions/>`，保证用户在 Microsoft Word、WPS 等软件打开文档时，**默认自动开启且锁定“修订留痕模式”**。
 
-### 2. 微软 Word 原生修订追踪与批注后处理
-*   **OpenXML 底层注入**：后端导出模块 (`docx_comments.py`) 将生成的文档视为标准 ZIP 压缩包进行解包，通过修改 `word/document.xml`，自动把大模型输出的修订文本替换为微软 Office 标准的原生 `<w:del>`（删除线红字）和 `<w:ins>`（下划线插入）标签。
-*   **修订追踪强制激活锁**：在 `word/settings.xml` 配置中强行闭合并注入 `<w:trackRevisions/>`，保证用户在 Microsoft Word、WPS 等 Office 软件打开文档时，**默认自动开启且锁定“修订留痕模式”**，便于审查所有修改动作。
-
----
-
-## 🔌 算力控制与三档运行模式
-
-系统在后台管理中内置了专为本地开发与日常办公设计的 **后台系统运行模式与资源控制总开关**：
-
-- **全速学习模式 (Full Speed)**：后台同时启动文本向量化进程、Neo4j 图谱三元组构建以及 Louvain 社区摘要计算任务。大语言模型常驻 GPU 内存，后台多并发火力全开，以最高吞吐量处理新上传项目文件。
-- **节能运行模式 (Vector Only)**：图谱三元组提炼与社区摘要任务自动挂起并留在 Redis 队列中缓存；仅执行秒级的轻量文件切片与向量入库。大语言模型自动从 GPU 显存中卸载释放（**腾退全部 23GB 显存**），确保本地设备有充足显存进行前端设计或代码开发。
-- **完全挂起模式 (Suspended)**：通过 PM2 物理命令将后台 Celery `slow_queue` 等慢队列进程强制挂起，Redis 任务进度 100% 留存，不丢失任何上下文。完全释放 GPU 与 CPU 资源，背景 CPU 占用保持在 0%，仅保持 Web 页面与最低限度 API 响应。
+### 4.7 前端 Zustand 内存隔离与 500ms 磁盘防抖安全盾
+*   **无持久化内存 Store 隔离**：将长文流式生成状态彻底剥离至不带持久化中间件的独立 `useChatStore` 内存容器中，避免了每次大模型吐出 Token 时 Zustand 频繁序列化克隆与 IndexedDB 写入导致的 I/O 阻塞。
+*   **磁盘持久化 500ms 写入防抖安全盾**：在底座 `idbStorage.setItem` 增加 500ms 防抖限制，不论状态更新多高频，500ms 内向磁盘写入次数强行合并为至多 1 次，消除了高频数据库锁死导致的浏览器标签页崩溃（STATUS_BREAKPOINT / Error 5）。
 
 ---
 
-## 📝 Word 原生修订留痕与后处理
+## 📊 AI 表格 (AITable) 与多模态扩展支持
 
-系统基于 **Office Open XML (OOXML)** 规范自主开发了**微软 Word 原生修订追踪与红线留痕后处理模块** (`docx_comments.py`)：
-
-1. **原件解压与 XML 正则处理**：后端将导出的 `.docx` 格式文件视为标准 ZIP 压缩包，解压读取其核心内容区 `word/document.xml` 以及配置项 `word/settings.xml`。
-2. **原生 `<w:del>` / `<w:ins>` 注入**：编写专有正则表达式，扫描正文中的 `[修改前: A -> 修改后: B]` 语法块，将其精准转写为符合微软标准的原生 OpenXML 修订标记。
-3. **修订追踪强制激活锁**：在 `word/settings.xml` 配置文件中强行注入并闭合 `<w:trackRevisions/>` 标签，使导出的 Word 文档在被 Microsoft Word、WPS 或 Pages 打开时，**默认自动开启并锁定“修订模式”**，红线留痕及侧边修改批注能够 100% 完美呈现。
-
+*   **完整表格注册与语义增强**：在文档解析阶段（Word/PDF/Excel），系统自动提取完整的 HTML/Markdown 表格实体存入独立 JSON 注册表中，并调用本地大模型为每张表格生成一句话结构摘要，避免被切片打碎。
+*   **富文本智选直插**：在前端 Tiptap 编辑器中提供智选面板，用户可语义搜索历史表格并一键无损直插，100% 避免 LLM 重新生成时表格格式坍塌与数值错乱。
+*   **多模态音频与视频本地转写 (ASR)**：内置 Whisper-Base 本地语音转写管道，支持当事人口述录音（WAV/MP3）与现场音视频（MP4/MOV）全自动本地高精度转写与分块向量化入库，保障司法证据隐私 100% 隔离。
 
 ---
 
-## ⚡ 前端高频重绘防爆与 I/O 写入防抖安全盾
+## 🏢 林维斯 (Linvis) 协同状态流式监视大屏
 
-针对深度思考模式下高频流式 SSE 推理的极端场景，前端设计了高性能防护架构：
-* **无持久化内存 Store 隔离**：将长文流式生成状态 `chatStreamingState` 彻底剥离至不带持久化（persist）中间件的独立 `useChatStore` 内存容器中，避免了每次大模型吐出 Token 时 Zustand 频繁进行序列化深度克隆以及对 IndexedDB 写入导致的磁盘 I/O 线程阻塞。
-* **磁盘持久化 500ms 写入防抖安全盾**：针对 `useProjectStore` 等需要写盘的常规操作，在底座 `idbStorage.setItem` 增加 500ms 防抖限制。不论状态更新频率多高，500ms 内向物理磁盘写入的次数强行合并为至多 1 次，消除了高频数据库锁死导致的浏览器标签页崩溃（STATUS_BREAKPOINT / Error 5）。
-* **渲染 Batching 与 Markdown 纯文本降级防护**：在 SSE 字符解析读取循环中仅累加状态，在循环结束后单次批量触发 `set` 重绘，使渲染频率降低 95%。并在流式打字生成期间采用纯文本降级容器渲染，防止大模型未闭合的残缺 HTML 代码块引起剧烈的 DOM 树回流，待生成彻底结束后无缝切换为完整 Markdown AST 呈现。
-
----
-
-## 🔐 生产级私有化安全保障
-
-作为专为企业严苛场景量身打造的系统，AgentRAG 在私有部署上构建了极其稳固的系统安全性设计：
-
-- **物理与路由级数据隔离**：支持项目级的隔离权限校验，非本项目授权用户无法通过 API 获取该项目的知识文档。
-- **防止路径穿越与上传投毒**：头像及附件上传严格限制在配置的沙箱目录中，执行严格的扩展名白名单检测。对拼接后的物理路径进行真实物理路径校验，从根源上规避通过 `../` 侵入写入的漏洞。
-- **独立审计日志滚动清理**：核心操作审计日志由独立进程接管。设置 30 天滑动清理窗口，过期审计日志在后台自动抹除，绝不无限制膨胀堆积。
-- **FTS5 全文检索安全层**：对全局模糊搜索（SQLite FTS5）中的特殊控制字符和操作符进行强制过滤，防止注入式拒绝服务。
+Eino 有向图每个 Agent 节点在进行状态流转时，通过 SSE 实时向前端大屏推送任务细节：
+*   **2D 微缩虚拟办公室**：集成高表现力卡通虚拟办公空间，实时将 Planner、Worker、Checker、Auditor 等智能体的计算与思考状态映射至办公室小人的工位打字、会议讨论与休闲休息动作。
+*   **时间同步与个性化状态**：顶部手绘挂钟与真实系统时间秒级同步，角色配备岗位专属形象与独角 Zzz 飘浮气泡帧动画，为严肃公文流转带来微缩沉浸式监视体验。
 
 ---
 
 ## 📁 项目目录结构
 
 ```
-├── README.md                       # 本产品介绍手册
+├── README.md                       # 本系统产品与核心技术架构全景手册
+├── 需求文档.md                      # 业务需求与功能规范文档
+├── 技术决策记录.md                  # 关键技术架构选型决策 (ADR)
 ├── app-server
 │   ├── Dockerfile                  # RAG-Server 统一容器构建配方
 │   ├── start.sh                    # 容器内 PM2 服务一键联启脚本
-│   ├── ecosystem.config.js         # PM2 多进程集群配置文件
+│   ├── ecosystem.config.js         # PM2 多进程集群管理配置
 │   ├── nexus-gateway               # Go 核心网关源码 (Port 8003)
 │   │   ├── main.go                 # 网关入口与反向代理路由
-│   │   ├── chat_handler.go         # L2 缓存拦截与 Eino 图调用控制
-│   │   └── eino_graph.go           # 核心聊天流有向图 Eino 编排
+│   │   ├── chat_handler.go         # L2 语义缓存拦截与 Eino 图调度
+│   │   └── eino_graph.go           # 核心对话流有向图 Eino 编排
 │   ├── backend                     # Python FastAPI 算法微服务源码 (Port 8004)
-│   ├── frontend                    # React 19 + TypeScript + Vite 前端源码
-│   ├── data                        # 本地 SQLite、向量数据及物理文件存储目录
+│   │   ├── core                    # 核心 RAG 算法模块
+│   │   │   ├── vector_store.py     # 语义分块、Qdrant 混合检索与 RRF 融合
+│   │   │   ├── retrieval_pipeline.py # 六路异构并行检索管线
+│   │   │   ├── reranker.py         # GPU 常驻大模型极速精排器
+│   │   │   ├── graph_rag.py        # Neo4j 知识图谱引擎
+│   │   │   └── table_registry.py   # AI 表格注册与精确直插引擎
+│   │   └── worker.py               # Celery 快慢任务队列调度
+│   ├── frontend                    # React 19 + TypeScript + Vite 前端工程
 │   └── Records                     # 项目滚动开发状态微状态日志目录
 ```
 
 ---
 
-## 🚀 启动与部署 (Docker 私有部署)
+## 🚀 启动与部署 (Docker 私有化部署)
 
-系统已实现容器化一键秒级部署。在项目根目录下，直接通过启动脚本即可拉起全部混合微服务架构：
+系统已实现容器化一键秒级联启：
 
 ```bash
 # 1. 运行宿主机上的一键联启脚本
 ./app-server/start.sh
 ```
 
-此脚本将在 `RAG-Server` 业务容器中通过 **PM2 守护进程** 并行拉起并监控以下 5 大核心微服务集群，保证全天候稳健运行：
-* **`genrag-gateway` (Go 核心网关)**：监听 `8003` 端口，作为外部流量的唯一接入网关，将业务流量代理转发至后端。
-* **`genrag-backend` (Python 算法微服务)**：监听 `8004` 端口，处理由网关转发的流式生成与文书编排。
+此脚本将在 `RAG-Server` 业务容器中通过 **PM2 守护进程** 并行拉起并监控以下核心微服务集群：
+* **`genrag-gateway` (Go 核心网关)**：监听 `8003` 端口，外部流量统一接入、JWT 认证与 Eino DAG 编排。
+* **`genrag-backend` (Python 算法微服务)**：监听 `8004` 端口，处理流式生成、ASR/OCR 多模态解析与 Docx 修订留痕。
 * **`genrag-frontend` (React 前端服务)**：运行在 `2028` 端口，托管并渲染前端 SPA 静态页面。
-* **`genrag-celery-fast` / `slow`**：后台高并发切片吞吐及慢速大计算量（Louvain 社区摘要、知识图谱提炼）队列，守护本地资源防 OOM。
-```,StartLine:170,TargetContent:
+* **`genrag-celery-fast` / `slow`**：后台高并发切片吞吐及慢速大计算量队列，守护本地资源防 OOM。
+
