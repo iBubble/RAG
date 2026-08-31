@@ -1,6 +1,16 @@
 # Changelog
-
+ 
 All notable changes to this project will be documented in this file.
+
+## [4.4.0] - 2026-08-31
+
+### Added
+- **外部存储 VirtioFS 挂载断裂秒级自动自愈机制**：新增 `scripts/storage_watchdog.sh` 守护脚本并集成至 macOS crontab 调度，针对 MacBook Pro 合盖休眠唤醒后 Docker 存储挂载失效问题，提供精准宿主机/容器断裂探测与 60s 防抖热重启自愈。
+- **技术决策记录 (ADR-002)**：新增《macOS 休眠唤醒后外部存储挂载自愈机制》技术架构选型决策。
+
+### Fixed
+- **解决 RAID 独立磁盘阵列异常脱机告警**：定位并修复了因 VirtioFS 悬空 inode 导致后端触发只读降级保护的故障，恢复 `rag.liukun.com` 全链路健康巡检绿灯状态。
+
 
 ## [4.2.0] - 2026-06-29
 

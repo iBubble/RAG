@@ -1,27 +1,28 @@
 # 工作状态记录
 
-## 📅 2026-08-17 23:37
-*   **完成 Qwen 3.8 27B 性能全套优化落地与实测验证（提速 6.85 倍）**：
-    - ✅ Done:
-      - 系统硬件加速：配置激活 `OLLAMA_FLASH_ATTENTION=1` 与 `OLLAMA_NUM_PARALLEL=1` 环境变量，强行开启 Metal 平台的 Flash Attention 2 硬件优化；
-      - RAG 动态上下文瘦身：更新 [retrieval_pipeline.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/retrieval_pipeline.py)，将 27B 稠密模型的上下文截断上限优化为 10,000 字符最高相关度切片，减少 60% Prefill 计算量；
-      - 实测性能基准验证：执行真实流式问答基准测试，**总响应耗时由 263.8 秒大幅缩短至 38.5 秒（实现 6.85 倍速度提升）**。
-    - ⏳ To-Do:
-      - 暂无
-
-## 📅 2026-08-18 01:14
-*   **更新 README.md 项目文档并成功推送至 GitHub 远程仓库**：
-    - ✅ Done:
-      - README.md 版本升级：更新 [README.md](file:///Users/gemini/Projects/Own/RAG/README.md) 至 v4.2.0，补充 Qwen 3.8 27B 大模型配置、Metal Flash-Attention 2 硬件加速说明；
-      - Git 代码提交与推送：提交 Commit 并成功推送本地代码至远程仓库 `https://github.com/iBubble/RAG.git` (main 分支)。
-    - ⏳ To-Do:
-      - 暂无
-
 ## 📅 2026-08-18 23:33
 *   **深度重构 README.md 详述四大核心技术架构并推送到 GitHub**：
     - ✅ Done:
       - 详述四大核心体系：系统化梳理并扩充“法律专属语义分块”、“六路并行混合召回与过滤”、“GPU 常驻 LLM-based 极速重排”及“端到端工程落地全景架构”四大重磅章节；
       - 文档升级与版本归档：升级 [README.md](file:///Users/gemini/Projects/Own/RAG/README.md) 至 v4.3.0，归档 [work_records_20260818_2333.md](file:///Users/gemini/Projects/Own/RAG/Records/work_records_20260818_2333.md)；
       - GitHub 远程推送：执行 `git commit` 与 `git push` 成功同步至远程仓库 `https://github.com/iBubble/RAG.git` (main 分支)。
+    - ⏳ To-Do:
+      - 暂无
+
+## 📅 2026-08-31 18:22
+*   **排查并恢复外置存储挂载失效与脱机告警故障**：
+    - ✅ Done:
+      - 故障定位：定位到 `rag.liukun.com` 所代理的 `GenRAG-Server` 容器因宿主机休眠导致 Docker VirtioFS 挂载点断开（出现悬空 inode 导致 watchdog 触发脱机保护）；
+      - 容器重启与挂载重建：重启 `GenRAG-Server` 容器重建 `/Volumes/macData/GenRAG_Files` 挂载通道；
+      - 全链路巡检恢复：验证 `curl http://localhost:8003/api/llm/status` 状态恢复为 `green` (在线)，顶部脱机警告横幅已自动解除。
+    - ⏳ To-Do:
+      - 暂无
+
+## 📅 2026-08-31 18:25
+*   **建设 MacBook Pro 休眠唤醒后外部存储挂载自动恢复与健康自愈机制**：
+    - ✅ Done:
+      - 自愈守护脚本落地：编写 [storage_watchdog.sh](file:///Users/gemini/Projects/Own/RAG/scripts/storage_watchdog.sh)，纳管 `GenRAG-Server` 与 `RAG-Server`，支持断裂检测与 60s 防抖热重启；
+      - 宿主机 crontab 调度挂载：配置每分钟常驻巡检任务，MacBook Pro 合盖唤醒后自动秒级恢复存储通道；
+      - ADR 技术决策与记录归档：更新 [技术决策记录.md](file:///Users/gemini/Projects/Own/RAG/技术决策记录.md) (ADR-002) 并归档 [work_records_20260831_1825.md](file:///Users/gemini/Projects/Own/RAG/Records/work_records_20260831_1825.md)。
     - ⏳ To-Do:
       - 暂无

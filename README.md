@@ -1,7 +1,7 @@
 # 智能体通用知识库 RAG (AgentRAG)
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-iBubble/RAG-181717?logo=github)](https://github.com/iBubble/RAG)
-![Version](https://img.shields.io/badge/Version-4.3.0-blue)
+![Version](https://img.shields.io/badge/Version-4.4.0-blue)
 ![Go](https://img.shields.io/badge/Go-1.18+-00ADD8?logo=go&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128+-009688?logo=fastapi&logoColor=white)
@@ -260,6 +260,9 @@ Eino 有向图每个 Agent 节点在进行状态流转时，通过 SSE 实时向
 ├── README.md                       # 本系统产品与核心技术架构全景手册
 ├── 需求文档.md                      # 业务需求与功能规范文档
 ├── 技术决策记录.md                  # 关键技术架构选型决策 (ADR)
+├── scripts
+│   ├── storage_watchdog.sh         # 宿主机外部存储 VirtioFS 挂载断裂秒级自愈守护
+│   └── ollama_watchdog.sh          # 宿主机 Metal 推理引擎死锁与显存自愈守护
 ├── app-server
 │   ├── Dockerfile                  # RAG-Server 统一容器构建配方
 │   ├── start.sh                    # 容器内 PM2 服务一键联启脚本
@@ -279,6 +282,18 @@ Eino 有向图每个 Agent 节点在进行状态流转时，通过 SSE 实时向
 │   ├── frontend                    # React 19 + TypeScript + Vite 前端工程
 │   └── Records                     # 项目滚动开发状态微状态日志目录
 ```
+
+---
+
+## 🛡️ 硬件级高可用自愈与守护体系 (Self-Healing Architecture)
+
+系统深度适配 MacBook Pro / Mac Studio 私有化高负载物理部署场景，针对硬件休眠、显存死锁与挂载失效构建了双层自愈守护网络：
+
+1. **外部存储 VirtioFS 挂载自愈守护 (`scripts/storage_watchdog.sh`)**：
+   - **痛点解决**：针对 macOS 关盖休眠唤醒后 Docker Desktop 挂载点断裂（悬空 inode 导致脱机告警）的痛点，常驻巡检守护。
+   - **智能判定与防抖**：当宿主机存储在线但容器内挂载失效时，自动触发容器热重启，恢复 VirtioFS 挂载通道；内置 60 秒冷却防抖与详细审计日志。
+2. **AI 推理引擎显存守护 (`scripts/ollama_watchdog.sh`)**：
+   - 定期对本地 Ollama 推理引擎执行探活心跳，若捕获到 503 拒绝服务或 Metal 显存死锁，自动清空死锁进程并完成毫秒级无损冷拉起。
 
 ---
 
