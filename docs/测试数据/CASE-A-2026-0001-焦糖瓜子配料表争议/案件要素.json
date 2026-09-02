@@ -1,0 +1,163 @@
+{
+  "case_id": "CASE-A-2026-0001",
+  "case_name": "焦糖瓜子配料表争议",
+  "case_type": "M-CR",
+  "case_type_desc": "混合件 · 投诉+举报",
+  "is_test_data": true,
+  "data_source": "程序生成（gen_evidence.py + gen_audio.py）",
+  "generated_at": "2026-09-01T22:30:00+08:00",
+  "reporter": {
+    "name": "赵明远",
+    "gender": "男",
+    "id_card": "3101151992****1234",
+    "phone": "138****6721",
+    "email": "zhaomingyuan_92@*.com",
+    "address": "上海市浦东新区张江镇***路**弄**号501室",
+    "is_real_name": true,
+    "is_litigation_history": null
+  },
+  "respondent": {
+    "name": "好邻居便利店（张江店）",
+    "uscc": "91310115MA1K****7X",
+    "address": "上海市浦东新区张江镇***路128号1层",
+    "role": "销售者",
+    "is_platform_operator": false,
+    "platform_store_name": null
+  },
+  "manufacturer": {
+    "name": "安徽味之家食品有限公司",
+    "address": "安徽省合肥市肥东县经开区**大道66号",
+    "sc_number": "SC11834011100023"
+  },
+  "purchase": {
+    "datetime": "2026-07-18T19:42:06+08:00",
+    "channel": "线下",
+    "channel_detail": "上海市浦东新区张江镇***路128号1层 好邻居便利店（张江店）",
+    "product_name": "味之家 焦糖味瓜子",
+    "spec": "168g/袋",
+    "qty": 1,
+    "unit_price": 2.50,
+    "total_price": 2.50,
+    "receipt_no": "20260718-0417",
+    "is_expiring_soon": true,
+    "expiring_soon_basis": "小票注明「临期专柜5折」+ 标注「非质量问题恕不退换」"
+  },
+  "allegations": [
+    {
+      "id": "A-1",
+      "code": "L18",
+      "code_desc": "配料表使用俗称/简称不规范",
+      "claim": "配料表标注「香辛料」，GB 2760 中无此食品添加剂通用名称，违反 GB 7718 第 3.4 条与食品安全法第 71 条",
+      "cited_provisions": ["GB 7718-2011 §3.4", "食品安全法 §71"],
+      "expected_outcome": "指控不成立",
+      "expected_outcome_basis": "香辛料（GB/T 12729.1）为食品原料，非食品添加剂，不受 GB 2760 通用名称约束；属事实层面错误"
+    },
+    {
+      "id": "A-2",
+      "code": "L11",
+      "code_desc": "执行标准未标年代号",
+      "claim": "执行标准标注「GB/T22165」未标年代号，现行标准为 GB/T 22165-2022，违反食安法 67(五) 与标准化法 25",
+      "cited_provisions": ["食品安全法 §67(五)", "标准化法 §25"],
+      "expected_outcome": "构成瑕疵",
+      "expected_outcome_basis": "令49号第37条第（一）项「文字、符号、数字不规范」\n; 不影响食品安全、不会误导消费者\n; 食安法125条2款"
+    },
+    {
+      "id": "A-3",
+      "code": "L09",
+      "code_desc": "净含量字符高度不足",
+      "claim": "净含量 168g 字符高度约 2.1mm，低于 GB 7718-2011 第 4.1.5.4 条要求的 3mm",
+      "cited_provisions": ["GB 7718-2011 §4.1.5.4"],
+      "expected_outcome": "构成瑕疵",
+      "expected_outcome_basis": "令49号第37条第（二）项「净含量、规格的标示方式和格式不规范」\n; 实测需现场复核\n; 食安法125条2款"
+    }
+  ],
+  "requests": {
+    "civil": [
+      {"type": "refund", "amount": 2.50, "desc": "退还货款 2.50 元"},
+      {"type": "tenfold_compensation", "amount": 1000, "basis": "食安法 §148 保底", "desc": "1000 元赔偿金（不足 1000 按 1000）"},
+      {"type": "extra_fee", "items": [
+        {"item": "误工费", "amount": 300, "legal_basis": "无"},
+        {"item": "交通费", "amount": 60, "legal_basis": "无"},
+        {"item": "咨询费", "amount": 200, "legal_basis": "无"}
+      ], "desc": "主张法定外费用——超出法定范围，不予支持"}
+    ],
+    "administrative": [
+      {"type": "investigate_punish", "desc": "依法对被举报人从重行政处罚"},
+      {"type": "whistleblower_reward", "desc": "给予实名举报人最高奖励",
+       "expected_outcome": "不予支持", "expected_outcome_basis": "货值小、属瑕疵类，不构成《重大违法举报奖励办法》第2条所称重大违法"}
+    ],
+    "procedural": [
+      {"type": "written_response", "desc": "处理结果书面告知"},
+      {"type": "disclose_staff_info", "desc": "请求公开办案人员姓名、联系方式及全部案件材料",
+       "expected_outcome": "部分支持（仅告知案件承办人 + 救济途径，不公开案件内部材料）",
+       "flag": "S8 疑似触发但属程序性正当请求"}
+    ]
+  },
+  "evidence": [
+    {"id": "E-1", "type": "image", "subtype": "receipt", "filename": "附件1-购物小票.png", "weight": "strong"},
+    {"id": "E-2", "type": "image", "subtype": "product_photo", "filename": "附件2-产品正面照.png", "weight": "strong"},
+    {"id": "E-3", "type": "image", "subtype": "product_label", "filename": "附件3-产品背面标签照.png", "weight": "core"},
+    {"id": "E-4", "type": "image", "subtype": "measurement", "filename": "附件4-净含量字符高度实测.png", "weight": "weak",
+     "note": "单方自行测量，质控提示需现场复核"},
+    {"id": "E-5", "type": "audio", "subtype": "phone_recording", "filename": "录音-20260719-与商家协商.mp3", "weight": "strong",
+     "transcript": "录音文字稿-与商家协商.md"}
+  ],
+  "abuse_signals": {
+    "S1_high_frequency_30d": null,
+    "S2_duplicate": false,
+    "S3_template": true,
+    "S3_basis": "「因生活需要」+ 密集法条引用 + 标准化诉求结构",
+    "S4_max_reward": true,
+    "S5_extra_fees": true,
+    "S6_bulk_purchase": false,
+    "S7_expiring_soon": true,
+    "S8_disclose_staff": true,
+    "S8_note": "程序性正当请求的边界",
+    "S9_red_line": "boundary",
+    "S9_basis": "录音[01:36]-[02:00]施压表述 + 法定额度内索赔 + 真实举报 + 未形成对价关系 → 未达红线",
+    "expected_system_output": "S3/S4/S5/S7/S8 触发，输出明确；S9 输出'边界提示'而非'红线'"
+  },
+  "expected_workflow": {
+    "T-1": {
+      "decision": "受理",
+      "rationale": "要件齐备，第16条7项未触发",
+      "mediation_result": "商家明确不愿赔1000元但愿退2.5元 → 双方未达成协议",
+      "termination_basis": "令121号 §23（三）被投诉人明确拒绝调解",
+      "compensation_outcome": "不支持十倍赔偿（148条但书）；可建议退2.5元 + 适度补偿了结"
+    },
+    "C-1": {
+      "allegation_outcomes": [
+        {"allegation_id": "A-1", "decision": "不成立", "action": "无"},
+        {"allegation_id": "A-2", "decision": "瑕疵", "action": "责令改正（食安法125条2款）"},
+        {"allegation_id": "A-3", "decision": "瑕疵", "action": "责令改正 + 现场复核"}
+      ],
+      "case_filing": "不予立案",
+      "filing_basis": "令2号 §20（一）违法轻微并及时改正无危害后果",
+      "reward": "不予支持"
+    }
+  },
+  "jurisdiction": {
+    "expected_authority": "上海市浦东新区市场监督管理局",
+    "rationale": "销售者在浦东新区，非平台内经营者，按第13条常规管辖"
+  },
+  "expected_documents": [
+    "W-A-01 投诉举报受理登记表",
+    "W-A-02 投诉案件受理决定书（T-1）",
+    "W-A-03 举报案件受理告知书（C-1）",
+    "W-A-04 现场核查记录",
+    "W-A-05 责令改正通知书（核心：列明两项瑕疵）",
+    "W-A-06 不予立案审批表",
+    "W-A-07 不予立案告知书",
+    "W-A-08 投诉终止调解决定书",
+    "W-A-09 投诉举报处理结果答复"
+  ],
+  "test_focus": [
+    "拆件正确性（T-1 + C-1）",
+    "法律认知错误识别（香辛料非添加剂）",
+    "瑕疵逐项审查（指控1不成立 + 指控2/3成立）",
+    "不予立案决策（令2号§20一）",
+    "十倍赔偿拒绝（148条但书）",
+    "S9 边界判定（施压表述 ≠ 红线）",
+    "S 信号综合识别（5项触发）"
+  ]
+}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Save, Download, FileSpreadsheet, Loader2, FileText,
   Bold, Italic, Table as TableIcon, Trash2, Plus, 
-  ChevronDown, ChevronUp, Columns, Layers, Sparkles, Printer
+  ChevronDown, ChevronUp, Columns, Layers, Sparkles, Printer, RotateCcw
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useProjectStore } from '../../store/projectStore';
@@ -160,6 +160,12 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
             if (detailRes.ok) {
               const fullDoc = await detailRes.json();
               if (fullDoc && fullDoc.content) {
+                // 如果历史草稿中包含旧版错误抓取的“总体说明”，自动丢弃并采用最新官方模板
+                if (fullDoc.content.includes("总体说明") || fullDoc.content.includes("文书格式范本，由国家市场监督管理总局制定")) {
+                  console.warn("检测到旧版错位残留草稿，自动丢弃并加载最新官方模板");
+                  editor.commands.setContent(defaultTemplate || '');
+                  return;
+                }
                 editor.commands.setContent(fullDoc.content);
                 return;
               }
@@ -530,6 +536,16 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
     }
   };
 
+  const handleResetTemplate = () => {
+    const cat = categories.find(c => c.name === selectedCategory);
+    const tbl = cat?.tables?.find(t => t.name === selectedTable);
+    if (tbl && editor) {
+      if (window.confirm(`确定要重置当前表单为官方预设模板吗？（未保存的草稿修改将被清空）`)) {
+        editor.commands.setContent(tbl.template || '');
+      }
+    }
+  };
+
   const handleAIFill = async () => {
     if (!editor) return;
     setIsAIFilling(true);
@@ -638,6 +654,14 @@ export default function AITablePanel({ projectId = 'default', canWrite = true }:
           )}
           
           <div className="flex gap-2">
+            <button
+              onClick={handleResetTemplate}
+              disabled={!editor}
+              className="px-3.5 py-1.5 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-stone-700 rounded-lg flex items-center gap-1 font-medium text-xs shadow-sm transition-all"
+              title="重置为官方预设默认模板"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> 重置模板
+            </button>
             <button
               onClick={handleAIFill}
               disabled={isAIFilling || !editor}

@@ -314,7 +314,7 @@ async def _classify_by_llm(
     try:
         async with _gpu_semaphore:
             client = get_client()
-            resp = await client.post(url, json=payload, timeout=15.0)
+            resp = await client.post(url, json=payload, timeout=4.0)
             resp.raise_for_status()
             data = resp.json()
             raw_text = data.get("response", "").strip()

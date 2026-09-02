@@ -623,16 +623,9 @@ async def _stream_ollama_inner(
                 cleaned_images.append(img)
         payload["images"] = cleaned_images
 
-    # WHY: 在旧版 Ollama (如 0.21.0) 中，think: False 无效。
-    #      针对 ChatML 格式的推演模型 (qwen3.6 系列)，
-    #      我们可以通过 raw 模式强行在前缀注入 </think>\n 来打断模型思考，实现秒回文本！
-    if do_raw_bypass and "qwen" in model.lower():
-        raw_prompt = (
-            f"<|im_start|>user\n{prompt}<|im_end|>\n"
-            f"<|im_start|>assistant\n<think>\n</think>\n"
-        )
-        payload["prompt"] = raw_prompt
-        payload["raw"] = True
+    # 保持 Ollama 标准模板解析，仅对真正的 R1/DeepSeek 思考模型进行 think 控制
+    if do_raw_bypass and ("r1" in model.lower() or "reasoner" in model.lower()):
+        payload["think"] = False
 
     # WHY: Ollama 在 GPU 繁忙时偶发 503，但将重试收紧为 1 次，
     #      结合 45s 的 HTTP 超时机制实现快速失败自愈，拒绝后台无端死等。
@@ -648,8 +641,8 @@ async def _stream_ollama_inner(
             think_buffer = ""
             _last_yield_time = _time.time()
             
-            # 默认给 stream 推理较大的超时时间以防 35B 模型在长上下文 prefill 时发生 ReadTimeout
-            actual_timeout = timeout if timeout is not None else httpx.Timeout(300.0, connect=10.0)
+            # 超时收紧至 90s，配合健康自愈避免长时间死等；连接建立保持 10s
+            actual_timeout = timeout if timeout is not None else httpx.Timeout(90.0, connect=10.0)
             async with client.stream("POST", url, json=payload, timeout=actual_timeout) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
@@ -669,16 +662,23 @@ async def _stream_ollama_inner(
                                 think_buffer += token
                                 if "<think>" in think_buffer:
                                     in_think = True
-                                    # 将 <think> 之前的内容提取输出
                                     pre_think = think_buffer.split("<think>")[0]
                                     if pre_think:
                                         _tok_n += len(pre_think)
                                         _last_yield_time = _time.time()
                                         yield pre_think
                                     think_buffer = ""
+                                elif "</think>" in think_buffer:
+                                    # 偶发性闭合标签直接丢弃
+                                    think_buffer = think_buffer.replace("</think>", "")
+                                    if think_buffer:
+                                        _tok_n += len(think_buffer)
+                                        _last_yield_time = _time.time()
+                                        yield think_buffer
+                                        think_buffer = ""
                                 else:
-                                    # 没检测到 <think> 且缓冲区有一定长度时，安全释放前段
-                                    if len(think_buffer) > 10:
+                                    # 只要不包含 <think 前缀，立即流式释放，保证打字机极致流畅
+                                    if "<" not in think_buffer or len(think_buffer) > 8:
                                         _tok_n += len(think_buffer)
                                         _last_yield_time = _time.time()
                                         yield think_buffer

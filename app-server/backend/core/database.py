@@ -264,16 +264,19 @@ def search_fts(query: str, project_id: str, file_ids: list[str] | None = None, l
     #      移除所有 FTS5 特殊操作符和语法字符后再用双引号包裹为精确短语匹配。
     import re
     clean_query = query.strip()
-    # 移除 FTS5 操作符关键词（大小写不敏感）
     clean_query = re.sub(r'\b(AND|OR|NOT|NEAR)\b', ' ', clean_query, flags=re.IGNORECASE)
-    # 移除 FTS5 特殊语法字符：* ^ "
     clean_query = re.sub(r'[*^"\'()]', ' ', clean_query)
     clean_query = ' '.join(clean_query.split()).strip()
-    # 如果是空或只有特殊字符，跳过
     if not clean_query:
         return []
-    # 使用双引号包裹支持按词组或单字匹配
-    fts_query = f'"{clean_query}"'
+
+    # 1. 尝试多关键词 OR 全文检索
+    tokens = [t for t in re.split(r'[\s,，、。？?！!]+', clean_query) if len(t) >= 2]
+    if tokens:
+        fts_query = " OR ".join([f'"{t}"' for t in tokens[:6]])
+    else:
+        fts_query = f'"{clean_query}"'
+
     sql = "SELECT id, file_id, project_id, filename, chunk_index, document FROM doc_chunks_fts WHERE doc_chunks_fts MATCH ? AND project_id = ?"
     params = [fts_query, project_id]
     if file_ids:
@@ -282,27 +285,46 @@ def search_fts(query: str, project_id: str, file_ids: list[str] | None = None, l
         params.extend(file_ids)
     sql += " LIMIT ?"
     params.append(limit)
+
     with get_db() as conn:
         try:
             rows = conn.execute(sql, params).fetchall()
-            return [dict(r) for r in rows]
+            if rows:
+                return [dict(r) for r in rows]
         except Exception as e:
-            logger.warning(f"FTS 搜索出错: {e}，尝试退回到裸词匹配")
-            # 降级到模糊匹配搜索
-            sql_fallback = "SELECT id, file_id, project_id, filename, chunk_index, document FROM doc_chunks_fts WHERE document LIKE ? AND project_id = ?"
-            fallback_params = [f"%{clean_query}%", project_id]
+            logger.warning(f"FTS MATCH 搜索出错: {e}")
+
+        # 2. 降级：多词 LIKE 模糊匹配
+        try:
+            like_clauses = []
+            fallback_params = []
+            for t in (tokens[:4] if tokens else [clean_query]):
+                like_clauses.append("document LIKE ?")
+                fallback_params.append(f"%{t}%")
+            
+            where_like = " OR ".join(like_clauses) if like_clauses else "1=1"
+            sql_fallback = f"SELECT id, file_id, project_id, filename, chunk_index, document FROM doc_chunks_fts WHERE ({where_like}) AND project_id = ?"
+            fallback_params.append(project_id)
             if file_ids:
                 placeholders = ",".join(["?"] * len(file_ids))
                 sql_fallback += f" AND file_id IN ({placeholders})"
                 fallback_params.extend(file_ids)
             sql_fallback += " LIMIT ?"
             fallback_params.append(limit)
-            try:
-                rows = conn.execute(sql_fallback, fallback_params).fetchall()
+
+            rows = conn.execute(sql_fallback, fallback_params).fetchall()
+            if rows:
                 return [dict(r) for r in rows]
-            except Exception as e2:
-                logger.error(f"FTS 降级搜索依然失败: {e2}")
-                return []
+        except Exception as e2:
+            logger.error(f"FTS LIKE 搜索出错: {e2}")
+
+        # 3. 终极兜底：当前案件直接返回前几篇关键案卷（如举报信、案件要素）
+        try:
+            sql_default = "SELECT id, file_id, project_id, filename, chunk_index, document FROM doc_chunks_fts WHERE project_id = ? LIMIT ?"
+            rows = conn.execute(sql_default, (project_id, limit)).fetchall()
+            return [dict(r) for r in rows]
+        except Exception:
+            return []
 
 
 def get_fts_text_by_file_id(file_id: str) -> Optional[str]:

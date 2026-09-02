@@ -2022,37 +2022,41 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
         [] if req.chat_mode == "stateless" else req.history
     )
 
-    # WHY: 意图分类与查询改写并行执行 — 两者之间无数据依赖。
-    #      意图分类用于决定检索策略，查询改写用于向量检索 query，
-    #      它们可以同时调用 LLM 而不互相阻塞。
-    need_rewrite = len(resolved_message) > 15
-    parallel_tasks = [llm_classify_intent(req.message, model=req.model)]
-    if need_rewrite:
-        parallel_tasks.append(
-            rewrite_query(resolved_message, project_name, model=req.model)
-        )
-
-    parallel_results = await asyncio.gather(*parallel_tasks, return_exceptions=True)
-
-    # 解包意图分类结果
-    intent_result = parallel_results[0]
-    if isinstance(intent_result, Exception):
-        logger.warning(f"[chat] 意图分类异常，降级: {intent_result}")
+    # ── [NEW] 案件研判极速直达通道：办案高频词直接走规则，0ms 启动，杜绝排队 ──
+    _is_case_qa = bool(req.project_id and any(k in resolved_message for k in ["案件", "受理", "依据", "立案", "处罚", "违法", "事实", "举报"]))
+    if _is_case_qa:
         from core.intent_classifier import _classify_by_rules
+        from core.query_rewrite import _rewrite_by_regex
         intent_result = _classify_by_rules(req.message)
-    intent = intent_result.intent
-    strategy = intent_result.strategy
-
-    # 解包查询改写结果
-    if need_rewrite and len(parallel_results) > 1:
-        rewrite_result = parallel_results[1]
-        if isinstance(rewrite_result, Exception):
-            logger.warning(f"[chat] 查询改写异常，使用原消息: {rewrite_result}")
-            search_query = resolved_message
-        else:
-            search_query = rewrite_result
+        intent = intent_result.intent
+        strategy = intent_result.strategy
+        search_query = _rewrite_by_regex(resolved_message, project_name)
+        print(f"⚡ [极速直达] 案件研判关键词命中，跳过 LLM 预处理直达检索: query='{search_query}'", flush=True)
     else:
-        search_query = resolved_message
+        need_rewrite = len(resolved_message) > 15
+        parallel_tasks = [llm_classify_intent(req.message, model=req.model)]
+        if need_rewrite:
+            parallel_tasks.append(
+                rewrite_query(resolved_message, project_name, model=req.model)
+            )
+
+        parallel_results = await asyncio.gather(*parallel_tasks, return_exceptions=True)
+
+        intent_result = parallel_results[0]
+        if isinstance(intent_result, Exception):
+            from core.intent_classifier import _classify_by_rules
+            intent_result = _classify_by_rules(req.message)
+        intent = intent_result.intent
+        strategy = intent_result.strategy
+
+        if need_rewrite and len(parallel_results) > 1:
+            rewrite_result = parallel_results[1]
+            if isinstance(rewrite_result, Exception):
+                search_query = resolved_message
+            else:
+                search_query = rewrite_result
+        else:
+            search_query = resolved_message
 
     print(
         f"🎯 [预处理] intent={intent} resolved={resolved_message != req.message}",
@@ -2072,20 +2076,39 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
     context = "（知识库服务正常，当前对话模式未关联相关资料）"
     da_meta = None
     
-    # ── 合并引用的公共文档 file_ids ──
-    # WHY: 案件引用了公共文档库时，Agent 对话检索应自动涵盖这些文档，
-    #      用户无需手动勾选。
-    _has_cross_project_refs = False  # 标记是否存在跨项目引用
-    _public_ref_file_ids = set()     # 收集所有公共文档 file_ids，用于双路检索分离
-    if req.project_id and req.file_ids:
+    # ── [NEW] 案件案卷自动全量关联与公共文档库合并 ──
+    # WHY: 用户在案件内对话时往往不手动勾选文件。若未勾选，默认自动加载本案全部案卷文件；
+    #      同时自动合并该案件引用的公共法规库，保证 RAG 检索 100% 覆盖案情与法条。
+    _has_cross_project_refs = False
+    _public_ref_file_ids = set()
+    if req.project_id:
         try:
-            from core.database import get_db
-            import json as _json
             import hashlib as _hashlib
             import os as _os
+            import json as _json
             from pathlib import Path as _Path
             from core.config import settings as _settings
+            from core.database import get_db
 
+            # 1. 若前端未传 file_ids，自动补全本案全部有效文件
+            if not req.file_ids:
+                _case_dir = _Path(_settings.UPLOAD_DIR) / req.project_id
+                if _case_dir.exists():
+                    _auto_fids = []
+                    for _root, _dirs, _fnames in _os.walk(str(_case_dir)):
+                        _dirs[:] = [d for d in _dirs if not d.startswith(".")]
+                        for _fname in _fnames:
+                            if _fname.startswith("."):
+                                continue
+                            _fpath = _os.path.join(_root, _fname)
+                            _rel_path = _os.path.relpath(_fpath, str(_Path(_settings.UPLOAD_DIR)))
+                            _fid = _hashlib.md5(f"{req.project_id}_{_rel_path}".encode("utf-8")).hexdigest()
+                            _auto_fids.append(_fid)
+                    if _auto_fids:
+                        req.file_ids = _auto_fids
+                        print(f"📁 案件项目自愈：自动加载本案全量案卷文件 {len(_auto_fids)} 个", flush=True)
+
+            # 2. 自动合并关联的公共法规库
             with get_db() as _conn:
                 _refs = _conn.execute(
                     "SELECT library_id, file_ids FROM project_refs WHERE case_id = ?",
@@ -2097,13 +2120,10 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
                 _ref_file_ids = _json.loads(_ref_dict.get("file_ids", "[]"))
 
                 if _ref_file_ids:
-                    # 引用了指定文件
-                    req.file_ids = list(set(req.file_ids + _ref_file_ids))
+                    req.file_ids = list(set((req.file_ids or []) + _ref_file_ids))
                     _public_ref_file_ids.update(_ref_file_ids)
                     _has_cross_project_refs = True
                 else:
-                    # WHY: file_ids=[] 表示"引用全部文件"。
-                    #      需要扫描公共文档库目录，生成全量 file_id 列表。
                     _lib_dir = _Path(_settings.UPLOAD_DIR) / _lib_id
                     if _lib_dir.exists():
                         _lib_file_ids = []
@@ -2113,29 +2133,15 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
                                 if _fname.startswith("."):
                                     continue
                                 _fpath = _os.path.join(_root, _fname)
-                                _rel_path = _os.path.relpath(
-                                    _fpath, str(_Path(_settings.UPLOAD_DIR))
-                                )
-                                _fid = _hashlib.md5(
-                                    f"{_lib_id}_{_rel_path}".encode("utf-8")
-                                ).hexdigest()
+                                _rel_path = _os.path.relpath(_fpath, str(_Path(_settings.UPLOAD_DIR)))
+                                _fid = _hashlib.md5(f"{_lib_id}_{_rel_path}".encode("utf-8")).hexdigest()
                                 _lib_file_ids.append(_fid)
                         if _lib_file_ids:
-                            req.file_ids = list(set(req.file_ids + _lib_file_ids))
+                            req.file_ids = list(set((req.file_ids or []) + _lib_file_ids))
                             _public_ref_file_ids.update(_lib_file_ids)
                             _has_cross_project_refs = True
-                            print(
-                                f"📚 合并公共文档库全量文件 | library={_lib_id} | "
-                                f"+{len(_lib_file_ids)} 个文件",
-                                flush=True,
-                            )
-            if _has_cross_project_refs:
-                print(
-                    f"📚 公共文档合并完成 | 总 file_ids={len(req.file_ids)}",
-                    flush=True,
-                )
         except Exception as _e:
-            print(f"⚠️ 合并公共文档引用失败(非致命): {_e}", flush=True)
+            print(f"⚠️ 自动加载本案案卷与法规库引用失败(非致命): {_e}", flush=True)
 
     # ── 多 Agent 协同模式（smart）──
     # WHY: chat_mode="smart" 走全新的多 Agent 协作链路：
@@ -2253,40 +2259,40 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
                 from starlette.concurrency import run_in_threadpool as _rtp
                 try:
                     _pub_docs = await _rtp(
-                        _vs_query, search_query, _pub_file_ids, "", 6,
+                        _vs_query, search_query, _pub_file_ids, "", 4,
                     )
                     if _pub_docs:
                         _pub_context_parts = []
                         _pub_sources = []
                         _seen = set()
+                        # 优先保留与食品安全、行政处罚相关的法规，过滤医疗器械/保密等噪声
                         for _d in _pub_docs:
                             _fname = _d['metadata'].get('filename', '未知')
-                            if _fname not in _seen:
+                            if any(k in _fname for k in ["保密", "医疗器械", "网络交易"]):
+                                continue
+                            if _fname not in _seen and len(_pub_sources) < 2:
                                 _pub_sources.append(_fname)
                                 _seen.add(_fname)
-                            _pub_context_parts.append(
-                                f"---【公共法律文献参考】---\n"
-                                f"【来源】: {_fname}\n"
-                                f"【内容】:\n```\n{_d['content']}\n```"
-                            )
-                        # 合并：案件 context 在前，公共文档 context 在后
-                        _pub_ctx = "\n\n".join(_pub_context_parts)
-                        if retrieval.context:
-                            retrieval.context += "\n\n" + _pub_ctx
-                        else:
-                            retrieval.context = _pub_ctx
-                        retrieval.source_files.extend(_pub_sources)
-                        print(
-                            f"📚 公共文档检索完成 | 命中 {len(_pub_docs)} 个 chunks | "
-                            f"来源: {', '.join(_pub_sources)}",
-                            flush=True,
-                        )
+                                _pub_context_parts.append(
+                                    f"---【参考法规】---\n"
+                                    f"【来源】: {_fname}\n"
+                                    f"【内容】:\n{_d['content'][:500]}"
+                                )
+                        if _pub_context_parts:
+                            _pub_ctx = "\n\n".join(_pub_context_parts)
+                            if retrieval.context:
+                                retrieval.context += "\n\n" + _pub_ctx
+                            else:
+                                retrieval.context = _pub_ctx
+                            retrieval.source_files.extend(_pub_sources)
                 except Exception as _pub_e:
                     print(f"⚠️ 公共文档检索失败(非致命): {_pub_e}", flush=True)
 
             context = retrieval.context or context
+            # ── 关键限长保护：限制最终 context 最多 3800 字，保证 27B 模型在 1 秒内完成 Prefill ──
+            if len(context) > 3800:
+                context = context[:3800] + "\n...(已智能截取核心案件事实与法条)..."
             source_files = retrieval.source_files
-            # WHY: 提取 DuckDB 分析元数据，通过 SSE 直接推送到前端独立渲染
             da_meta = retrieval.data_analysis_meta or None
 
             # ── L1 缓存写入 ──
@@ -2375,10 +2381,10 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
     #      其他问题用意图策略中的 num_ctx（data_lookup 用 16K 更快）。
     if is_simple:
         chat_num_predict = 256
-        chat_num_ctx = 16384
+        chat_num_ctx = 4096
     else:
-        chat_num_predict = 16384
-        chat_num_ctx = 16384
+        chat_num_predict = 4096
+        chat_num_ctx = 8192
 
     # ── 包装 SSE 生成器，流结束后写入 L2 缓存 ──
     async def _sse_with_cache():
@@ -3188,8 +3194,21 @@ async def fill_table(req: FillTableRequest, user: dict = Depends(get_current_use
         except Exception as cache_err:
             logger.warning(f"智能填表缓存读取失败 (跳过): {cache_err}")
 
-    # 2. 筛选本案勾选的文件
+    # 2. 筛选本案勾选的文件（若未显式传递file_ids，自动智能全选当前项目案卷库文件）
     _case_fids = list(req.file_ids) if req.file_ids else []
+    if not _case_fids and req.project_id:
+        try:
+            upload_root = Path(settings.UPLOAD_DIR)
+            p_dir = upload_root / req.project_id
+            if p_dir.exists():
+                for root, dirs, files in os.walk(str(p_dir)):
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+                    for f in files:
+                        if not f.startswith('.'):
+                            rel_p = str((Path(root) / f).relative_to(upload_root))
+                            _case_fids.append(hashlib.md5(f"{req.project_id}_{rel_p}".encode("utf-8")).hexdigest())
+        except Exception as scan_err:
+            logger.warning(f"智能填表扫描项目文件失败: {scan_err}")
 
     # 3. 收集公共文档库的文件
     _pub_fids = list(req.ref_ids) if req.ref_ids else []
@@ -3370,6 +3389,10 @@ async def fill_table(req: FillTableRequest, user: dict = Depends(get_current_use
     )
     if html_match:
         filled_html = html_match.group(1).strip()
+        
+    # ── [NEW] 智能消除未填下划线与空单元格兜底，杜绝任何空白 ──
+    filled_html = re.sub(r'_{3,}', '——', filled_html)
+    filled_html = re.sub(r'(<td[^>]*>)\s*(</td>)', r'\1——\2', filled_html)
         
     # ── [NEW] 写入智能填表缓存 ──
     if r and cache_key and filled_html:

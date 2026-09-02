@@ -397,3 +397,205 @@ REPORT_RESULT_HTML = """<p style="text-align: right; font-size: 14px; font-famil
   注：1. 本告知书适用于市场监督管理部门依据法律、法规、规章的明确规定，将举报处理结果告知举报人。<br/>
   &nbsp;&nbsp;&nbsp;&nbsp;2. 本告知书可以通过互联网、电话、短信、电子邮件、信函等方式告知。
 </div>"""
+
+# 案件来源登记表高精度精修 HTML 模版
+CASE_SOURCE_REGISTER_HTML = """<p style="text-align: center; font-size: 18px; font-family: SimHei, sans-serif; font-weight: bold; margin-bottom: 4px;">________市场监督管理局</p>
+<h1 style="text-align: center; font-size: 28px; font-family: SimHei, sans-serif; font-weight: bold; letter-spacing: 6px; margin-top: 8px; margin-bottom: 8px;">案件来源登记表</h1>
+<table noborder="true" style="width: 100%; margin-bottom: 6px; font-size: 14px; font-family: SimSun, serif;">
+  <tbody>
+    <tr>
+      <td noborder="true" style="width: 60%; background: transparent; border: none; padding: 0;"></td>
+      <td noborder="true" style="width: 40%; text-align: right; background: transparent; border: none; padding: 0;">登记号：____________________</td>
+    </tr>
+  </tbody>
+</table>
+<table border="1" style="width: 100%; border-collapse: collapse; border: 2px solid #000000; table-layout: fixed; font-size: 14px; font-family: SimSun, serif; text-align: center;">
+  <colgroup>
+    <col style="width: 6%;" />
+    <col style="width: 12%;" />
+    <col style="width: 10%;" />
+    <col style="width: 12%;" />
+    <col style="width: 24%;" />
+    <col style="width: 16%;" />
+    <col style="width: 20%;" />
+  </colgroup>
+  <tbody>
+    <tr style="height: 48px;">
+      <td colspan="2" style="font-weight: bold; border: 1px solid #000000; padding: 6px;">来源分类</td>
+      <td colspan="5" style="border: 1px solid #000000; padding: 6px 12px; text-align: left; line-height: 1.8;">
+        □监督检查&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;□投诉、举报<br/>
+        □其他部门移送&nbsp;&nbsp;&nbsp;&nbsp;□上级交办&nbsp;&nbsp;&nbsp;&nbsp;□其他 ________________
+      </td>
+    </tr>
+    <tr style="height: 40px;">
+      <td colspan="2" style="font-weight: bold; border: 1px solid #000000; padding: 6px; line-height: 1.4;">发现线索/收到材料<br/>时间</td>
+      <td colspan="5" style="border: 1px solid #000000; padding: 6px; text-align: center;">
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;年&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;月&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;日
+      </td>
+    </tr>
+    <tr style="height: 38px;">
+      <td rowspan="10" style="font-weight: bold; border: 1px solid #000000; padding: 8px; writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 4px;">案源提供人</td>
+      <td rowspan="2" style="font-weight: bold; border: 1px solid #000000; padding: 6px;">监督检查人</td>
+      <td colspan="2" style="font-weight: bold; border: 1px solid #000000; padding: 6px;">姓名</td>
+      <td style="border: 1px solid #000000; padding: 6px;"></td>
+      <td style="font-weight: bold; border: 1px solid #000000; padding: 6px;">所属单位</td>
+      <td style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+    <tr style="height: 38px;">
+      <td colspan="2" style="font-weight: bold; border: 1px solid #000000; padding: 6px;">姓名</td>
+      <td style="border: 1px solid #000000; padding: 6px;"></td>
+      <td style="font-weight: bold; border: 1px solid #000000; padding: 6px;">所属单位</td>
+      <td style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+    <tr style="height: 38px;">
+      <td rowspan="5" style="font-weight: bold; border: 1px solid #000000; padding: 6px; line-height: 1.4;">投诉人、<br/>举报人</td>
+      <td rowspan="2" style="font-weight: bold; border: 1px solid #000000; padding: 6px;">单位</td>
+      <td style="font-weight: bold; border: 1px solid #000000; padding: 6px;">名称</td>
+      <td colspan="3" style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+    <tr style="height: 38px;">
+      <td style="font-weight: bold; border: 1px solid #000000; padding: 6px; font-size: 13px;">法定代表人（负责人）</td>
+      <td colspan="3" style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+    <tr style="height: 38px;">
+      <td rowspan="3" style="font-weight: bold; border: 1px solid #000000; padding: 6px;">个人</td>
+      <td style="font-weight: bold; border: 1px solid #000000; padding: 6px;">姓名</td>
+      <td style="border: 1px solid #000000; padding: 6px;"></td>
+      <td style="font-weight: bold; border: 1px solid #000000; padding: 6px;">身份证件号码</td>
+      <td style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+    <tr style="height: 38px;">
+      <td style="font-weight: bold; border: 1px solid #000000; padding: 6px;">联系电话</td>
+      <td style="border: 1px solid #000000; padding: 6px;"></td>
+      <td style="font-weight: bold; border: 1px solid #000000; padding: 6px;">其他联系方式</td>
+      <td style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+    <tr style="height: 38px;">
+      <td style="font-weight: bold; border: 1px solid #000000; padding: 6px;">联系地址</td>
+      <td colspan="3" style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+    <tr style="height: 38px;">
+      <td rowspan="3" style="font-weight: bold; border: 1px solid #000000; padding: 6px; line-height: 1.4;">移送、<br/>交办部门</td>
+      <td colspan="2" style="font-weight: bold; border: 1px solid #000000; padding: 6px;">名称</td>
+      <td colspan="3" style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+    <tr style="height: 38px;">
+      <td colspan="2" style="font-weight: bold; border: 1px solid #000000; padding: 6px;">联系人</td>
+      <td style="border: 1px solid #000000; padding: 6px;"></td>
+      <td style="font-weight: bold; border: 1px solid #000000; padding: 6px;">联系电话</td>
+      <td style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+    <tr style="height: 38px;">
+      <td colspan="2" style="font-weight: bold; border: 1px solid #000000; padding: 6px;">联系地址</td>
+      <td colspan="3" style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+    <tr style="height: 38px;">
+      <td rowspan="3" style="font-weight: bold; border: 1px solid #000000; padding: 8px; writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 4px;">当事人</td>
+      <td colspan="2" style="font-weight: bold; border: 1px solid #000000; padding: 6px;">名称（姓名）</td>
+      <td colspan="4" style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+    <tr style="height: 38px;">
+      <td colspan="2" style="font-weight: bold; border: 1px solid #000000; padding: 6px;">住所（住址）</td>
+      <td colspan="4" style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+    <tr style="height: 38px;">
+      <td colspan="2" style="font-weight: bold; border: 1px solid #000000; padding: 6px;">联系电话</td>
+      <td colspan="4" style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+    <tr style="height: 180px;">
+      <td style="font-weight: bold; border: 1px solid #000000; padding: 8px; writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 4px;">案源内容</td>
+      <td colspan="6" style="border: 1px solid #000000; padding: 12px; vertical-align: bottom; text-align: right;">
+        <div style="font-family: SimSun, serif; font-size: 14px; line-height: 2; padding-right: 24px; padding-bottom: 12px;">
+          登记人：&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br/>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;年&nbsp;&nbsp;&nbsp;&nbsp;月&nbsp;&nbsp;&nbsp;&nbsp;日
+        </div>
+      </td>
+    </tr>
+    <tr style="height: 180px;">
+      <td style="font-weight: bold; border: 1px solid #000000; padding: 8px; writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 4px;">案源处理意见</td>
+      <td colspan="6" style="border: 1px solid #000000; padding: 12px; vertical-align: bottom; text-align: right;">
+        <div style="font-family: SimSun, serif; font-size: 14px; line-height: 2; padding-right: 24px; padding-bottom: 12px;">
+          办案机构负责人：&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br/>
+          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;年&nbsp;&nbsp;&nbsp;&nbsp;月&nbsp;&nbsp;&nbsp;&nbsp;日
+        </div>
+      </td>
+    </tr>
+    <tr style="height: 50px;">
+      <td style="font-weight: bold; border: 1px solid #000000; padding: 8px; writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 4px;">备注</td>
+      <td colspan="6" style="border: 1px solid #000000; padding: 6px;"></td>
+    </tr>
+  </tbody>
+</table>
+"""
+
+# 封条高精度精修 HTML 模版
+SEAL_HTML = """<p style="text-align: center; font-size: 18px; font-family: SimHei, sans-serif; font-weight: bold; margin-bottom: 24px;">________市场监督管理局</p>
+<div style="width: 280px; margin: 40px auto; border: 4px solid #cc0000; padding: 40px 20px; text-align: center; background: #fffdfd;">
+  <h1 style="font-size: 42px; font-family: SimHei, sans-serif; font-weight: bold; color: #cc0000; letter-spacing: 16px; margin: 0 0 36px 0;">封 条</h1>
+  <p style="font-size: 18px; font-family: SimHei, sans-serif; font-weight: bold; color: #cc0000; margin-bottom: 28px;">________市场监督管理局</p>
+  <p style="font-size: 16px; font-family: SimSun, serif; color: #cc0000; margin-bottom: 16px;">________年____月____日&nbsp;&nbsp;封</p>
+  <p style="font-size: 16px; font-family: SimSun, serif; color: #cc0000; margin-top: 16px;">（印章）</p>
+</div>
+<hr style="border: none; border-top: 1px solid #000000; margin-top: 60px; margin-bottom: 12px;" />
+<div style="font-size: 12px; line-height: 1.6; text-align: left; font-family: SimSun, serif; color: #333333;">
+  注：大封条：长75厘米，宽11厘米。小封条：长30厘米，宽7厘米。暂扣、封存物品使用。
+</div>"""
+
+# 卷内文件目录高精度精修 HTML 模版
+DOSSIER_CATALOG_HTML = """<h1 style="text-align: center; font-size: 26px; font-family: SimHei, sans-serif; font-weight: bold; letter-spacing: 4px; margin-bottom: 20px;">卷 内 文 件 目 录</h1>
+<table border="1" style="width: 100%; border-collapse: collapse; border: 2px solid #000000; font-size: 14px; font-family: SimSun, serif; text-align: center;">
+  <colgroup>
+    <col style="width: 8%;" />
+    <col style="width: 25%;" />
+    <col style="width: 35%;" />
+    <col style="width: 12%;" />
+    <col style="width: 8%;" />
+    <col style="width: 12%;" />
+  </colgroup>
+  <thead>
+    <tr style="height: 40px; font-weight: bold;">
+      <td style="border: 1px solid #000000; padding: 6px;">序号</td>
+      <td style="border: 1px solid #000000; padding: 6px;">文号</td>
+      <td style="border: 1px solid #000000; padding: 6px;">文件名称</td>
+      <td style="border: 1px solid #000000; padding: 6px;">日期</td>
+      <td style="border: 1px solid #000000; padding: 6px;">页号</td>
+      <td style="border: 1px solid #000000; padding: 6px;">备注</td>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="height: 38px;"><td style="border: 1px solid #000000; padding: 6px;">1</td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td></tr>
+    <tr style="height: 38px;"><td style="border: 1px solid #000000; padding: 6px;">2</td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td></tr>
+    <tr style="height: 38px;"><td style="border: 1px solid #000000; padding: 6px;">3</td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td></tr>
+    <tr style="height: 38px;"><td style="border: 1px solid #000000; padding: 6px;">4</td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td></tr>
+    <tr style="height: 38px;"><td style="border: 1px solid #000000; padding: 6px;">5</td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td></tr>
+    <tr style="height: 38px;"><td style="border: 1px solid #000000; padding: 6px;">6</td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td></tr>
+    <tr style="height: 38px;"><td style="border: 1px solid #000000; padding: 6px;">7</td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td></tr>
+    <tr style="height: 38px;"><td style="border: 1px solid #000000; padding: 6px;">8</td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td><td style="border: 1px solid #000000; padding: 6px;"></td></tr>
+  </tbody>
+</table>"""
+
+# 卷内备考表高精度精修 HTML 模版
+DOSSIER_NOTE_HTML = """<h1 style="text-align: center; font-size: 26px; font-family: SimHei, sans-serif; font-weight: bold; letter-spacing: 4px; margin-bottom: 24px;">卷 内 备 考 表</h1>
+<table border="1" style="width: 100%; border-collapse: collapse; border: 2px solid #000000; font-size: 14px; font-family: SimSun, serif;">
+  <tbody>
+    <tr style="height: 280px;">
+      <td style="border: 1px solid #000000; padding: 20px; vertical-align: top;">
+        <p style="font-weight: bold; margin-bottom: 12px;">本卷情况说明：</p>
+        <p style="color: #666666; font-size: 13px;">缺损、修改、补充、部分灭失等情况。</p>
+      </td>
+    </tr>
+    <tr style="height: 90px;">
+      <td style="border: 1px solid #000000; padding: 16px; vertical-align: bottom;">
+        <table noborder="true" style="width: 100%; border: none; background: transparent; font-size: 14px;">
+          <tbody>
+            <tr>
+              <td noborder="true" style="border: none; padding: 0;">立卷人：________________</td>
+              <td noborder="true" style="border: none; padding: 0; text-align: center;">检查人：________________</td>
+              <td noborder="true" style="border: none; padding: 0; text-align: right;">立卷时间：________年____月____日</td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  </tbody>
+</table>"""

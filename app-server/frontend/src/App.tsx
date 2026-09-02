@@ -18,6 +18,9 @@ import AdminLayout from './components/Admin/AdminLayout';
 import ProfilePage from './components/Profile/ProfilePage';
 import Linvis from './components/Linvis/Linvis';
 import AITablePanel from './components/AITable/AITablePanel';
+import { IntakeSortingPanel } from './components/Triage/IntakeSortingPanel';
+import { InvestigationPanel } from './components/Judgment/CaseJudgmentPanel';
+import { AdjudicationPanel } from './components/Judgment/AdjudicationPanel';
 import { 
   X, 
   LayoutDashboard, 
@@ -29,14 +32,18 @@ import {
   SunMoon,
   ChevronLeft,
   ChevronRight,
-  Table
+  GitFork,
+  ClipboardCheck,
+  Scale
 } from 'lucide-react';
 import { useThemeStore } from './store/themeStore';
 import { APP_VERSION, APP_NAME } from './version';
 
 const TAB_ITEMS = [
   { id: '智能助手', label: '智能助手', icon: Sparkles },
-  { id: 'AI表格', label: 'AI表格', icon: Table },
+  { id: '分拣填报', label: '分拣填报', icon: GitFork },
+  { id: '调查取证', label: '调查取证', icon: ClipboardCheck },
+  { id: '研判裁量', label: '研判裁量', icon: Scale },
   { id: '定制文档', label: '定制文档', icon: Wand2 }
 ] as const;
 
@@ -811,6 +818,18 @@ function StudioLayout() {
           <div className="flex-1 overflow-hidden transition-opacity duration-300 relative">
             <div className="h-full" style={{ display: activeTab === '定制文档' ? 'block' : 'none' }}>
               <DocumentStudio canWrite={canWrite} projectName={projectName} />
+            </div>
+
+            <div className="h-full" style={{ display: activeTab === '分拣填报' ? 'block' : 'none' }}>
+              <IntakeSortingPanel projectId={projectId} canWrite={canWrite} />
+            </div>
+
+            <div className="h-full" style={{ display: activeTab === '调查取证' ? 'block' : 'none' }}>
+              <InvestigationPanel projectId={projectId} canWrite={canWrite} />
+            </div>
+
+            <div className="h-full" style={{ display: activeTab === '研判裁量' ? 'block' : 'none' }}>
+              <AdjudicationPanel projectId={projectId} canWrite={canWrite} />
             </div>
 
             <div className="h-full" style={{ display: activeTab === 'AI表格' ? 'block' : 'none' }}>

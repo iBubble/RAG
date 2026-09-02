@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from core.config import settings
+from starlette.concurrency import run_in_threadpool
 
 logger = logging.getLogger(__name__)
 

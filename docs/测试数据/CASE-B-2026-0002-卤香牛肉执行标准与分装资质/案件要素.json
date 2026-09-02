@@ -1,0 +1,195 @@
+{
+  "case_id": "CASE-B-2026-0002",
+  "case_name": "卤香牛肉执行标准与分装资质",
+  "case_type": "M-CRP",
+  "case_type_desc": "混合件 · 投诉+举报+程序",
+  "is_test_data": true,
+  "data_source": "程序生成（gen_evidence.py + gen_audio.py）",
+  "generated_at": "2026-09-01T22:30:00+08:00",
+  "reporter": {
+    "name": "林素芬",
+    "gender": "女",
+    "id_card": null,
+    "phone": "159****3082",
+    "email": "lsf_1979@*.com",
+    "address": "福建省厦门市思明区***路**号***室",
+    "is_real_name": true,
+    "is_litigation_history": null,
+    "confidentiality_requested": true,
+    "confidentiality_basis": "令121号 §36 举报人保密；调解必需信息除外"
+  },
+  "respondent": {
+    "name": "光泽县寨里镇优鲜百货商行",
+    "uscc": "92350723MA30****1F",
+    "registered_address": "福建省南平市光泽县寨里镇**路12号",
+    "actual_business_address": "无（举报人主张；需核查）",
+    "role": "销售者",
+    "is_platform_operator": true,
+    "platform_store_name": "闽北山货直供（微信视频号店铺）",
+    "platform_displayed_address": "福建省南平市光泽县寨里镇**村**组"
+  },
+  "manufacturer": {
+    "name": "南平市延平区锦鸣食品有限公司",
+    "address": "福建省南平市延平区**工业路8号",
+    "sc_number": "SC10935070200158",
+    "is_relabeler": true,
+    "is_license_complete": "待核（举报人主张无肉制品分装类别）"
+  },
+  "purchase": {
+    "datetime": "2026-08-06T15:22:41+08:00",
+    "channel": "线上",
+    "channel_detail": "微信视频号店铺「闽北山货直供」",
+    "product_name": "闽北人家 五香卤香牛肉",
+    "spec": "200g/袋",
+    "qty": 1,
+    "unit_price": 19.80,
+    "total_price": 19.80,
+    "order_no": "20260806-8823471",
+    "tracking_no": "SF109348**7721",
+    "signed_at": "2026-08-08T11:05:00+08:00"
+  },
+  "allegations": [
+    {
+      "id": "B-1",
+      "code": "L11",
+      "code_desc": "执行标准错误使用",
+      "claim": "执行标准标注 GB 7098-2015《罐头食品》，但产品为普通袋装熟肉制品，与罐头食品毫不相干，违反食安法 67(五) 与标准化法 25",
+      "cited_provisions": ["食品安全法 §67(五)", "标准化法 §25"],
+      "expected_outcome": "构成瑕疵",
+      "expected_outcome_basis": "令49号第37条第（一）项；食安法125条2款"
+    },
+    {
+      "id": "B-2",
+      "code": "CUSTOM-LIC-01",
+      "code_desc": "涉嫌未取得分装资质 / 无证生产",
+      "claim": "产品为小包装分装，生产商许可明细中无肉制品分装类别，涉嫌食安法 35 条未经许可从事食品生产经营",
+      "cited_provisions": ["食品安全法 §35", "食品安全法 §122"],
+      "expected_outcome": "需实质核查（A3 禁止自动化）",
+      "expected_outcome_basis": "必须现场核查生产许可明细、实际生产工艺、进货记录；智能体不得自动定性"
+    }
+  ],
+  "new_clues_from_evidence": [
+    {
+      "id": "NC-1",
+      "source": "举报人自述 + 平台公示信息",
+      "content": "销售者在光泽县可能无实际经营场所（注册地址与平台公示地址不一致）",
+      "action": "转核查轨增项",
+      "additional_action": "建议向市场主体登记管理部门核查（撤销登记线索）"
+    },
+    {
+      "id": "NC-2",
+      "source": "证据 3 背面标签",
+      "content": "经销商栏标注「光泽县寨里镇优鲜百货商行」——与平台店铺主体一致",
+      "action": "确认销售者身份无误"
+    }
+  ],
+  "requests": {
+    "civil": [
+      {"type": "refund", "amount": 19.80, "desc": "退还货款 19.80 元"},
+      {"type": "tenfold_compensation", "amount": 1000, "basis": "食安法 §148 保底", "desc": "1000 元赔偿金（不足 1000 按 1000）",
+       "expected_outcome": "不支持（属瑕疵类）"}
+    ],
+    "administrative": [
+      {"type": "investigate_punish", "scope": ["执行标准错误", "涉嫌无证分装"],
+       "desc": "对两个违法行为分别调查、分别处理",
+       "expected_outcome": "C-1 责令改正+不予立案；C-2 现场核查后决定"}
+    ],
+    "procedural": [
+      {"type": "written_response", "desc": "书面告知是否受理、立案决定、处理结果"},
+      {"type": "disclose_mediator", "desc": "告知调解员姓名与联系方式",
+       "expected_outcome": "支持（程序性正当请求）"},
+      {"type": "disclose_case_id", "desc": "告知案件承办编号"},
+      {"type": "confidentiality", "desc": "保密本人信息",
+       "basis": "令121号 §36",
+       "expected_outcome": "支持；调解必需信息（消费者身份）除外"}
+    ]
+  },
+  "evidence": [
+    {"id": "E-1", "type": "image", "subtype": "order_screenshot", "filename": "附件1-订单详情截图.png", "weight": "strong"},
+    {"id": "E-2", "type": "image", "subtype": "product_photo", "filename": "附件2-产品正面照.png", "weight": "strong"},
+    {"id": "E-3", "type": "image", "subtype": "product_label", "filename": "附件3-产品背面标签照.png", "weight": "core",
+     "extracted_info": "经销商：光泽县寨里镇优鲜百货商行（从标签背面『经销商』栏抽取）"},
+    {"id": "E-4", "type": "image", "subtype": "actual_product", "filename": "附件4-拆封后实物照.png", "weight": "strong",
+     "purpose": "证明产品实为袋装非罐头"},
+    {"id": "E-5", "type": "image", "subtype": "chat_screenshot", "filename": "附件5-与店铺客服沟通截图.png", "weight": "strong",
+     "extracted_info": "商家回复『产品没问题』『代卖』『不支持退货』"},
+    {"id": "E-6", "type": "audio", "subtype": "12315_recording", "filename": "录音-20260809-12315热线来电.mp3", "weight": "strong",
+     "transcript": "录音文字稿-12315热线来电.md",
+     "platform_case_id": "12315-20260809-7732",
+     "extracted_info": "管辖规则告知、举报人异议、新线索（无实际经营场所）"},
+    {"id": "E-7", "type": "image", "subtype": "platform_disclosure", "filename": "附件7-平台公示信息截图.png", "weight": "core",
+     "extracted_info": "平台公示地址：光泽县寨里镇**村**组（令121号§13管辖依据）"}
+  ],
+  "abuse_signals": {
+    "S1_high_frequency_30d": null,
+    "S2_duplicate": false,
+    "S3_template": false,
+    "S3_basis": "表达具体、针对性强，非通用模板",
+    "S4_max_reward": false,
+    "S5_extra_fees": false,
+    "S6_bulk_purchase": false,
+    "S7_expiring_soon": false,
+    "S8_disclose_staff": "partial",
+    "S8_note": "请求告知调解员姓名属程序性正当请求（令121号§21/§23/§24要求告知），不构成滥用",
+    "S9_red_line": false,
+    "expected_system_output": "S1-S9 全部未触发；输出『未触发任何 S 信号，属正常维权』的明确结论"
+  },
+  "expected_workflow": {
+    "T-1": {
+      "decision": "受理",
+      "rationale": "要件齐备",
+      "mediation_procedure": "发出调解通知（首负责任制告知）",
+      "termination_basis": "令121号 §23（三）商家在通知后明确拒绝赔偿",
+      "compensation_outcome": "不支持十倍赔偿（148条但书）；告知民事救济路径"
+    },
+    "C-1": {
+      "allegation_id": "B-1",
+      "decision": "瑕疵",
+      "action": "责令改正（食安法125条2款）",
+      "case_filing": "不予立案",
+      "filing_basis": "令2号 §20（一）"
+    },
+    "C-2": {
+      "allegation_id": "B-2",
+      "decision": "A3 - 现场核查清单",
+      "checklist": [
+        "调取 SC10935070200158 许可明细",
+        "核查实际生产工艺是否为分装",
+        "调取生产记录、进货记录、销售记录",
+        "询问当事人",
+        "必要时委托检验机构对样品检验"
+      ],
+      "automation_rule": "智能体不得自动定性为『立案』或『不立案』；仅输出核查清单"
+    }
+  },
+  "jurisdiction": {
+    "expected_authority": "光泽县市场监督管理局",
+    "new_rule_basis": "令121号 §13 平台内经营者按平台公示地址管辖",
+    "old_rule_basis": "（已废止）旧《暂行办法》§12 实际经营地管辖",
+    "reporter_path": "举报人选择向南平市局提交履职申请 → 7 工作日内决定受理/移送/不予受理 → 移送光泽县局",
+    "deadline_basis": "令121号 §24 7 个工作日",
+    "key_test": "智能体必须体现令121号第13条『平台公示地址』，不得回退到旧规『实际经营地』"
+  },
+  "expected_documents": [
+    "W-B-01 投诉举报受理登记表",
+    "W-B-02 投诉案件受理决定书（T-1）",
+    "W-B-03 投诉举报转办/移送函（→ 光泽县局）",
+    "W-B-04 现场核查记录（C-1 + C-2）",
+    "W-B-05 责令改正通知书（C-1，标签瑕疵）",
+    "W-B-06 不予立案审批表（C-1）",
+    "W-B-07 不予立案告知书（C-1）",
+    "W-B-08 立案决定书（C-2）—— 或在 C-2 核查后另行决定",
+    "W-B-09 投诉终止调解决定书（T-1）",
+    "W-B-10 举报人保密告知书",
+    "W-B-11 投诉举报处理结果答复"
+  ],
+  "test_focus": [
+    "拆件正确性（T-1 + C-1 + C-2 三件，跨法律关系）",
+    "新规识别（令121号§13平台公示地址管辖）",
+    "A3 禁自动化（C-2 不得自动定性）",
+    "首负责任制告知（商家『代卖』抗辩不成立）",
+    "举报人保密（§36，调解必需信息除外）",
+    "新线索分流（无实际经营场所 → 增项转核查轨）",
+    "S 信号全部未触发的明确输出"
+  ]
+}

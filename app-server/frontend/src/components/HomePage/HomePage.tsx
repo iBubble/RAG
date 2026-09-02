@@ -400,8 +400,8 @@ export default function HomePage() {
       <div className="min-h-screen bg-[#F0EDE8] dark:bg-canvas-bg text-gray-800 dark:text-text-main font-sans">
         {/* Top Navigation */}
         <nav className="flex items-center justify-between px-6 py-4 bg-white/80 dark:bg-panel-bg/80 backdrop-blur-sm border-b border-[#E0DCD5] dark:border-border-soft sticky top-0 z-30">
-          <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="Logo" className="h-16 w-auto object-contain" />
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
+            <img src="/logo.png" alt="Logo" className="h-10 w-auto object-contain drop-shadow-sm" />
             <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-text-main">{systemName}</span>
           </div>
           

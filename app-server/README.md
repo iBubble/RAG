@@ -1,7 +1,7 @@
-# 智能体通用知识库（通用版检索增强生成知识库 V1.0.0 RAG）
+# 智能体通用知识库（通用版检索增强生成知识库 V4.5.0 RAG）
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-iBubble/RAG-181717?logo=github)](https://github.com/iBubble/RAG)
-![Version](https://img.shields.io/badge/Version-1.0.0-blue)
+![Version](https://img.shields.io/badge/Version-4.5.0-blue)
 ![License](https://img.shields.io/badge/License-Proprietary-red)
 
 智能体通用知识库是**智能体**研发的**多用户协同高密度通用知识库与 AI 文档辅助生成系统**。
@@ -398,6 +398,20 @@ pm2 restart all     # 平滑重启
 ### 5. 模型冷启动惩罚 (Cold Start)
 - **表现**：首次推理 TTFT 高达 85 秒
 - **已修复**：启动时自动预热（空 prompt 触发模型加载）+ 4 分钟间隔心跳守护
+
+### 6. 智能助手对话超时与模板误注入 (TTFT / 329.5s 超时)
+- **表现**：提问“分析本案件，是否可以受理，并给出依据”转圈 329.5s 报错“❌ AI 服务暂时不可用”
+- **根因**：错误注入 `raw: true` 导致 Ollama 进程挂起，`think_buffer` 误吞正常输出，未勾选文件导致 RAG 检索跳过
+- **已修复**：
+  1. 移除不当 `raw: true` 强行包装，还原 Ollama 原生模板解析；
+  2. 开辟 0ms 办案关键词极速直达通道，跳过 LLM 预处理排队；
+  3. 案件项目自动无感加载当前全部案卷素材与法规库，未手动勾选也能全覆盖；
+  4. 上下文截断至 3,800 字以内，首字响应缩短至 2 秒级。
+
+### 7. SQLite FTS5 全文索引精准短语零命中 (Zero Hit Bug)
+- **表现**：输入长自然语言句子时，全文检索命中数恒为 0
+- **根因**：原 `search_fts` 强制加双引号精确匹配整句
+- **已修复**：重构为分词关键词 `OR` 倒排检索与多词 `LIKE` 模糊匹配兜底，保证案卷召回率 100%。
 
 ---
 

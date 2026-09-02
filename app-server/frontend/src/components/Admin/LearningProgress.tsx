@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../../store/authStore';
-import { Loader2, Database, AlertCircle, Network, BrainCircuit, Cpu, Activity, AlertTriangle, X, Copy, Eye, Square, Trash2, Play, Pause, Clock } from 'lucide-react';
-import { GraphVisualizer } from './GraphVisualizer';
+import { Loader2, Database, AlertCircle, Network, Cpu, Activity, AlertTriangle, X, Copy, Play, Pause, Clock, Sparkles, Scale } from 'lucide-react';
 import LogoSpinner from '../LogoSpinner';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
@@ -52,6 +51,15 @@ interface ProjectProgress {
   graph_rag: StageProgress;
   community_summary: StageProgress;
   precompute: Record<string, StageProgress>;
+  auto_judgment?: {
+    triage: { total: number; completed: number; percent: number };
+    investigation: { total: number; completed: number; percent: number };
+    adjudication: { total: number; completed: number; percent: number };
+    total: number;
+    completed: number;
+    percent: number;
+    status: string;
+  };
 }
 
 export default function LearningProgress() {
@@ -65,8 +73,8 @@ export default function LearningProgress() {
   const [loadingFailedFiles, setLoadingFailedFiles] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedProjectName, setSelectedProjectName] = useState<string | null>(null);
-  const [activeGraphProject, setActiveGraphProject] = useState<string | null>(null);
   const [isRetryingAll, setIsRetryingAll] = useState(false);
+  const [learningProjectId, setLearningProjectId] = useState<string | null>(null);
 
   const sortedProjects = useMemo(() => {
     return [...projects].sort((a, b) => {
@@ -90,6 +98,7 @@ export default function LearningProgress() {
     let totalGraphFiles = 0, completedGraphFiles = 0;
     let totalSummaryFiles = 0, completedSummaryFiles = 0;
     let totalPrecomputeTasks = 0, completedPrecomputeTasks = 0;
+    let totalAutoJudgmentForms = 0, completedAutoJudgmentForms = 0;
 
     projects.forEach((p) => {
       totalVectorFiles += p.vectorization.total || 0;
@@ -100,6 +109,11 @@ export default function LearningProgress() {
 
       totalSummaryFiles += p.community_summary.total || 0;
       completedSummaryFiles += p.community_summary.completed || 0;
+
+      if (p.auto_judgment) {
+        totalAutoJudgmentForms += p.auto_judgment.total || 0;
+        completedAutoJudgmentForms += p.auto_judgment.completed || 0;
+      }
 
       if (p.precompute) {
         Object.values(p.precompute).forEach((s) => {
@@ -112,19 +126,42 @@ export default function LearningProgress() {
     const vectorPercent = totalVectorFiles > 0 ? (completedVectorFiles / totalVectorFiles) * 100 : 0;
     const graphPercent = totalGraphFiles > 0 ? (completedGraphFiles / totalGraphFiles) * 100 : 0;
     const summaryPercent = totalSummaryFiles > 0 ? (completedSummaryFiles / totalSummaryFiles) * 100 : 0;
+    const autoJudgmentPercent = totalAutoJudgmentForms > 0 ? (completedAutoJudgmentForms / totalAutoJudgmentForms) * 100 : 100;
     const precomputePercent = totalPrecomputeTasks > 0 ? (completedPrecomputeTasks / totalPrecomputeTasks) * 100 : 0;
 
-    const overallPercent = (vectorPercent + graphPercent + summaryPercent + precomputePercent) / 4;
+    const overallPercent = (vectorPercent + graphPercent + summaryPercent + autoJudgmentPercent) / 4;
 
     return {
       totalProjects,
       vector: { completed: completedVectorFiles, total: totalVectorFiles, percent: vectorPercent },
       graph: { completed: completedGraphFiles, total: totalGraphFiles, percent: graphPercent },
       summary: { completed: completedSummaryFiles, total: totalSummaryFiles, percent: summaryPercent },
+      auto_judgment: { completed: completedAutoJudgmentForms, total: totalAutoJudgmentForms, percent: autoJudgmentPercent },
       precompute: { completed: completedPrecomputeTasks, total: totalPrecomputeTasks, percent: precomputePercent },
       overallPercent
     };
   }, [projects]);
+
+  const handleAutoJudgmentLearn = async (projectId: string, projectName: string) => {
+    setLearningProjectId(projectId);
+    try {
+      const res = await fetch(`${API_BASE}/api/projects/${projectId}/auto-judgment-learn`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders() }
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchProgress();
+        alert(`🎉 [${projectName}] 自动研判学习完成！已完成分拣填报、调查取证及研判裁量全量法定公文推荐与深度填报。`);
+      } else {
+        alert(`❌ 研判学习失败: ${data.error || '未知错误'}`);
+      }
+    } catch (e: any) {
+      alert(`❌ 请求异常: ${e.message}`);
+    } finally {
+      setLearningProjectId(null);
+    }
+  };
 
 
 
@@ -316,51 +353,6 @@ export default function LearningProgress() {
     return () => clearInterval(timer);
   }, []);
 
-  // WHY: 停止指定项目所有模式的预计算任务
-  const handleStopPrecompute = async (projectId: string, projectName: string) => {
-    if (!confirm(`确定停止「${projectName}」的所有预计算任务？\n正在运行的章节会被中断。`)) return;
-    const modes = ['generate', 'replace', 'clone'];
-    let stoppedCount = 0;
-    for (const mode of modes) {
-      try {
-        const res = await fetch(`${API_BASE}/api/exemplar/project/${projectId}/precompute/stop`, {
-          method: 'POST',
-          headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode }),
-        });
-        if (res.ok) stoppedCount++;
-      } catch (e) {}
-    }
-    if (stoppedCount > 0) fetchProgress();
-  };
-
-  // WHY: 清除指定项目所有模式的预计算缓存
-  const handleClearPrecompute = async (projectId: string, projectName: string) => {
-    if (!confirm(`确定清除「${projectName}」的全部预计算缓存？\n已生成的所有章节草稿将被删除，需要重新触发预计算。`)) return;
-    try {
-      // 先停止运行中的任务
-      const modes = ['generate', 'replace', 'clone'];
-      for (const mode of modes) {
-        await fetch(`${API_BASE}/api/exemplar/project/${projectId}/precompute/stop`, {
-          method: 'POST',
-          headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode }),
-        }).catch(() => {});
-      }
-      // 再清除缓存
-      const res = await fetch(`${API_BASE}/api/exemplar/project/${projectId}/draft_cache`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-      });
-      if (res.ok) {
-        fetchProgress();
-      } else {
-        alert('清除缓存失败');
-      }
-    } catch (e) {
-      alert('请求异常，请检查网络');
-    }
-  };
 
   if (loading && projects.length === 0) {
     return <LogoSpinner size={72} overlay={false} />;
@@ -568,18 +560,18 @@ export default function LearningProgress() {
               <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-gray-150 rounded-lg">
-                      <BrainCircuit className="w-4 h-4 text-gray-700" />
+                    <div className="p-1.5 bg-purple-50 rounded-lg">
+                      <Sparkles className="w-4 h-4 text-purple-600" />
                     </div>
-                    <span className="font-bold text-gray-700 text-xs">4. 一体化智能预研习</span>
+                    <span className="font-bold text-gray-700 text-xs">4. 自动研判学习</span>
                   </div>
-                  <span className="text-xs text-gray-400 font-semibold">{summaryData.precompute.completed} / {summaryData.precompute.total} 项</span>
+                  <span className="text-xs text-purple-600 font-semibold">{summaryData.auto_judgment.completed} / {summaryData.auto_judgment.total} 份表单</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
-                    <div className="bg-gray-600 h-full rounded-full transition-all duration-700" style={{ width: `${summaryData.precompute.percent}%` }}></div>
+                    <div className="bg-purple-600 h-full rounded-full transition-all duration-700" style={{ width: `${summaryData.auto_judgment.percent}%` }}></div>
                   </div>
-                  <span className="text-xs font-bold text-gray-700 w-12 text-right">{summaryData.precompute.percent.toFixed(2)}%</span>
+                  <span className="text-xs font-bold text-purple-600 w-12 text-right">{summaryData.auto_judgment.percent.toFixed(2)}%</span>
                 </div>
               </div>
             </div>
@@ -800,85 +792,95 @@ export default function LearningProgress() {
                   <div className="mt-1.5 text-right text-xs font-bold text-gray-400">{p.community_summary.percent.toFixed(2)}%</div>
                 </div>
 
-                {/* 4. 智能学习预计算（三模式） */}
+                {/* 4. 自动研判学习（为本项目自动完成分拣填报、调查取证与研判裁量表单推荐及填报） */}
                 <div className="flex flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <BrainCircuit className="w-4 h-4 text-purple-500" />
-                      <span className="font-semibold text-gray-700 text-sm">4. 一体化智能预研习</span>
+                      <Sparkles className="w-4 h-4 text-purple-600" />
+                      <span className="font-semibold text-gray-700 text-sm">4. 自动研判学习</span>
                     </div>
-                    <div className="flex items-center gap-1">
-                      {/* 停止按钮：任一模式 running 时显示 */}
-                      {Object.values(p.precompute || {}).some((s: any) => s.status === 'running') && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleStopPrecompute(p.id, p.name); }}
-                          title="停止所有预计算任务"
-                          className="p-1 text-orange-500 hover:text-orange-700 hover:bg-orange-50 rounded transition-colors"
-                        >
-                          <Square className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      {/* 清除按钮：任一模式有已完成的缓存时显示 */}
-                      {Object.values(p.precompute || {}).some((s: any) => s.completed > 0) && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleClearPrecompute(p.id, p.name); }}
-                          title="清除全部预计算缓存"
-                          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    {(['generate', 'replace', 'clone'] as const).map((mode) => {
-                      const s = (p.precompute as Record<string, StageProgress>)?.[mode];
-                      if (!s) return null;
-                      const modeLabel: Record<string, string> = { generate: '全文生成', replace: '智能替换', clone: '精确复刻' };
-                      const modeColor: Record<string, string> = { generate: 'purple', replace: 'teal', clone: 'amber' };
-                      const c = modeColor[mode] || 'gray';
-                      return (
-                        <div key={mode}>
-                          <div className="flex justify-between text-[10px] text-gray-500 mb-0.5">
-                            <span className="truncate">
-                              {s.current_task?.section_title ? (
-                                <span className={`flex items-center text-${c}-600 font-medium`}>
-                                  <Loader2 className="w-2.5 h-2.5 mr-1 animate-spin shrink-0" />
-                                  <span className="truncate">{modeLabel[mode]}: {s.current_task.section_title}</span>
-                                </span>
-                              ) : (
-                                <span>{modeLabel[mode]}: {s.status === 'running' ? 'GPU计算中' : s.percent >= 100 && s.completed > 0 ? '✅完成' : s.total === 0 ? '未配置' : '待触发'}</span>
-                              )}
-                            </span>
-                            <span className="font-medium text-gray-600 whitespace-nowrap shrink-0">{s.completed}/{s.total}</span>
-                          </div>
-                          <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden relative">
-                            <div className={`h-full transition-all duration-500 bg-${c}-400`} style={{ width: `${s.percent}%` }}>
-                              {s.status === 'running' && <div className="absolute inset-0 bg-white/20 animate-pulse"></div>}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-1.5 flex justify-between items-center text-xs font-bold text-gray-400">
-                    <button 
-                      onClick={() => setActiveGraphProject(activeGraphProject === p.id ? null : p.id)}
-                      className="text-cyan-600 hover:text-cyan-700 font-medium flex items-center gap-1 bg-cyan-50 px-2 py-0.5 rounded transition-colors border border-cyan-100"
+                    <button
+                      onClick={() => handleAutoJudgmentLearn(p.id, p.name)}
+                      disabled={learningProjectId === p.id}
+                      className="flex items-center gap-1 px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded text-[11px] font-medium border border-purple-200 transition-colors disabled:opacity-50 shrink-0"
+                      title="为本项目自动完成分拣填报、调查取证与研判裁量3个Tab的表单推荐及表单填报"
                     >
-                      <Eye className="w-3.5 h-3.5" />
-                      {activeGraphProject === p.id ? '收起图谱可视化' : '预览知识图谱星空图'}
+                      {learningProjectId === p.id ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin text-purple-600" />
+                          <span>研判中...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3 h-3 text-purple-600" />
+                          <span>自动研判学习</span>
+                        </>
+                      )}
                     </button>
+                  </div>
+
+                  {/* 3个Tab推荐与填报进度 */}
+                  <div className="space-y-1.5">
+                    {/* 分拣填报 */}
+                    <div>
+                      <div className="flex justify-between text-[10px] text-gray-500 mb-0.5">
+                        <span className="font-medium text-indigo-700">分拣填报</span>
+                        <span className="font-semibold text-gray-700">
+                          {p.auto_judgment?.triage.completed || 0}/{p.auto_judgment?.triage.total || 0}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="h-full transition-all duration-500 bg-indigo-500"
+                          style={{ width: `${p.auto_judgment?.triage.percent ?? 100}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* 调查取证 */}
+                    <div>
+                      <div className="flex justify-between text-[10px] text-gray-500 mb-0.5">
+                        <span className="font-medium text-blue-700">调查取证</span>
+                        <span className="font-semibold text-gray-700">
+                          {p.auto_judgment?.investigation.completed || 0}/{p.auto_judgment?.investigation.total || 0}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="h-full transition-all duration-500 bg-blue-500"
+                          style={{ width: `${p.auto_judgment?.investigation.percent ?? 100}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* 研判裁量 */}
+                    <div>
+                      <div className="flex justify-between text-[10px] text-gray-500 mb-0.5">
+                        <span className="font-medium text-emerald-700">研判裁量</span>
+                        <span className="font-semibold text-gray-700">
+                          {p.auto_judgment?.adjudication.completed || 0}/{p.auto_judgment?.adjudication.total || 0}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="h-full transition-all duration-500 bg-emerald-500"
+                          style={{ width: `${p.auto_judgment?.adjudication.percent ?? 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-1.5 flex justify-between items-center text-[11px] font-bold text-gray-500">
+                    <span className="text-purple-600 font-medium flex items-center gap-1">
+                      <Scale className="w-3.5 h-3.5" />
+                      已完成全量公文研判填报
+                    </span>
+                    <span className="text-purple-700 font-bold">
+                      {p.auto_judgment?.percent ?? 100}%
+                    </span>
                   </div>
                 </div>
               </div>
-              
-              {/* 图谱可视化展示区 */}
-              {activeGraphProject === p.id && (
-                <div className="mt-6 pt-6 border-t border-gray-100 animate-in fade-in slide-in-from-top-4 duration-300">
-                  <GraphVisualizer projectId={p.id} />
-                </div>
-              )}
             </div>
           ))}
         </div>

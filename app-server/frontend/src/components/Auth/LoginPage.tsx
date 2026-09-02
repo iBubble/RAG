@@ -49,7 +49,7 @@ export default function LoginPage() {
         {/* 品牌标识 */}
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center mb-3">
-            <img src="/logo.png" alt="Logo" className="w-[210px] h-auto transition-transform hover:scale-[1.02] duration-300" />
+            <img src="/logo.png" alt="Logo" className="h-24 w-auto object-contain transition-transform hover:scale-[1.05] duration-300 drop-shadow-md" />
           </div>
           <h1 className="text-xl font-bold text-gray-800 tracking-tight">{systemName}</h1>
           <p className="text-[11px] text-[#8B7355] font-semibold tracking-wider mt-1 uppercase">RAG 智能文档辅助系统</p>
