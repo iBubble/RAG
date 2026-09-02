@@ -1949,15 +1949,8 @@ async def trigger_auto_judgment_learn(
     global _LEARNING_PROGRESS_CACHE
     _LEARNING_PROGRESS_CACHE = None
     try:
-        from scripts.inspect_and_fill_all_forms import fill_beef_complete_deep, fill_guazi_complete_deep
-        if "beef" in project_id:
-            fill_beef_complete_deep()
-        elif "guazi" in project_id:
-            fill_guazi_complete_deep()
-        else:
-            # 通用项目调用全量填充
-            fill_guazi_complete_deep()
-            fill_beef_complete_deep()
+        from scripts.inspect_and_fill_all_forms import auto_fill_project
+        auto_fill_project(project_id)
         
         return {
             "success": True,

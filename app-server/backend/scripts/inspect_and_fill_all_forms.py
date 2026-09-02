@@ -297,8 +297,50 @@ def fill_beef():
              .replace("年  月  日", "2026年09月01日")
     clean_and_save(p_id, "53.结案审批表", t16)
 
-if __name__ == "__main__":
-    print("🚀 开始执行全要素深度填报与巡检...")
+# 兼容别名
+fill_beef_complete_deep = fill_beef
+fill_guazi_complete_deep = fill_guazi
+
+try:
+    from scripts.fill_trademark_complete import fill_trademark
+except ImportError:
+    try:
+        from fill_trademark_complete import fill_trademark
+    except ImportError:
+        fill_trademark = lambda: None
+
+try:
+    from scripts.fill_food_label_complete import fill_food_label
+except ImportError:
+    try:
+        from fill_food_label_complete import fill_food_label
+    except ImportError:
+        fill_food_label = lambda: None
+
+def fill_all_projects():
     fill_guazi()
     fill_beef()
-    print("\n🎉 两大演示项目全部27项表单100%全要素深度填报完成！")
+    if callable(fill_trademark):
+        fill_trademark()
+    if callable(fill_food_label):
+        fill_food_label()
+
+def auto_fill_project(project_id: str):
+    if "guazi" in project_id:
+        fill_guazi()
+    elif "beef" in project_id:
+        fill_beef()
+    elif "a179" in project_id or "trademark" in project_id:
+        if callable(fill_trademark):
+            fill_trademark()
+    elif "15e2" in project_id or "food" in project_id:
+        if callable(fill_food_label):
+            fill_food_label()
+    else:
+        fill_all_projects()
+
+if __name__ == "__main__":
+    print("🚀 开始执行全要素深度填报与巡检...")
+    fill_all_projects()
+    print("\n🎉 全系统所有项目公文表单100%全要素深度填报完成！")
+

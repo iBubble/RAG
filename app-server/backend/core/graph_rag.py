@@ -460,76 +460,20 @@ class GraphRAGEngine:
         if not paths or len(paths) <= 1:
             return paths
 
-        # 只对候选集做精排，控制 cost
-        candidates = paths[: min(len(paths), 20)]
-        if len(candidates) <= 3:
-            return candidates[:top_n]
+        # 高性能特征重排：按查询词元与路径实体的匹配重合度快速打分，无需调用 27B 大模型
+        import re as _re
+        q_tokens = set(_re.findall(r"[\u4e00-\u9fa5]{2,4}", query))
+        def _score_path(p: str) -> float:
+            if not q_tokens:
+                return 0.0
+            hits = sum(1 for tok in q_tokens if tok in p)
+            return hits / len(q_tokens)
 
-        numbered = "\n".join(
-            f"[{i+1}] {p}" for i, p in enumerate(candidates)
-        )
-
-        prompt = f"""分析以下知识图谱路径与用户问题的相关性，输出按相关性从高到低排序的路径编号。
-
-用户问题：
-{query}
-
-图谱路径：
-{numbered}
-
-只输出排序后的编号（逗号分隔），如：3,7,1,5,2,...
-不在排序中的路径将被丢弃。
-/no_think"""
-
-        try:
-            from core.llm_engine import stream_ollama
-            from core.llm_cache import get_llm_cache, set_llm_cache
-
-            model = settings.DEFAULT_LLM_MODEL
-            # WHY: 路径精排的 prompt 包含固定候选列表，相同查询+相同路径会命中缓存
-            cached = get_llm_cache(model, prompt)
-            if cached is not None:
-                raw = cached
-            else:
-                async def _collect_rerank():
-                    raw = ""
-                    async for chunk in stream_ollama(
-                        prompt,
-                        model=model,
-                        temperature=0,
-                        num_predict=256,
-                        num_ctx=16384,
-                    ):
-                        raw += chunk
-                    return raw
-
-                raw = await _collect_rerank()
-                set_llm_cache(model, prompt, raw)
-
-            # 解析编号序列
-            import re as _re
-            nums = _re.findall(r'\d+', raw)
-            order = [int(n) - 1 for n in nums
-                     if 1 <= int(n) <= len(candidates)]
-            # 去重保序
-            seen = set()
-            order = [i for i in order if not (i in seen or seen.add(i))]
-
-            if order:
-                ranked = [candidates[i] for i in order][:top_n]
-                logger.info(
-                    f"🕸️ [GraphRAG] ✅ 图谱路径精排完成: "
-                    f"{len(ranked)} 条返回"
-                )
-            else:
-                ranked = candidates[:top_n]
-        except Exception as e:
-            logger.warning(
-                f"🕸️ [GraphRAG] 图谱路径精排失败(降级原始顺序): {e}"
-            )
-            ranked = candidates[:top_n]
-
+        scored = [(_score_path(p), p) for p in candidates]
+        scored.sort(key=lambda x: x[0], reverse=True)
+        ranked = [p for _, p in scored][:top_n]
         return ranked
+
 
     async def hybrid_search(
         self,

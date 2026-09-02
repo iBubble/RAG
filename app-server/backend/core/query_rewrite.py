@@ -334,22 +334,18 @@ async def rewrite_query(
         )
         return cached
 
-    # 主路径：LLM 改写
-    rewritten = await _rewrite_by_llm(question, model)
+    # 优先使用高性能实体与词元特征正则改写（0ms 响应，保留全部核心术语与数字）
+    regex_res = _rewrite_by_regex(question, project_name)
+    if regex_res and len(regex_res.strip()) >= 4:
+        _cache_set(cache_key, regex_res)
+        return regex_res
 
+    # 复杂兜底：尝试 LLM 辅助改写
+    rewritten = await _rewrite_by_llm(question, model)
     if rewritten:
         result = f"{project_name} {rewritten}".strip()
-        print(
-            f"🔍 [QueryRewrite/LLM] '{question[:30]}...' -> '{result[:50]}'",
-            flush=True,
-        )
     else:
-        # 降级：正则改写
-        result = _rewrite_by_regex(question, project_name)
-        print(
-            f"🔍 [QueryRewrite/Regex] '{question[:30]}...' -> '{result[:50]}'",
-            flush=True,
-        )
+        result = f"{project_name} {question}".strip()
 
     _cache_set(cache_key, result)
     return result

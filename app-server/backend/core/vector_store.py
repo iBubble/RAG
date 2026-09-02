@@ -36,6 +36,11 @@ _DENSE_DIM = 1024
 _DENSE_VECTOR_NAME = "dense"
 _SPARSE_VECTOR_NAME = "sparse"
 
+# ── 查询向量 LRU 缓存 ──
+_QUERY_VEC_CACHE: dict[str, tuple[list, Any]] = {}
+_MAX_QUERY_CACHE = 500
+
+
 
 def _get_client() -> QdrantClient:
     """懒初始化 Qdrant 客户端。"""
@@ -1255,18 +1260,31 @@ def query_by_file_ids(
         if prefiltered_ids:
             file_ids = prefiltered_ids
 
-    # ── 编码查询 ──
+    # ── 编码查询（带 LRU 缓存与限长） ──
     _t1 = _t.time()
     print(f"⚙️ [PERF] prefilter: {_t1-_t0:.2f}s", flush=True)
-    dense_model = _get_dense_model()
-    query_dense = dense_model.encode(
-        [query_text], normalize_embeddings=True
-    )[0].tolist()
-    _t2 = _t.time()
-    print(f"⚙️ [PERF] dense_encode: {_t2-_t1:.2f}s", flush=True)
-    query_sparse = _compute_sparse_vectors([query_text])[0]
-    _t3 = _t.time()
-    print(f"⚙️ [PERF] sparse_encode: {_t3-_t2:.2f}s", flush=True)
+
+    # 限制查询编码字符长度（200字以内），减少 CPU 无效空转
+    trimmed_query = query_text.strip()[:200]
+    cache_key = trimmed_query
+    if cache_key in _QUERY_VEC_CACHE:
+        query_dense, query_sparse = _QUERY_VEC_CACHE[cache_key]
+        _t3 = _t.time()
+        print(f"⚙️ [PERF] query_encode(cache_hit): {(_t3-_t1)*1000:.1f}ms", flush=True)
+    else:
+        dense_model = _get_dense_model()
+        query_dense = dense_model.encode(
+            [trimmed_query], normalize_embeddings=True
+        )[0].tolist()
+        _t2 = _t.time()
+        print(f"⚙️ [PERF] dense_encode: {_t2-_t1:.2f}s", flush=True)
+        query_sparse = _compute_sparse_vectors([trimmed_query])[0]
+        _t3 = _t.time()
+        print(f"⚙️ [PERF] sparse_encode: {_t3-_t2:.2f}s", flush=True)
+        if len(_QUERY_VEC_CACHE) >= _MAX_QUERY_CACHE:
+            _QUERY_VEC_CACHE.pop(next(iter(_QUERY_VEC_CACHE)))
+        _QUERY_VEC_CACHE[cache_key] = (query_dense, query_sparse)
+
 
     # ── 构建过滤器 ──
     must_conditions = []

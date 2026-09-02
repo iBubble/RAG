@@ -2022,8 +2022,14 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
         [] if req.chat_mode == "stateless" else req.history
     )
 
-    # ── [NEW] 案件研判极速直达通道：办案高频词直接走规则，0ms 启动，杜绝排队 ──
-    _is_case_qa = bool(req.project_id and any(k in resolved_message for k in ["案件", "受理", "依据", "立案", "处罚", "违法", "事实", "举报"]))
+    # ── 案件研判与法律问答极速直达通道：核心词直接走规则，0ms 启动，杜绝排队 ──
+    _is_case_qa = bool(
+        req.project_id or any(k in resolved_message for k in [
+            "案件", "受理", "依据", "立案", "处罚", "违法", "事实", "证据", "举报",
+            "投诉", "笔录", "决定书", "标准", "法规", "法条", "商标", "食品", "标签",
+            "查验", "数据", "统计", "多少", "总共", "什么", "怎么", "如何",
+        ])
+    )
     if _is_case_qa:
         from core.intent_classifier import _classify_by_rules
         from core.query_rewrite import _rewrite_by_regex
@@ -2031,7 +2037,8 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
         intent = intent_result.intent
         strategy = intent_result.strategy
         search_query = _rewrite_by_regex(resolved_message, project_name)
-        print(f"⚡ [极速直达] 案件研判关键词命中，跳过 LLM 预处理直达检索: query='{search_query}'", flush=True)
+        print(f"⚡ [极速直达] 业务研判关键词命中，跳过 LLM 预处理直达检索: query='{search_query}'", flush=True)
+
     else:
         need_rewrite = len(resolved_message) > 15
         parallel_tasks = [llm_classify_intent(req.message, model=req.model)]
@@ -2268,7 +2275,7 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
                         # 优先保留与食品安全、行政处罚相关的法规，过滤医疗器械/保密等噪声
                         for _d in _pub_docs:
                             _fname = _d['metadata'].get('filename', '未知')
-                            if any(k in _fname for k in ["保密", "医疗器械", "网络交易"]):
+                            if any(k in _fname for k in ["保密", "医疗器械", "网络交易", "音像制品"]):
                                 continue
                             if _fname not in _seen and len(_pub_sources) < 2:
                                 _pub_sources.append(_fname)
@@ -2289,9 +2296,10 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
                     print(f"⚠️ 公共文档检索失败(非致命): {_pub_e}", flush=True)
 
             context = retrieval.context or context
-            # ── 关键限长保护：限制最终 context 最多 3800 字，保证 27B 模型在 1 秒内完成 Prefill ──
-            if len(context) > 3800:
-                context = context[:3800] + "\n...(已智能截取核心案件事实与法条)..."
+            # ── 关键限长保护：限制最终 context 核心上下文在 2200 字以内，保证 27B 模型在 2 秒内完成 Prefill ──
+            if len(context) > 2200:
+                context = context[:2200] + "\n...(已智能截取核心案件事实与法条)..."
+
             source_files = retrieval.source_files
             da_meta = retrieval.data_analysis_meta or None
 

@@ -92,7 +92,16 @@ def _cache_set(key: str, value: IntentResult) -> None:
 # ── 预定义策略配置 ────────────────────────────────────────
 
 _STRATEGY_TEMPLATES = {
+    "legal_case_qa": {
+        "vector_top_k": 8,
+        "graph_max_paths": 6,
+        "table_max": 2,
+        "num_ctx": 8192,
+        "think_mode": "filter",
+        "inject_community": True,
+    },
     "data_analysis": {
+
         "vector_top_k": 2,
         "graph_max_paths": 0,
         "table_max": 0,
@@ -206,7 +215,16 @@ def _classify_by_rules(message: str) -> IntentResult:
     msg = message.strip()
 
     INTENT_RULES = [
+        ("legal_case_qa", {
+            "keywords": [
+                "案件", "法条", "法律", "行政", "处罚", "违法", "事实", "证据", "依据",
+                "立案", "结案", "询问", "笔录", "现场", "受理", "决定书", "不予处罚",
+                "没收", "责令改正", "规定", "标准", "合规", "侵害", "商标", "假冒",
+                "食品", "标签", "查验", "当事人", "申辩", "陈述", "听证", "投诉", "举报",
+            ],
+        }),
         ("data_analysis", {
+
             "keywords": [
                 "总共", "一共", "共有", "合计", "总计", "总数",
                 "统计", "汇总", "整个", "全部", "所有",
@@ -379,32 +397,28 @@ async def classify_intent(
     Returns:
         IntentResult 包含意图名、评分和策略参数
     """
-    # 缓存命中
+    # 1. 缓存命中检查
     cache_key = message.strip()[:100]
     cached = _cache_get(cache_key)
     if cached:
-        print(
-            f"🎯 [Intent/Cache] intent={cached.intent}",
-            flush=True,
-        )
         return cached
 
-    # 主路径：LLM 分类
-    result = await _classify_by_llm(message, model)
+    # 2. 优先执行高性能启发式司法与事实特征规则分流（0ms 响应）
+    rule_result = _classify_by_rules(message)
+    if rule_result.intent != "general_qa":
+        _cache_set(cache_key, rule_result)
+        return rule_result
 
-    if result:
-        print(
-            f"🎯 [Intent/LLM] intent={result.intent} "
-            f"scores={result.scores}",
-            flush=True,
-        )
-    else:
-        # 降级：关键词规则
-        result = _classify_by_rules(message)
-        print(
-            f"🎯 [Intent/Rules] intent={result.intent}",
-            flush=True,
-        )
+    # 3. 短文本或日常交互，直接返回无需唤醒 27B 大模型
+    if len(message.strip()) <= 20 or any(k in message for k in ["你好", "您好", "在吗", "介绍", "什么是"]):
+        _cache_set(cache_key, rule_result)
+        return rule_result
+
+    # 4. 复杂未收敛长难句，尝试 LLM 辅助分类，超时自愈
+    result = await _classify_by_llm(message, model)
+    if not result:
+        result = rule_result
 
     _cache_set(cache_key, result)
     return result
+
