@@ -84,6 +84,31 @@ def get_project_materials_text(project_id: str) -> str:
     except Exception as e:
         logger.warning(f"读取项目基本信息异常: {e}")
 
+    # 1. 优先从 Qdrant 抓取所有已切片/已 OCR 的向量文档内容（支持图片、PDF 等全格式）
+    try:
+        from core.vector_store import _get_client, _collection_name
+        from qdrant_client import models
+        client = _get_client()
+        resp = client.scroll(
+            collection_name=_collection_name,
+            scroll_filter=models.Filter(
+                must=[models.FieldCondition(key="project_id", match=models.MatchValue(value=project_id))]
+            ),
+            limit=50,
+            with_payload=True,
+            with_vectors=False
+        )
+        points, _ = resp
+        if points:
+            for pt in points:
+                payload = pt.payload or {}
+                fn = payload.get("filename", "未知文件")
+                doc_txt = (payload.get("document") or payload.get("text") or "").strip()
+                if doc_txt and len(doc_txt) > 10:
+                    collected.append(f"【卷宗/证据切片: {fn}】:\n{doc_txt[:1500]}")
+    except Exception as _qe:
+        logger.warning(f"从 Qdrant 提取项目材料文本失败: {_qe}")
+
     upload_path = Path(settings.UPLOAD_DIR) / project_id
     if upload_path.exists():
         for p in upload_path.glob("**/*"):
