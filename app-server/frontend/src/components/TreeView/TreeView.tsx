@@ -136,7 +136,7 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
   const [projectRefFiles, setProjectRefFiles] = useState<FileItem[]>([]);
 
 
-  const { checkedFileIds, toggleFileCheck, setCheckedFiles, activePreviewFile, setActivePreviewFile, refreshCounter, checkedRefIds, setCheckedRefIds } = useProjectStore();
+  const { checkedFileIds, toggleFileCheck, setCheckedFiles, activePreviewFile, setActivePreviewFile, refreshCounter, checkedRefIds, setCheckedRefIds, setProjectFiles } = useProjectStore();
   const { getAuthHeaders } = useAuthStore();
   const seenFileIdsRef = useRef<Set<string>>(new Set());
   const knownFoldersRef = useRef<Set<string>>(new Set());
@@ -149,6 +149,7 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
         const data = await res.json();
         const filesList: FileItem[] = data.files || [];
         setFiles(filesList);
+        setProjectFiles(filesList);
         
         // 自动勾选逻辑（左侧默认勾选全部新文件）
         const currentChecked = [...useProjectStore.getState().checkedFileIds];

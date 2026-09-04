@@ -60,4 +60,11 @@ class Settings(BaseSettings):
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = ""
 
+    # ── 多模态视觉模型配置 ──
+    VISION_MODEL: str = "qwen2.5vl:7b"
+    VISION_TIMEOUT: int = 300
+    VISION_MAX_PAGES: int = 30
+    VISION_DPI: int = 300
+
 settings = Settings()
+

@@ -41,7 +41,7 @@ def _get_status_file(project_id: str, file_id: str) -> Path:
     return status_dir / f"{file_id}.json"
 
 
-def update_file_status(project_id: str, file_id: str, status: str, chunks: int | None = None, error_message: str = ""):
+def update_file_status(project_id: str, file_id: str, status: str, chunks: int | None = None, error_message: str = "", filename: str = ""):
     """
     将文件的解析状态更新到本地 json 文件中。
     status 等级: 
@@ -56,18 +56,22 @@ def update_file_status(project_id: str, file_id: str, status: str, chunks: int |
         status_file = _get_status_file(project_id, file_id)
         
         existing_chunks = 0
+        existing_filename = ""
         if status_file.exists():
             try:
                 with open(status_file, "r", encoding="utf-8") as sf:
                     existing_data = json.load(sf)
                     existing_chunks = existing_data.get("chunks", 0)
+                    existing_filename = existing_data.get("filename", "")
             except Exception:
                 pass
 
         final_chunks = chunks if chunks is not None else existing_chunks
+        final_filename = filename or existing_filename
         
         data = {
             "file_id": file_id,
+            "filename": final_filename,
             "status": status,
             "chunks": final_chunks,
             "error_message": error_message,
@@ -95,3 +99,126 @@ def get_file_status(project_id: str, file_id: str) -> dict:
         logger.warning(f"无法读取文件 {file_id} 状态: {e}")
         
     return {}
+
+
+def check_readiness_for_chat(project_id: str, file_ids: list[str] | None = None) -> dict:
+    """
+    检查指定项目及文件的就绪状态（用于 /api/chat 前置就绪度守卫与算力熔断）。
+    返回结构：
+    {
+        "should_block": bool,
+        "reason": "all_processing" | "all_failed" | "ready" | "partial_ready" | "no_files",
+        "wait_message": str,
+        "partial_notice": str,
+        "processing_files": list,
+        "ready_files": list
+    }
+    """
+    if not project_id:
+        return {"should_block": False, "reason": "no_project", "wait_message": "", "partial_notice": ""}
+
+    project_dir = UPLOAD_ROOT / project_id
+    import hashlib
+    file_map = {}
+
+    if project_dir.exists():
+        for root, dirs, files in os.walk(str(project_dir)):
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            for fname in files:
+                if fname.startswith('.') or fname.endswith('.lock'):
+                    continue
+                fpath = Path(root) / fname
+                try:
+                    rel_path = str(fpath.relative_to(UPLOAD_ROOT))
+                except Exception:
+                    rel_path = f"{project_id}/{fname}"
+                fid = hashlib.md5(f"{project_id}_{rel_path}".encode("utf-8")).hexdigest()
+                st_data = get_file_status(project_id, fid)
+                st = st_data.get("status", "pending")
+                chunks = st_data.get("chunks", 0)
+                file_map[fid] = {"file_id": fid, "filename": fname, "status": st, "chunks": chunks}
+
+    # 兜底：如果传入了 file_ids 但未在物理扫描中匹配到，尝试直接读取 status_tracker
+    if file_ids:
+        for fid in file_ids:
+            if fid not in file_map:
+                st_data = get_file_status(project_id, fid)
+                if st_data:
+                    file_map[fid] = {
+                        "file_id": fid,
+                        "filename": st_data.get("filename", f"材料_{fid[:6]}"),
+                        "status": st_data.get("status", "pending"),
+                        "chunks": st_data.get("chunks", 0)
+                    }
+
+    if not file_map:
+        return {"should_block": False, "reason": "no_files", "wait_message": "", "partial_notice": ""}
+
+    target_fids = [fid for fid in file_ids if fid in file_map] if file_ids else list(file_map.keys())
+    if not target_fids:
+        return {"should_block": False, "reason": "external_files", "wait_message": "", "partial_notice": ""}
+
+    processing_files = []
+    ready_files = []
+    failed_files = []
+
+    for fid in target_fids:
+        info = file_map[fid]
+        st = info["status"]
+        chunks = info.get("chunks", 0)
+        if st in ("processing", "pending"):
+            processing_files.append(info)
+        elif st in ("vectorized", "graph_queued", "graph_extracting") or chunks > 0:
+            ready_files.append(info)
+        elif st in EXCLUDED_STATUSES:
+            failed_files.append(info)
+        else:
+            processing_files.append(info)
+
+    # 1. 目标文件全部在处理中（单选未完成或全案卷均未完成）
+    if processing_files and not ready_files:
+        fnames = "、".join([f"《{f['filename']}》" for f in processing_files[:3]])
+        if len(processing_files) > 3:
+            fnames += f" 等 {len(processing_files)} 份材料"
+        wait_msg = (
+            f"⏳ 案卷材料 {fnames} 正在进行多模态文字提取与切片索引中，知识库尚未就绪。\n\n"
+            f"为避免生成不准确内容并为您节省计算算力，请等待材料解析完成（通常仅需 10~30 秒）后再发起提问。"
+        )
+        return {
+            "should_block": True,
+            "reason": "all_processing",
+            "wait_message": wait_msg,
+            "partial_notice": "",
+            "processing_files": processing_files
+        }
+
+    # 2. 目标文件全部解析失败或空文本（且无就绪切片）
+    if failed_files and not ready_files and not processing_files:
+        fnames = "、".join([f"《{f['filename']}》" for f in failed_files[:3]])
+        fail_msg = (
+            f"⚠️ 案卷材料 {fnames} 解析未提取到有效文本（可能是纯图片扫描件、文件损坏或不支持的格式）。\n\n"
+            f"当前知识库中无可用文本切片，无法进行事实研判。请在案卷管理中检查文件状态或重新上传。"
+        )
+        return {
+            "should_block": True,
+            "reason": "all_failed",
+            "wait_message": fail_msg,
+            "partial_notice": "",
+            "failed_files": failed_files
+        }
+
+    # 3. 部分文件就绪，部分文件处理中
+    partial_notice = ""
+    if processing_files and ready_files:
+        fnames = "、".join([f"《{f['filename']}》" for f in processing_files[:2]])
+        partial_notice = f"ℹ️ 提示：案卷中还有 {fnames} 等正在切片中，本次回答仅基于已完成索引的 {len(ready_files)} 份材料。\n\n"
+
+    return {
+        "should_block": False,
+        "reason": "ready" if not processing_files else "partial_ready",
+        "wait_message": "",
+        "partial_notice": partial_notice,
+        "processing_files": processing_files,
+        "ready_files": ready_files
+    }
+

@@ -2004,7 +2004,30 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
         )
 
+    # ── 前置就绪度守卫（Readiness Guard）：后台学习未完成时刚性阻断，避免 GPU 空转 ──
+    readiness_partial_notice = ""
+    if req.project_id and req.chat_mode != "general":
+        from core.status_tracker import check_readiness_for_chat
+        readiness = check_readiness_for_chat(req.project_id, req.file_ids)
+        if readiness.get("should_block"):
+            clear_agent_active("chat")
+            wait_text = readiness.get("wait_message", "材料正在处理中，请稍候...")
+            print(f"🛡️ [就绪度守卫阻断] project={req.project_id[:8]} reason={readiness.get('reason')} msg='{wait_text[:40]}'", flush=True)
 
+            async def _blocked_sse():
+                yield ": connection established\n\n"
+                yield f"data: {json.dumps({'status': '⏳ 材料切片索引进行中，已启动算力保护...'}, ensure_ascii=False)}\n\n"
+                _BATCH = 500
+                for i in range(0, len(wait_text), _BATCH):
+                    yield f"data: {json.dumps({'token': wait_text[i:i + _BATCH]}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'done': True})}\n\n"
+
+            return StreamingResponse(
+                _blocked_sse(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+            )
+        readiness_partial_notice = readiness.get("partial_notice", "")
 
     is_simple = _is_simple_query(req.message)
 
@@ -2309,6 +2332,34 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
                 context, source_files, da_meta,
             )
 
+            # ── 检索零召回短路保护（Zero-Recall Circuit Breaker）──
+            # WHY: 当用户基于案卷提问，但检索召回切片数为 0 且上下文为空时，
+            #      直接送入大模型只会输出"无法识别/证据缺失"等无效回答，白白空转 GPU。
+            #      此处秒级短路直接返回指引，耗时 <5ms，0 Token 算力开销。
+            if not source_files and (not retrieval.context or len(retrieval.context.strip()) == 0):
+                clear_all_agents_active()
+                zero_recall_msg = (
+                    "⚠️ **未检索到相关有效资料**\n\n"
+                    "系统已在当前关联的案卷材料中进行了深度混合检索，但未召回与您问题匹配的事实切片。\n\n"
+                    "**建议排查**：\n"
+                    "1. 确认目标案卷是否已上传且状态已显示为“已切片”；\n"
+                    "2. 尝试调整提问中的关键词（如使用具体的品牌名、条款号或当事人名称）；\n"
+                    "3. 如需进行通用法规知识咨询，可切换为「通用」对话模式。"
+                )
+                print(f"⚡ [零召回短路拦截] project={req.project_id[:8]} msg='{req.message[:30]}'", flush=True)
+
+                async def _zero_recall_sse():
+                    yield ": connection established\n\n"
+                    _BATCH = 500
+                    for i in range(0, len(zero_recall_msg), _BATCH):
+                        yield f"data: {json.dumps({'token': zero_recall_msg[i:i + _BATCH]}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'done': True})}\n\n"
+
+                return StreamingResponse(
+                    _zero_recall_sse(),
+                    media_type="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+                )
 
     elif req.chat_mode == "general":
         context = "（通用模式已开启：已跳过文档检索，仅使用大模型基础知识库进行回答）"
@@ -2412,6 +2463,10 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
         _answer_parts: list[str] = []
         last_active_time = time.time()
         try:
+            if readiness_partial_notice:
+                yield f"data: {json.dumps({'token': readiness_partial_notice}, ensure_ascii=False)}\n\n"
+                _answer_parts.append(readiness_partial_notice)
+
             async for event in _sse_generator(
                 prompt, model=req.model, think_mode=think_mode, sources=source_files,
                 num_predict=chat_num_predict, num_ctx=chat_num_ctx,

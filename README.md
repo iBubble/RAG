@@ -1,7 +1,7 @@
 # 智能体通用知识库 RAG (AgentRAG)
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-iBubble/RAG-181717?logo=github)](https://github.com/iBubble/RAG)
-![Version](https://img.shields.io/badge/Version-4.5.3-blue)
+![Version](https://img.shields.io/badge/Version-4.5.4-blue)
 ![Go](https://img.shields.io/badge/Go-1.18+-00ADD8?logo=go&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128+-009688?logo=fastapi&logoColor=white)
@@ -328,6 +328,8 @@ Eino 有向图每个 Agent 节点在进行状态流转时，通过 SSE 实时向
    - **智能判定与防抖**：当宿主机存储在线但容器内挂载失效时，自动触发容器热重启，恢复 VirtioFS 挂载通道；内置 60 秒冷却防抖与详细审计日志。
 2. **AI 推理引擎显存守护 (`scripts/ollama_watchdog.sh`)**：
    - 定期对本地 Ollama 推理引擎执行探活心跳，若捕获到 503 拒绝服务或 Metal 显存死锁，自动清空死锁进程并完成毫秒级无损冷拉起。
+3. **知识库未就绪前置就绪度守卫与算力熔断保护 (Readiness Guard)**：
+   - 在 `/api/chat` 入口处实现毫秒级前置判定，当材料尚处于多模态文字提取或切片阶段时实施刚性拦截（实测 37.7ms 极速返回，0 Token 开销），杜绝 27B 大模型显存高负荷空转与“乱码/证据缺失”无效回答；配合检索零召回短路机制，全面保护本地硬件算力。
 
 ---
 

@@ -18,9 +18,11 @@ import time
 from pathlib import Path
 from typing import Optional
 
+import httpx
 from core.config import settings
 
 logger = logging.getLogger(__name__)
+
 
 
 # WHY: 2026-05-22 重大修正 — qwen2.5vl:7b 在中文密集等值线图上产生严重重复幻觉。
@@ -39,8 +41,9 @@ Rules:
 - Do NOT hallucinate, guess, or repeat
 - Include the map title in Chinese if visible
 - Include legend items in Chinese"""
-_VISION_PROMPT_GENERAL = """请完整准确地识别这张图片中的所有文字内容。
-保持原文的段落结构，如有表格用 Markdown 表格格式输出。"""
+_VISION_PROMPT_GENERAL = """请完整准确地识别并提取这张图片中的所有文字内容（包括标题、正文、品牌、宣传语、微小文字、角标等）。
+保持原文结构，如有表格用 Markdown 表格格式输出；若为海报或宣传广告，在列出全部文字后可简要说明画面视觉主体。"""
+
 
 
 def _render_pdf_pages(
@@ -406,39 +409,37 @@ def extract_image_vision(
     """
     from core.config import settings
 
-    _model = model or settings.VISION_MODEL
+    _model = model or getattr(settings, "VISION_MODEL", "qwen2.5vl:7b")
     if not _model:
         return ""
 
-    _timeout = timeout or settings.VISION_TIMEOUT
-    _ollama_url = settings.OLLAMA_BASE_URL
+    _timeout = timeout or getattr(settings, "VISION_TIMEOUT", 300)
+    _ollama_url = getattr(settings, "OLLAMA_BASE_URL", "http://host.docker.internal:11434")
     filename = Path(file_path).name
 
     # ── [NEW] Ollama 模型存在性自检与自动降级机制 ──
-    # WHY: 当 settings.VISION_MODEL 不存在于本地 Ollama 时，
-    #      Ollama 会在线尝试下载 5GB 模型，导致长达 300s 的连接挂起超时。
-    #      通过 /api/tags 接口检查模型列表，不存在时自适应降级为本地已装的多模态模型，
-    #      如无多模态则快速降级使用本地 OCR，避免无效等待。
+    # WHY: 当配置的模型不存在于本地 Ollama 时，自适应选用本地已存在的可用视觉模型。
     try:
         resp = httpx.get(f"{_ollama_url}/api/tags", timeout=5.0)
         if resp.status_code == 200:
             local_models = [m.get("name") for m in resp.json().get("models", [])]
-            # 如果配置的模型不存在于本地列表中
             if _model not in local_models and f"{_model}:latest" not in local_models:
                 logger.warning(f"⚠️ 本地 Ollama 未检测到多模态模型 {_model}，执行降级自愈...")
-                # 策略 1: 寻找已缓存的 minicpm-v
-                if "minicpm-v:latest" in local_models:
+                if "qwen2.5vl:7b" in local_models or "qwen2.5vl:latest" in local_models:
+                    _model = "qwen2.5vl:7b" if "qwen2.5vl:7b" in local_models else "qwen2.5vl:latest"
+                    logger.info(f"🔄 自适应降级为本地已就绪的多模态模型: {_model}")
+                elif "minicpm-v:latest" in local_models:
                     _model = "minicpm-v:latest"
                     logger.info(f"🔄 自适应降级为本地已就绪的多模态模型: minicpm-v:latest")
                 elif "moondream:latest" in local_models:
                     _model = "moondream:latest"
                     logger.info(f"🔄 自适应降级为本地已就绪的多模态模型: moondream:latest")
                 else:
-                    # 策略 2: 本地无多模态模型，直接快速返回空以触发本地 OCR，摆脱 300 秒挂死
                     logger.warning(f"❌ 本地无可用的多模态模型，直接绕过 Vision LLM 并降级启用本地 OCR")
                     return ""
     except Exception as check_err:
         logger.warning(f"模型存在性自检失败 (跳过): {check_err}")
+
 
     logger.info(f"🔍 Vision 图片解析: {filename} (model={_model})")
 

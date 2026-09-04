@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { User, Loader2, Save, Trash2, Settings as SettingsIcon, X, ArrowUp, Square, FileText } from 'lucide-react';
 import { useProjectStore, useChatStore } from '../../store/projectStore';
 import { useAuthStore } from '../../store/authStore';
@@ -36,8 +36,18 @@ export default function AgentChat({ projectId }: { projectId: string }) {
   
   const checkedFileIds = useProjectStore(state => state.checkedFileIds);
   const checkedRefIds = useProjectStore(state => state.checkedRefIds);
+  const projectFiles = useProjectStore(state => state.projectFiles);
   // WHY: 合并本案文档 + 公共文档的勾选 ID，确保两者都参与检索
   const allCheckedIds = [...checkedFileIds, ...checkedRefIds];
+
+  // 监听当前案卷或勾选文件中是否有正在解析/切片中的文件（前置感知提示）
+  const processingFiles = useMemo(() => {
+    const list = projectFiles || [];
+    const targets = checkedFileIds.length > 0
+      ? list.filter(f => checkedFileIds.includes(f.id))
+      : list;
+    return targets.filter(f => f.ingest_status === 'processing' || f.ingest_status === 'pending');
+  }, [projectFiles, checkedFileIds]);
   const agentMessagesByProject = useProjectStore(state => state.agentMessagesByProject);
   const setProjectMessages = useProjectStore(state => state.setProjectMessages);
   
@@ -908,6 +918,15 @@ export default function AgentChat({ projectId }: { projectId: string }) {
             >
               ✕
             </button>
+          </div>
+        )}
+        {processingFiles.length > 0 && (
+          <div className="mb-2.5 px-4 py-2 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 rounded-2xl text-xs text-amber-800 dark:text-amber-200 flex items-center gap-2 shadow-sm transition-all duration-300">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="truncate">
+              案卷材料 <strong>{processingFiles.slice(0, 2).map((f: any) => `《${f.filename}》`).join('、')}</strong>
+              {processingFiles.length > 2 ? ` 等 ${processingFiles.length} 份` : ''} 正在切片索引中，切片完成后问答更精准...
+            </span>
           </div>
         )}
         <div className="relative">

@@ -132,6 +132,8 @@ interface ProjectState {
   triggerRefresh: () => void;
   publicSettings: Record<string, any> | null;
   fetchPublicSettings: () => Promise<void>;
+  projectFiles: Array<{ id: string; filename: string; ingest_status?: string }>;
+  setProjectFiles: (files: Array<{ id: string; filename: string; ingest_status?: string }>) => void;
 }
 
 // WHY: 使用 Zustand 进行轻量级跨组件通信，
@@ -139,6 +141,8 @@ interface ProjectState {
 export const useProjectStore = create<ProjectState>()(
   persist(
     (set) => ({
+  projectFiles: [],
+  setProjectFiles: (files) => set({ projectFiles: files }),
   checkedFileIds: [],
   checkedRefIds: [],
   templateTitle: '未命名实施方案',

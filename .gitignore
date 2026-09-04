@@ -63,3 +63,6 @@ docker-data/
 # 备份文件
 *.tar.gz
 readytodel/
+
+# Scratch 临时调试目录
+**/scratch/

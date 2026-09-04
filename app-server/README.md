@@ -1,7 +1,7 @@
-# 智能体通用知识库（通用版检索增强生成知识库 V4.5.2 RAG）
+# 智能体通用知识库（通用版检索增强生成知识库 V4.5.4 RAG）
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-iBubble/RAG-181717?logo=github)](https://github.com/iBubble/RAG)
-![Version](https://img.shields.io/badge/Version-4.5.2-blue)
+![Version](https://img.shields.io/badge/Version-4.5.4-blue)
 ![License](https://img.shields.io/badge/License-Proprietary-red)
 
 

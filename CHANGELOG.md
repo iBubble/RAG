@@ -2,6 +2,22 @@
  
 All notable changes to this project will be documented in this file.
 
+## [4.5.4] - 2026-09-04
+
+### Added
+- **后台学习未就绪对话前置就绪度守卫与算力熔断机制 (Readiness Guard)**：
+  - 在 `/api/chat` 入口处实现 `check_readiness_for_chat`，针对材料多模态提取/切片未就绪状态实施毫秒级刚性阻断（**实测 37.7ms 极速拦截，0 Token 算力开销**），彻底消灭 27B 大模型持续 15~30 秒的高负荷 GPU 空转与“证据缺失/内容为乱码”等无效答复；
+  - 接入**检索零召回短路机制 (Zero-Recall Circuit Breaker)**，在有效切片数为 0 且上下文为空时秒级返回排查指引，杜绝“无米之炊”幻觉；
+  - 架构决策正式沉淀并录入 `技术决策记录.md` 中的 `ADR-003: 知识库未就绪前置阻断与算力熔断守卫机制`。
+- **前端输入框实时学习状态感知条 (UI Banner)**：
+  - 在 `projectStore` 与 `TreeView` 之间建立 `projectFiles` 全局状态联动总线；
+  - 在 `AgentChat` 输入框上方动态渲染切片倒计时提示条（显示正在切片的材料名称），并在切片就绪后自动隐去。
+
+### Fixed
+- **多模态视觉提取管道修复 (Ollama Qwen2.5-VL 7B)**：
+  - 修复 `vision_extractor.py` 中遗漏 `import httpx` 以及 `config.py` 中缺少 `VISION_MODEL` 属性导致的未捕获异常，消灭了复杂广告海报/暗光灯箱艺术字降级回 Tesseract OCR 产生乱码切片的根因；
+  - 完善海报合规性审查提取 Prompt，支持复杂版面与商用宣传标语高清提取。
+
 ## [4.5.3] - 2026-09-04
 
 ### Added
