@@ -47,6 +47,8 @@ interface ProjectProgress {
   priority: number;
   is_paused?: number;
   createdAt?: string;
+  project_type?: string;
+  is_library?: boolean;
   vectorization: StageProgress;
   graph_rag: StageProgress;
   community_summary: StageProgress;
@@ -594,10 +596,17 @@ export default function LearningProgress() {
         <div className="flex flex-col gap-6">
           {sortedProjects.map((p) => (
             <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-              <div className="flex items-center justify-between border-b border-gray-100 pb-4 mb-5">
-                <h3 className="text-lg font-bold text-gray-800 truncate max-w-[50%]" title={p.name}>
-                  {p.name}
-                </h3>
+              <div className="flex items-center justify-between border-b border-gray-100 pb-4 mb-5 gap-4">
+                <div className="flex items-center gap-2 max-w-[60%]">
+                  <h3 className="text-lg font-bold text-gray-800 truncate" title={p.name}>
+                    {p.name}
+                  </h3>
+                  {(p.is_library || p.project_type === 'library') && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                      公共文档库 · 免公文研判
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-3 shrink-0">
                   {/* 1. 暂停/恢复按钮 */}
                   <button
@@ -659,7 +668,10 @@ export default function LearningProgress() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+              {(() => {
+                const isLib = p.is_library || p.project_type === 'library';
+                return (
+                  <div className={`grid grid-cols-1 ${isLib ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-8`}>
                 {/* 1. 向量化入库 */}
                 <div className="flex flex-col">
                   <div className="flex items-center justify-between mb-2">
@@ -792,8 +804,9 @@ export default function LearningProgress() {
                   <div className="mt-1.5 text-right text-xs font-bold text-gray-400">{p.community_summary.percent.toFixed(2)}%</div>
                 </div>
 
-                {/* 4. 自动研判学习（为本项目自动完成分拣填报、调查取证与研判裁量表单推荐及填报） */}
-                <div className="flex flex-col">
+                    {/* 4. 自动研判学习（仅限办案案卷项目，公共文档库自动免除） */}
+                    {!isLib && (
+                      <div className="flex flex-col">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-purple-600" />
@@ -880,7 +893,10 @@ export default function LearningProgress() {
                     </span>
                   </div>
                 </div>
-              </div>
+              )}
+            </div>
+          );
+        })()}
             </div>
           ))}
         </div>

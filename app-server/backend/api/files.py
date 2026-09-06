@@ -126,7 +126,8 @@ async def upload_files(
         safe_filename = re.sub(r'_{2,}', '_', safe_filename)
 
         # 构建持久化目标路径：uploads/{project_id}/{relative_path}/{filename}
-        target_dir = UPLOAD_ROOT / project_id / relative_path
+        clean_rel = relative_path.replace("\\", "/").strip().strip("/")
+        target_dir = (UPLOAD_ROOT / project_id / clean_rel) if clean_rel else (UPLOAD_ROOT / project_id)
         target_dir.mkdir(parents=True, exist_ok=True)
 
         target_path = target_dir / safe_filename
@@ -169,21 +170,21 @@ async def upload_files(
             from core.status_tracker import get_file_status
             status_data = get_file_status(project_id, file_id)
             existing_status = status_data.get("status")
-            if not existing_status:
-                existing_status = "vectorized" if get_chunk_count(file_id) > 0 else "pending"
             existing_chunks = status_data.get("chunks", 0)
 
-            saved.append({
-                "id": file_id,
-                "filename": safe_filename,
-                "size": target_path.stat().st_size,
-                "path": str(target_path.relative_to(UPLOAD_ROOT)),
-                "content_type": file.content_type,
-                "ingest_status": existing_status,
-                "chunks": existing_chunks,
-                "message": "检测到相同内容文件，已自动去重实现秒传",
-            })
-            continue
+            # WHY: 仅当已成功向量化或确定性终态才直接秒传；如果上次解析为 failed，必须穿透执行重新解析
+            if existing_status == "vectorized" or (existing_status in ("empty_text", "unsupported_format", "too_large")):
+                saved.append({
+                    "id": file_id,
+                    "filename": safe_filename,
+                    "size": target_path.stat().st_size,
+                    "path": str(target_path.relative_to(UPLOAD_ROOT)),
+                    "content_type": file.content_type,
+                    "ingest_status": existing_status,
+                    "chunks": existing_chunks,
+                    "message": "检测到相同内容文件，已自动去重实现秒传",
+                })
+                continue
 
         # WHY: 流式分块写入磁盘，避免大文件（如 250MB+ 的 .shp/.dbf）一次性撑爆内存
         CHUNK_SIZE = 8 * 1024 * 1024  # 8MB 分块
@@ -287,13 +288,22 @@ async def list_files(project_id: str = "default", user: dict = Depends(get_curre
     if not project_dir.exists():
         return {"project_id": project_id, "files": []}
 
-    def _scan_project_dir() -> list[dict]:
+    def _scan_project_dir() -> tuple[list[dict], list[str]]:
         """同步文件扫描逻辑，在线程池中执行以避免阻塞事件循环"""
         result = []
+        dir_set = set()
         import os
         for root, dirs, files in os.walk(str(project_dir)):
             dirs[:] = [d for d in dirs if not d.startswith('.')]
             root_path = Path(root)
+
+            rel_root = root_path.relative_to(project_dir)
+            if str(rel_root) != '.':
+                dir_set.add(str(rel_root).replace('\\', '/'))
+            for d in dirs:
+                if not d.lower().endswith(".gdb"):
+                    rel_d = (root_path / d).relative_to(project_dir)
+                    dir_set.add(str(rel_d).replace('\\', '/'))
 
             if ".gdb" in root_path.suffixes or any(p.suffix.lower() == ".gdb" for p in root_path.parents):
                 continue
@@ -404,18 +414,19 @@ async def list_files(project_id: str = "default", user: dict = Depends(get_curre
                     result.append(info["entry"])
 
         result.sort(key=lambda x: x["path"])
-        return result
+        return result, sorted(list(dir_set))
 
     # WHY: 15 秒超时保护——NFS 卡死不会拖垮整个 uvicorn 进程
     LIST_TIMEOUT = 15
     try:
-        file_list = await asyncio.wait_for(
+        file_list, dir_list = await asyncio.wait_for(
             asyncio.to_thread(_scan_project_dir),
             timeout=LIST_TIMEOUT,
         )
     except asyncio.TimeoutError:
         logger.warning(f"文件列表扫描超时 ({LIST_TIMEOUT}s)，项目={project_id}，可能 NFS 卡顿")
         file_list = []
+        dir_list = []
 
     # WHY: 追加网络/粘贴来源，使其与本地文件统一出现在文件树中
     from api.web_ingest import _read_web_sources
@@ -431,7 +442,7 @@ async def list_files(project_id: str = "default", user: dict = Depends(get_curre
             "chunks": ws.get("chunks", 0),
         })
 
-    return {"project_id": project_id, "files": file_list}
+    return {"project_id": project_id, "files": file_list, "directories": dir_list}
 
 
 @router.delete("/delete")
@@ -546,6 +557,112 @@ async def delete_folder(folder_path: str, project_id: str = "default", user: dic
         "message": f"已删除文件夹: {folder_path}",
         "removed_files": removed_files,
         "removed_chunks": removed_chunks,
+    }
+
+
+class CreateFolderRequest(BaseModel):
+    project_id: str = "default"
+    folder_path: str
+
+
+@router.post("/create-folder")
+async def create_folder(
+    req: CreateFolderRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    在指定项目下创建新目录或子目录。
+    WHY: 用户可在左侧文件树中灵活搭建案卷材料层级结构。
+    """
+    require_project_access(req.project_id, user, write=True)
+    clean_path = req.folder_path.strip().strip("/")
+    if not clean_path:
+        raise HTTPException(status_code=400, detail="文件夹路径不能为空")
+
+    target = _safe_resolve(UPLOAD_ROOT / req.project_id, clean_path)
+    target.mkdir(parents=True, exist_ok=True)
+
+    from core.audit_log import log_operation
+    log_operation(user["id"], "folder_create", f"新建文件夹：{req.project_id}/{clean_path}")
+
+    return {
+        "message": f"目录创建成功: {clean_path}",
+        "folder_path": clean_path
+    }
+
+
+class BatchMoveRequest(BaseModel):
+    project_id: str = "default"
+    file_ids: List[str]
+    target_folder: str = ""  # 相对 project_dir 的路径，"" 表示根目录
+
+
+@router.post("/batch-move")
+async def batch_move_files(
+    req: BatchMoveRequest,
+    user: dict = Depends(get_current_user)
+):
+    """
+    批量将多个文件移动到指定目标目录。
+    WHY: 满足用户对散落文档进行归类、整理入卷的实际执法办案需求。
+    """
+    require_project_access(req.project_id, user, write=True)
+    project_dir = UPLOAD_ROOT / req.project_id
+    clean_target = req.target_folder.strip().strip("/")
+    target_dir = _safe_resolve(project_dir, clean_target) if clean_target else project_dir.resolve()
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # 扫描项目下所有物理文件，建立 file_id 映射
+    file_map = {}
+    import os
+    for root, dirs, files in os.walk(str(project_dir)):
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        for f in files:
+            if f.startswith('.'):
+                continue
+            full_f = Path(root) / f
+            rel_f = str(full_f.relative_to(UPLOAD_ROOT))
+            fid = hashlib.md5(f"{req.project_id}_{rel_f}".encode("utf-8")).hexdigest()
+            file_map[fid] = (full_f, rel_f)
+
+    moved = []
+    import shutil
+    for fid in req.file_ids:
+        if fid in file_map:
+            old_full, old_rel = file_map[fid]
+            new_full = target_dir / old_full.name
+            if old_full.resolve() != new_full.resolve():
+                shutil.move(str(old_full), str(new_full))
+                new_rel = str(new_full.relative_to(UPLOAD_ROOT))
+                new_fid = hashlib.md5(f"{req.project_id}_{new_rel}".encode("utf-8")).hexdigest()
+
+                # 同步迁移状态追踪中的切片信息与状态
+                from core.status_tracker import get_file_status, update_file_status
+                old_status = get_file_status(req.project_id, fid)
+                if old_status and old_status.get("status"):
+                    update_file_status(
+                        req.project_id,
+                        new_fid,
+                        old_status.get("status"),
+                        chunks=old_status.get("chunks", 0),
+                        filename=old_full.name
+                    )
+
+                moved.append({
+                    "old_id": fid,
+                    "new_id": new_fid,
+                    "filename": old_full.name,
+                    "old_path": old_rel,
+                    "new_path": new_rel
+                })
+
+    from core.audit_log import log_operation
+    log_operation(user["id"], "files_move", f"移动 {len(moved)} 个文件至目录：{clean_target or '根目录'}")
+
+    return {
+        "message": f"成功移动 {len(moved)} 个文件",
+        "moved_count": len(moved),
+        "moved": moved
     }
 
 

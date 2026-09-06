@@ -824,7 +824,7 @@ async def get_learning_progress(user: dict = Depends(get_current_user)):
         return _LEARNING_PROGRESS_CACHE
 
     with get_db() as conn:
-        projects = conn.execute("SELECT id, name, priority, is_paused, created_at FROM projects").fetchall()
+        projects = conn.execute("SELECT id, name, priority, is_paused, created_at, project_type FROM projects").fetchall()
         
     result = []
     from pathlib import Path
@@ -838,6 +838,8 @@ async def get_learning_progress(user: dict = Depends(get_current_user)):
     for p in projects:
         pid = p["id"]
         pname = p["name"]
+        ptype = dict(p).get("project_type", "case") or "case"
+        is_library = (ptype == "library")
         priority = dict(p).get("priority", 2) or 2
         is_paused = dict(p).get("is_paused", 0) or 0
         
@@ -1139,65 +1141,70 @@ async def get_learning_progress(user: dict = Depends(get_current_user)):
             except Exception as _rd_e:
                 logger.warning(f"[get_learning_progress] 读取 Redis 社区摘要进度失败 pid={pid}: {_rd_e}")
             
-            # ── [NEW] 第4阶段：自动研判学习（统计分拣填报、调查取证、研判裁量 3 个 Tab 的推荐与填报完成率） ──
-            try:
-                triage_p = Path(settings.DATA_DIR) / "triage" / f"{pid}.json"
-                inv_p = Path(settings.DATA_DIR) / "judgment" / f"{pid}.json"
-                adj_p = Path(settings.DATA_DIR) / "adjudication" / f"{pid}.json"
+            # ── [NEW] 第4阶段：自动研判学习（公共文档项目 library 无需自动研判学习） ──
+            if is_library:
+                auto_judgment = None
+            else:
+                try:
+                    triage_p = Path(settings.DATA_DIR) / "triage" / f"{pid}.json"
+                    inv_p = Path(settings.DATA_DIR) / "judgment" / f"{pid}.json"
+                    adj_p = Path(settings.DATA_DIR) / "adjudication" / f"{pid}.json"
 
-                t_forms = json.loads(triage_p.read_text()).get("recommended_forms", []) if triage_p.exists() else []
-                i_forms = json.loads(inv_p.read_text()).get("recommended_forms", []) if inv_p.exists() else []
-                a_forms = json.loads(adj_p.read_text()).get("recommended_forms", []) if adj_p.exists() else []
+                    t_forms = json.loads(triage_p.read_text()).get("recommended_forms", []) if triage_p.exists() else []
+                    i_forms = json.loads(inv_p.read_text()).get("recommended_forms", []) if inv_p.exists() else []
+                    a_forms = json.loads(adj_p.read_text()).get("recommended_forms", []) if adj_p.exists() else []
 
-                doc_dir = Path(settings.DATA_DIR) / "documents" / pid
-                saved_docs = list(doc_dir.glob("*.json")) if doc_dir.exists() else []
-                saved_titles = set()
-                for d in saved_docs:
-                    try:
-                        saved_titles.add(json.loads(d.read_text()).get("title", ""))
-                    except Exception:
-                        pass
+                    doc_dir = Path(settings.DATA_DIR) / "documents" / pid
+                    saved_docs = list(doc_dir.glob("*.json")) if doc_dir.exists() else []
+                    saved_titles = set()
+                    for d in saved_docs:
+                        try:
+                            saved_titles.add(json.loads(d.read_text()).get("title", ""))
+                        except Exception:
+                            pass
 
-                def _calc_tab(forms):
-                    c = 0
-                    for f in forms:
-                        fname = f if isinstance(f, str) else f.get("name", "")
-                        clean_fn = re.sub(r'^\d+[\.、\s]*', '', fname)
-                        if any(st.startswith(fname + "_") or (clean_fn and clean_fn in st) for st in saved_titles):
-                            c += 1
-                    tot = len(forms)
-                    pct = round(c / tot * 100, 2) if tot > 0 else (100.0 if saved_docs else 0.0)
-                    return {"total": tot, "completed": c, "percent": pct}
+                    def _calc_tab(forms):
+                        c = 0
+                        for f in forms:
+                            fname = f if isinstance(f, str) else f.get("name", "")
+                            clean_fn = re.sub(r'^\d+[\.、\s]*', '', fname)
+                            if any(st.startswith(fname + "_") or (clean_fn and clean_fn in st) for st in saved_titles):
+                                c += 1
+                        tot = len(forms)
+                        pct = round(c / tot * 100, 2) if tot > 0 else (100.0 if saved_docs else 0.0)
+                        return {"total": tot, "completed": c, "percent": pct}
 
-                t_stat = _calc_tab(t_forms)
-                i_stat = _calc_tab(i_forms)
-                a_stat = _calc_tab(a_forms)
+                    t_stat = _calc_tab(t_forms)
+                    i_stat = _calc_tab(i_forms)
+                    a_stat = _calc_tab(a_forms)
 
-                total_forms = t_stat["total"] + i_stat["total"] + a_stat["total"]
-                done_forms = t_stat["completed"] + i_stat["completed"] + a_stat["completed"]
-                aj_pct = round(done_forms / total_forms * 100, 2) if total_forms > 0 else (100.0 if saved_docs else 0.0)
+                    total_forms = t_stat["total"] + i_stat["total"] + a_stat["total"]
+                    done_forms = t_stat["completed"] + i_stat["completed"] + a_stat["completed"]
+                    aj_pct = round(done_forms / total_forms * 100, 2) if total_forms > 0 else (100.0 if saved_docs else 0.0)
 
-                auto_judgment = {
-                    "triage": t_stat,
-                    "investigation": i_stat,
-                    "adjudication": a_stat,
-                    "total": total_forms,
-                    "completed": done_forms,
-                    "percent": aj_pct,
-                    "status": "completed" if (done_forms >= total_forms and total_forms > 0) else "pending"
-                }
-            except Exception as _aj_e:
-                logger.warning(f"统计自动研判学习失败 pid={pid}: {_aj_e}")
-                auto_judgment = {
-                    "triage": {"total": 0, "completed": 0, "percent": 0.0},
-                    "investigation": {"total": 0, "completed": 0, "percent": 0.0},
-                    "adjudication": {"total": 0, "completed": 0, "percent": 0.0},
-                    "total": 0, "completed": 0, "percent": 0.0, "status": "pending"
-                }
+                    auto_judgment = {
+                        "triage": t_stat,
+                        "investigation": i_stat,
+                        "adjudication": a_stat,
+                        "total": total_forms,
+                        "completed": done_forms,
+                        "percent": aj_pct,
+                        "status": "completed" if (done_forms >= total_forms and total_forms > 0) else "pending"
+                    }
+                except Exception as _aj_e:
+                    logger.warning(f"统计自动研判学习失败 pid={pid}: {_aj_e}")
+                    auto_judgment = {
+                        "triage": {"total": 0, "completed": 0, "percent": 0.0},
+                        "investigation": {"total": 0, "completed": 0, "percent": 0.0},
+                        "adjudication": {"total": 0, "completed": 0, "percent": 0.0},
+                        "total": 0, "completed": 0, "percent": 0.0, "status": "pending"
+                    }
 
             result.append({
                 "id": pid,
                 "name": pname,
+                "project_type": ptype,
+                "is_library": is_library,
                 "priority": priority,
                 "is_paused": is_paused,
                 "createdAt": dict(p).get("created_at", ""),
@@ -1949,6 +1956,14 @@ async def trigger_auto_judgment_learn(
     global _LEARNING_PROGRESS_CACHE
     _LEARNING_PROGRESS_CACHE = None
     try:
+        with get_db() as conn:
+            p_row = conn.execute("SELECT project_type FROM projects WHERE id = ?", (project_id,)).fetchone()
+            if p_row and dict(p_row).get("project_type") == "library":
+                return {
+                    "success": True,
+                    "message": f"项目 {project_id} 为公共文档参考知识库，无需自动研判公文填报。"
+                }
+
         from scripts.inspect_and_fill_all_forms import auto_fill_project
         auto_fill_project(project_id)
         

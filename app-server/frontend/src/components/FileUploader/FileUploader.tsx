@@ -223,42 +223,13 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
 
   // WHY：将文件添加并立即触发上传，保证每一份文件都持久化到服务端磁盘
   const addAndUpload = useCallback(async (newFiles: File[]) => {
-    // 1. 计算这批上传文件相对目录的公共根路径
-    let commonRoot = '';
-    const fileDirs = newFiles.map(f => {
-      if ((f as any).customRelativeDir !== undefined) {
-        return (f as any).customRelativeDir;
-      }
-      return f.webkitRelativePath ? f.webkitRelativePath.split('/').slice(0, -1).join('/') : '';
-    });
-
-    if (fileDirs.length > 0 && fileDirs.every(d => d !== '')) {
-      const splitDirs = fileDirs.map(d => d.split('/'));
-      let commonParts: string[] = [];
-      const firstDirParts = splitDirs[0];
-
-      for (let i = 0; i < firstDirParts.length; i++) {
-        const part = firstDirParts[i];
-        const isCommon = splitDirs.every(sd => sd[i] === part);
-        if (isCommon) {
-          commonParts.push(part);
-        } else {
-          break;
-        }
-      }
-      commonRoot = commonParts.join('/');
-    }
-
-    // 2. 如果存在全员共同的根文件夹前缀，进行路径剥离并统一注入到 customRelativeDir 属性中
-    newFiles.forEach((file, idx) => {
-      const originalDir = fileDirs[idx];
-      let finalDir = originalDir;
-      if (commonRoot) {
-        if (originalDir === commonRoot) {
-          finalDir = '';
-        } else if (originalDir.startsWith(commonRoot + '/')) {
-          finalDir = originalDir.substring(commonRoot.length + 1);
-        }
+    // 1. 保留文件原本的完整目录层级（从拖拽customRelativeDir或原生webkitRelativePath获取），严禁剥离目录名
+    newFiles.forEach(file => {
+      let finalDir = '';
+      if ((file as any).customRelativeDir !== undefined) {
+        finalDir = (file as any).customRelativeDir;
+      } else if (file.webkitRelativePath) {
+        finalDir = file.webkitRelativePath.split('/').slice(0, -1).join('/');
       }
 
       Object.defineProperty(file, 'customRelativeDir', {
@@ -727,8 +698,14 @@ export default function FileUploader({ projectId }: FileUploaderProps) {
               onChange={handleChange}
             />
             
-            {/* @ts-expect-error - webkitdirectory is non-standard but works */}
-            <input type="file" multiple hidden ref={folderInputRef} onChange={handleChange} webkitdirectory="true" />
+            <input
+              type="file"
+              multiple
+              hidden
+              ref={folderInputRef}
+              onChange={handleChange}
+              {...({ webkitdirectory: '', directory: '' } as any)}
+            />
             
             <p className="text-gray-500 text-xs text-center max-w-md mt-2">
               已挂载特种管道：天然支持技术规范、管理制度、汇报PPT、音频转写、政策标准及其它常规办公文档。系统将自动持久化至后台目录。

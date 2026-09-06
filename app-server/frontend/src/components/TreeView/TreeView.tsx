@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useProjectStore } from '../../store/projectStore';
 import { useAuthStore } from '../../store/authStore';
-import { FileText, FileSpreadsheet, FileImage, FileVideo, FileAudio, FileQuestion, Loader2, CheckSquare, Square, Folder, FolderOpen, Trash2, Download } from 'lucide-react';
+import { FileText, FileSpreadsheet, FileImage, FileVideo, FileAudio, FileQuestion, Loader2, CheckSquare, Square, Folder, FolderOpen, Trash2, Download, FolderPlus, MoveRight, X } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
@@ -131,6 +131,16 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
   const [showConfirmBulkExclude, setShowConfirmBulkExclude] = useState(false);
   
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [directories, setDirectories] = useState<string[]>([]);
+  const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
+  const [newFolderParent, setNewFolderParent] = useState('');
+  const [newFolderName, setNewFolderName] = useState('');
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [targetMoveFolder, setTargetMoveFolder] = useState('');
+  const [isMovingFiles, setIsMovingFiles] = useState(false);
+
   const [refFiles, setRefFiles] = useState<FileItem[]>([]);
   const [usePublicRef, setUsePublicRef] = useState<boolean>(true);
   const [projectRefFiles, setProjectRefFiles] = useState<FileItem[]>([]);
@@ -139,8 +149,6 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
   const { checkedFileIds, toggleFileCheck, setCheckedFiles, activePreviewFile, setActivePreviewFile, refreshCounter, checkedRefIds, setCheckedRefIds, setProjectFiles } = useProjectStore();
   const { getAuthHeaders } = useAuthStore();
   const seenFileIdsRef = useRef<Set<string>>(new Set());
-  const knownFoldersRef = useRef<Set<string>>(new Set());
-  const hasLoadedSavedFoldersRef = useRef<boolean>(false);
 
   const fetchFiles = async () => {
     try {
@@ -150,6 +158,9 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
         const filesList: FileItem[] = data.files || [];
         setFiles(filesList);
         setProjectFiles(filesList);
+        if (data.directories && Array.isArray(data.directories)) {
+          setDirectories(data.directories);
+        }
         
         // 自动勾选逻辑（左侧默认勾选全部新文件）
         const currentChecked = [...useProjectStore.getState().checkedFileIds];
@@ -177,41 +188,14 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
   useEffect(() => {
     setCheckedFiles([]);
     seenFileIdsRef.current.clear();
-    knownFoldersRef.current.clear();
-    hasLoadedSavedFoldersRef.current = false;
-
-    // 从 localStorage 中恢复已有的文件展开/收拢状态
-    const saved = localStorage.getItem(`project_expanded_folders_${projectId}`);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setExpandedFolders(new Set(parsed));
-          hasLoadedSavedFoldersRef.current = true;
-        } else {
-          setExpandedFolders(new Set());
-        }
-      } catch {
-        setExpandedFolders(new Set());
-      }
-    } else {
-      setExpandedFolders(new Set());
-    }
+    // 目录默认全部折叠，清理历史旧缓存中被污染的全量展开数据
+    localStorage.removeItem(`project_expanded_folders_${projectId}`);
+    setExpandedFolders(new Set());
 
     fetchFiles();
     const timer = setInterval(fetchFiles, 5000);
     return () => clearInterval(timer);
-  }, [projectId]);
-
-  // 监听展开状态的改变并持久化到 localStorage 中
-  useEffect(() => {
-    if (projectId) {
-      localStorage.setItem(
-        `project_expanded_folders_${projectId}`,
-        JSON.stringify(Array.from(expandedFolders))
-      );
-    }
-  }, [expandedFolders, projectId]);
+  }, [projectId, refreshCounter]);
 
   // 加载引用的公共文档文件列表
   const fetchRefFiles = async () => {
@@ -363,6 +347,76 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
     }
   };
 
+  // 新建目录/子目录逻辑
+  const handleCreateFolder = async () => {
+    const trimmed = newFolderName.trim();
+    if (!trimmed) {
+      alert('请输入文件夹名称');
+      return;
+    }
+    const fullPath = newFolderParent ? `${newFolderParent}/${trimmed}` : trimmed;
+    setIsCreatingFolder(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/files/create-folder`, {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          project_id: projectId,
+          folder_path: fullPath,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      setExpandedFolders(prev => new Set([...prev, fullPath]));
+      setShowCreateFolderModal(false);
+      setNewFolderName('');
+      await fetchFiles();
+    } catch (e: any) {
+      alert(`创建目录失败: ${e.message}`);
+    } finally {
+      setIsCreatingFolder(false);
+    }
+  };
+
+  // 批量移动选中的文件至指定目录
+  const handleBatchMoveFiles = async () => {
+    if (checkedFileIds.length === 0) return;
+    setIsMovingFiles(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/files/batch-move`, {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          project_id: projectId,
+          file_ids: checkedFileIds,
+          target_folder: targetMoveFolder,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      if (targetMoveFolder) {
+        setExpandedFolders(prev => new Set([...prev, targetMoveFolder]));
+      }
+      setShowMoveModal(false);
+      setCheckedFiles([]);
+      await fetchFiles();
+    } catch (e: any) {
+      alert(`移动文件失败: ${e.message}`);
+    } finally {
+      setIsMovingFiles(false);
+    }
+  };
+
   // 从扁平文件列表构建树形目录结构
   const treeRoot = useMemo(() => {
     const root: TreeNode = { name: 'root', isFolder: true, children: {} };
@@ -389,6 +443,18 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
       current.children[fileName] = { name: fileName, isFolder: false, file, children: {} };
     });
 
+    // 2. 将项目所有已知目录结构（包含新建空目录、选定上传的空目录）注入树中
+    directories.forEach(dirPath => {
+      const parts = dirPath.split('/').filter(Boolean);
+      let current = root;
+      for (const part of parts) {
+        if (!current.children[part]) {
+          current.children[part] = { name: part, isFolder: true, children: {} };
+        }
+        current = current.children[part];
+      }
+    });
+
     // 3. 将引用其他项目的文档塞入“其他公开项目文档”虚拟顶级文件夹下
     if (projectRefFiles.length > 0) {
       const refFolderName = '其他公开项目文档';
@@ -409,69 +475,14 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
     }
 
     return root;
-  }, [files, projectRefFiles, projectId]);
+  }, [files, directories, projectRefFiles, projectId]);
 
   const bulkExcludeCount = useMemo(() => {
     const selectedProjRefIds = projectRefFiles.filter(f => checkedRefIds.includes(f.id)).map(f => f.id);
     return selectedProjRefIds.length > 0 ? selectedProjRefIds.length : projectRefFiles.length;
   }, [projectRefFiles, checkedRefIds]);
 
-  // 默认把引用目录加进展开中
-  useEffect(() => {
-    setExpandedFolders(prev => {
-      const next = new Set(prev);
-      next.add('其他公开项目文档');
-      return next;
-    });
-  }, []);
 
-  // 渲染后将真正新创建的文件夹自动加入展开集合，保留用户手动折叠的状态
-  useEffect(() => {
-    const allFolders = new Set<string>();
-    const collectFolders = (node: TreeNode, currentPath: string = '') => {
-      Object.values(node.children).forEach(child => {
-        if (child.isFolder) {
-          const pathKey = currentPath ? `${currentPath}/${child.name}` : child.name;
-          allFolders.add(pathKey);
-          collectFolders(child, pathKey);
-        }
-      });
-    };
-    collectFolders(treeRoot);
-    
-    // 如果是从 localStorage 恢复状态后的第一次渲染
-    if (hasLoadedSavedFoldersRef.current) {
-      // 此时列表中已有的所有文件夹路径均标记为已处理，后续仅新增文件夹会自动展开
-      allFolders.forEach(f => knownFoldersRef.current.add(f));
-      hasLoadedSavedFoldersRef.current = false;
-      return;
-    }
-
-    // 找出哪些文件夹是全新出现的（之前不在 knownFoldersRef 中）
-    const newlyAddedFolders: string[] = [];
-    allFolders.forEach(f => {
-      if (!knownFoldersRef.current.has(f)) {
-        newlyAddedFolders.push(f);
-        knownFoldersRef.current.add(f);
-      }
-    });
-
-    // 如果有全新文件夹，把它们加入 expandedFolders 中展开
-    if (newlyAddedFolders.length > 0) {
-      setExpandedFolders(prev => {
-        const next = new Set(prev);
-        newlyAddedFolders.forEach(f => next.add(f));
-        return next;
-      });
-    }
-    
-    // 清理已不存在的文件夹缓存
-    knownFoldersRef.current.forEach(f => {
-      if (!allFolders.has(f)) {
-        knownFoldersRef.current.delete(f);
-      }
-    });
-  }, [treeRoot]);
 
   // 获得一个节点（包括其后代）所有的文件ID
   const getFileIdsUnderNode = (node: TreeNode): string[] => {
@@ -494,7 +505,7 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
     );
   }
 
-  if (files.length === 0 && refFiles.length === 0) {
+  if (files.length === 0 && refFiles.length === 0 && directories.length === 0 && !canWrite) {
     return <div className="text-gray-400 text-center mt-4">暂无文件，请上传或引用</div>;
   }
 
@@ -521,6 +532,26 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
       }
       return next;
     });
+  };
+
+  // 一键切换全部折叠 / 全部展开
+  const toggleExpandAll = () => {
+    if (expandedFolders.size > 0) {
+      setExpandedFolders(new Set());
+    } else {
+      const allFolders = new Set<string>();
+      const collectFolders = (node: TreeNode, currentPath: string = '') => {
+        Object.values(node.children).forEach(child => {
+          if (child.isFolder) {
+            const pathKey = currentPath ? `${currentPath}/${child.name}` : child.name;
+            allFolders.add(pathKey);
+            collectFolders(child, pathKey);
+          }
+        });
+      };
+      collectFolders(treeRoot);
+      setExpandedFolders(allFolders);
+    }
   };
 
   const handleNodeCheck = (node: TreeNode, e: React.MouseEvent) => {
@@ -777,6 +808,21 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
                   )
                 ) : (
                   <>
+                    {canWrite && (
+                      <button
+                        className="p-0.5 rounded hover:bg-blue-100 text-gray-300 hover:text-blue-600 transition-colors"
+                        title={`在「${child.name}」下新建子目录`}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setNewFolderParent(pathKey);
+                          setNewFolderName('');
+                          setShowCreateFolderModal(true);
+                        }}
+                      >
+                        <FolderPlus className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
                       className="p-0.5 rounded hover:bg-blue-100 text-gray-300 hover:text-blue-500"
                       title={`下载文件夹 ${child.name}`}
@@ -921,57 +967,108 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
 
       <>
           {/* 顶部工具栏：全选与选中统计 */}
-          <div className="flex items-center justify-between pb-2 border-b border-gray-100 px-1 flex-nowrap gap-1">
-             <div 
-               className="flex items-center gap-1.5 cursor-pointer group shrink-0"
-               onClick={handleToggleAll}
-             >
-               <div className={`mt-0.5 shrink-0 ${someChecked ? 'text-blue-500' : 'text-gray-300'}`}>
-                 {allChecked ? <CheckSquare className="w-4 h-4 group-hover:opacity-80" /> : <Square className="w-4 h-4 group-hover:text-blue-400" />}
+          <div className="flex flex-col gap-1.5 pb-2 border-b border-gray-100">
+             {/* 第一行：全选统计、折叠/展开、新建目录 */}
+             <div className="flex items-center justify-between px-1 gap-1">
+               <div className="flex items-center gap-2">
+                 <div 
+                   className="flex items-center gap-1.5 cursor-pointer group shrink-0"
+                   onClick={handleToggleAll}
+                 >
+                   <div className={`mt-0.5 shrink-0 ${someChecked ? 'text-blue-500' : 'text-gray-300'}`}>
+                     {allChecked ? <CheckSquare className="w-4 h-4 group-hover:opacity-80" /> : <Square className="w-4 h-4 group-hover:text-blue-400" />}
+                   </div>
+                   <span className="text-sm font-medium text-gray-700 group-hover:text-blue-600 transition-colors whitespace-nowrap">
+                       全选({checkedFileIds.length}/{files.length})
+                   </span>
+                 </div>
+
+                 <button
+                   type="button"
+                   onClick={toggleExpandAll}
+                   className="text-[11px] text-gray-400 hover:text-blue-600 dark:text-gray-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-800 px-1.5 py-0.5 rounded transition-colors whitespace-nowrap"
+                   title={expandedFolders.size > 0 ? "一键折叠所有目录" : "一键展开所有目录"}
+                 >
+                   {expandedFolders.size > 0 ? "全部折叠" : "全部展开"}
+                 </button>
                </div>
-               <span className="text-sm font-medium text-gray-700 group-hover:text-blue-600 transition-colors whitespace-nowrap">
-                   全选({checkedFileIds.length}/{files.length})
-               </span>
+
+               {canWrite && (
+                 <button
+                   type="button"
+                   onClick={() => {
+                     setNewFolderParent('');
+                     setNewFolderName('');
+                     setShowCreateFolderModal(true);
+                   }}
+                   className="text-[11px] text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-2 py-1 rounded transition-colors flex items-center gap-1 whitespace-nowrap border border-blue-200/60 shadow-2xs font-medium shrink-0"
+                   title="在当前项目新建目录或子目录"
+                 >
+                   <FolderPlus className="w-3.5 h-3.5" />
+                   <span>新建目录</span>
+                 </button>
+               )}
              </div>
-             
-             <div className="flex items-center gap-1 shrink-0">
-               {checkedFileIds.length > 0 && (
+
+             {/* 第二行：多选批量操作栏（纯文字无数字，精致单行排列） */}
+             {checkedFileIds.length > 0 && (
+               <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200/60 dark:border-gray-700/60 shadow-xs justify-start flex-nowrap overflow-x-auto">
+                 {canWrite && (
+                   <button
+                     onClick={() => {
+                       setTargetMoveFolder('');
+                       setShowMoveModal(true);
+                     }}
+                     disabled={isMovingFiles}
+                     className="text-xs text-indigo-600 dark:text-indigo-400 font-medium hover:bg-indigo-50 dark:hover:bg-indigo-950/40 px-2 py-1 rounded-md flex items-center gap-1 transition-colors whitespace-nowrap border border-indigo-200/60 bg-white dark:bg-gray-800 shadow-2xs cursor-pointer shrink-0"
+                     title={`移动选中的 ${checkedFileIds.length} 个文件到指定目录`}
+                   >
+                     <MoveRight className="w-3.5 h-3.5" />
+                     <span>移动</span>
+                   </button>
+                 )}
                  <button
                    onClick={() => handleDownload(
                      files.filter(f => checkedFileIds.includes(f.id)).map(f => f.path),
                      `批量下载_${checkedFileIds.length}个文件.zip`
                    )}
                    disabled={downloadingId === 'bulk-downloading'}
-                   className="text-xs text-blue-500 font-medium hover:bg-blue-50 px-1.5 py-1 rounded flex items-center gap-0.5 transition-colors whitespace-nowrap"
+                   className="text-xs text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-50 dark:hover:bg-blue-950/40 px-2 py-1 rounded-md flex items-center gap-1 transition-colors whitespace-nowrap border border-blue-200/60 bg-white dark:bg-gray-800 shadow-2xs cursor-pointer"
                  >
                    {downloadingId === 'bulk-downloading' ? (
-                     <Loader2 className="w-3 h-3 animate-spin" />
+                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                    ) : (
-                     <Download className="w-3 h-3" />
+                     <Download className="w-3.5 h-3.5" />
                    )}
-                    下载({checkedFileIds.length})
+                   <span>下载</span>
                  </button>
-               )}
-               {canWrite && checkedFileIds.length > 0 && (
-                 <button
-                    onClick={handleBulkDeleteClick}
-                   disabled={deletingId === 'bulk-deleting'}
-                   className="text-xs text-red-500 font-medium hover:bg-red-50 px-1.5 py-1 rounded flex items-center gap-0.5 transition-colors whitespace-nowrap"
-                 >
-                   {deletingId === 'bulk-deleting' ? (
-                     <Loader2 className="w-3 h-3 animate-spin" />
-                   ) : (
-                     <Trash2 className="w-3 h-3" />
-                   )}
-                    删除({checkedFileIds.length})
-                 </button>
-               )}
-             </div>
+                 {canWrite && (
+                   <button
+                     onClick={handleBulkDeleteClick}
+                     disabled={deletingId === 'bulk-deleting'}
+                     className="text-xs text-red-600 dark:text-red-400 font-medium hover:bg-red-50 dark:hover:bg-red-950/40 px-2 py-1 rounded-md flex items-center gap-1 transition-colors whitespace-nowrap border border-red-200/60 bg-white dark:bg-gray-800 shadow-2xs cursor-pointer"
+                   >
+                     {deletingId === 'bulk-deleting' ? (
+                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                     ) : (
+                       <Trash2 className="w-3.5 h-3.5" />
+                     )}
+                     <span>删除</span>
+                   </button>
+                 )}
+               </div>
+             )}
           </div>
 
           {/* 结构树渲染区 */}
           <div className="space-y-0.5 pb-4">
-            {renderTree(treeRoot)}
+            {Object.keys(treeRoot.children).length === 0 ? (
+              <div className="text-gray-400 text-center py-6 text-xs bg-gray-50/50 rounded-lg border border-dashed border-gray-200 mt-2">
+                暂无文件或目录，可点击上方「新建目录」或上传文档
+              </div>
+            ) : (
+              renderTree(treeRoot)
+            )}
           </div>
         </>
 
@@ -1022,6 +1119,136 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
         confirmText="取消引用"
         type="warning"
       />
+
+      {/* 新建目录弹窗 */}
+      {showCreateFolderModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm border border-gray-100 dark:border-gray-700 p-5">
+            <div className="flex items-center justify-between mb-4 border-b border-gray-100 dark:border-gray-700 pb-2.5">
+              <h3 className="font-bold text-gray-800 dark:text-gray-100 text-sm flex items-center gap-1.5">
+                <FolderPlus className="w-4 h-4 text-blue-500" />
+                新建目录
+              </h3>
+              <button
+                onClick={() => setShowCreateFolderModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">存放位置（父目录）</label>
+                <select
+                  value={newFolderParent}
+                  onChange={(e) => setNewFolderParent(e.target.value)}
+                  className="w-full text-xs border border-gray-200 dark:border-gray-600 rounded px-2.5 py-1.5 bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 outline-none focus:border-blue-500"
+                >
+                  <option value="">/ 根目录（顶级目录）</option>
+                  {directories.map(d => (
+                    <option key={d} value={d}>📂 {d}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">目录名称</label>
+                <input
+                  type="text"
+                  placeholder="请输入目录名称，如：立案材料、市场监管..."
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
+                  autoFocus
+                  className="w-full text-xs border border-gray-200 dark:border-gray-600 rounded px-2.5 py-1.5 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setShowCreateFolderModal(false)}
+                className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 rounded"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleCreateFolder}
+                disabled={isCreatingFolder || !newFolderName.trim()}
+                className="px-3.5 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium rounded flex items-center gap-1 transition disabled:opacity-50"
+              >
+                {isCreatingFolder && <Loader2 className="w-3 h-3 animate-spin" />}
+                创建
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 批量移动文件弹窗 */}
+      {showMoveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md border border-gray-100 dark:border-gray-700 p-5">
+            <div className="flex items-center justify-between mb-4 border-b border-gray-100 dark:border-gray-700 pb-2.5">
+              <h3 className="font-bold text-gray-800 dark:text-gray-100 text-sm flex items-center gap-1.5">
+                <MoveRight className="w-4 h-4 text-indigo-500" />
+                移动选中的 {checkedFileIds.length} 个文件
+              </h3>
+              <button
+                onClick={() => setShowMoveModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">请选择目标目标文件夹：</p>
+              <div className="max-h-56 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-2 space-y-1 bg-gray-50/50 dark:bg-gray-900/40">
+                <div
+                  onClick={() => setTargetMoveFolder('')}
+                  className={`px-3 py-2 rounded-md text-xs cursor-pointer flex items-center justify-between transition-colors ${
+                    targetMoveFolder === '' ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200' : 'hover:bg-white text-gray-700'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">📁 / 项目根目录</span>
+                  {targetMoveFolder === '' && <span className="text-[10px] text-indigo-500">当前选定</span>}
+                </div>
+                {directories.map(d => (
+                  <div
+                    key={d}
+                    onClick={() => setTargetMoveFolder(d)}
+                    className={`px-3 py-2 rounded-md text-xs cursor-pointer flex items-center justify-between transition-colors ${
+                      targetMoveFolder === d ? 'bg-indigo-50 text-indigo-700 font-bold border border-indigo-200' : 'hover:bg-white text-gray-700'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">📂 {d}</span>
+                    {targetMoveFolder === d && <span className="text-[10px] text-indigo-500">当前选定</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setShowMoveModal(false)}
+                className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 rounded"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleBatchMoveFiles}
+                disabled={isMovingFiles}
+                className="px-3.5 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded flex items-center gap-1 transition disabled:opacity-50"
+              >
+                {isMovingFiles && <Loader2 className="w-3 h-3 animate-spin" />}
+                确认移动
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
