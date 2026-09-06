@@ -1,7 +1,7 @@
 # 智能体通用知识库 RAG (AgentRAG)
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-iBubble/RAG-181717?logo=github)](https://github.com/iBubble/RAG)
-![Version](https://img.shields.io/badge/Version-4.6.0-blue)
+![Version](https://img.shields.io/badge/Version-4.6.1-blue)
 ![Go](https://img.shields.io/badge/Go-1.18+-00ADD8?logo=go&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128+-009688?logo=fastapi&logoColor=white)
@@ -307,6 +307,18 @@ Eino 有向图每个 Agent 节点在进行状态流转时，通过 SSE 实时向
 
 ---
 
+## ⚖️ 十、 市场监管权威法规库重构与旧版平铺冗余数据全链路彻底销毁
+
+针对知识库体系演进过程中存在的“平铺旧库残卷”与“新版层级规范库”共存引发的检索冗余召回与法条版本冲突，系统在 V4.6.1 实施了全链路彻底销毁与知识库统合接管：
+*   **旧版平铺库全链路物理销毁**：将历史无分类平铺旧库「国家市场监督法律法规」（284 部，`fc28c7fff7bb`）从系统彻底抹除：
+    - **元数据库物理擦除**：从 SQLite `projects` 及其所有关联子表、案卷绑定关系中彻底删除；
+    - **Qdrant 向量索引清零**：精准检索并批量删除所属的全部 **6,239 个稠密/稀疏向量切片及全文索引点**，实时释放向量存储资源；
+    - **物理磁盘与缓存深度清理**：彻底递归删除宿主机物理文件目录 `/Volumes/macData/GenRAG_Files/uploads/fc28c7fff7bb`，同步注销 Redis L2 语义缓存与图谱关联缓存。
+*   **全新「市监法规」高保真层级库全面接管**：全面收录 **20 个法制专篇分类、640 部现行有效法律法规**（完整包含旧库全部内容且多出 356 部最新法律法规与司法解释），实现食品监管、药品医疗器械、特种设备、反不正当竞争、价格监管、知识产权等领域的权威分级收纳，彻底实现市场监管法律法规体系的专业化、结构化与精准召回。
+*   **后台标准库向量化平稳护航**：针对食品安全国家标准全库（1,746 部）的向量化和切片计算，由后台常驻守护进程持续推进，并挂载每 10 分钟自动巡检防卡死机制。
+
+---
+
 ## 📁 项目目录结构
 
 ```
@@ -325,6 +337,7 @@ Eino 有向图每个 Agent 节点在进行状态流转时，通过 SSE 实时向
 │   │   ├── chat_handler.go         # L2 语义缓存拦截与 Eino 图调度
 │   │   └── eino_graph.go           # 核心对话流有向图 Eino 编排
 │   ├── backend                     # Python FastAPI 算法微服务源码 (Port 8004)
+│   │   ├── scripts_destroy_project.py # 知识库全链路物理与向量索引彻底销毁工具
 │   │   ├── core                    # 核心 RAG 算法模块
 │   │   │   ├── vector_store.py     # 语义分块、Qdrant 混合检索与 RRF 融合
 │   │   │   ├── retrieval_pipeline.py # 六路异构并行检索管线
