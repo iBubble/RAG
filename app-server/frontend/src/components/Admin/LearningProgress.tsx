@@ -542,8 +542,8 @@ export default function LearningProgress() {
                     className="transition-all duration-1000 ease-out"
                   />
                 </svg>
-                <div className="absolute flex flex-col items-center text-center">
-                  <span className="text-3xl font-extrabold text-gray-800 tracking-tight">{summaryData.overallPercent.toFixed(2)}%</span>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                  <span className="text-xl font-extrabold text-gray-800 tracking-tight">{summaryData.overallPercent.toFixed(2)}%</span>
                   <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">总体学习完成率</span>
                 </div>
               </div>
