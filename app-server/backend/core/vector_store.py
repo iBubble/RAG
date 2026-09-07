@@ -32,6 +32,11 @@ _collection_name = "syrag_documents"
 
 # ── 模型配置 ──
 _MODEL_NAME = "/app/backend/models/bge-m3"
+if not os.path.exists(_MODEL_NAME):
+    _local_bge = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models", "bge-m3"))
+    if os.path.exists(_local_bge):
+        _MODEL_NAME = _local_bge
+
 _DENSE_DIM = 1024
 _DENSE_VECTOR_NAME = "dense"
 _SPARSE_VECTOR_NAME = "sparse"
@@ -70,9 +75,10 @@ def _get_dense_model() -> SentenceTransformer:
         # WHY: 限制 PyTorch 线程数为 4，配合 OMP_WAIT_POLICY=PASSIVE 环境变量，既能榨干 M4 Max 多核性能，又绝无自旋锁假死
         torch.set_num_threads(4)
         os.environ["HF_HUB_OFFLINE"] = os.getenv("HF_HUB_OFFLINE", "0")
-        _dense_model = SentenceTransformer(_MODEL_NAME)
+        device = "mps" if torch.backends.mps.is_available() else "cpu"
+        _dense_model = SentenceTransformer(_MODEL_NAME, device=device)
         logger.info(
-            f"Dense 模型加载完成: dim={_DENSE_DIM}, "
+            f"Dense 模型加载完成 (device={device}): dim={_DENSE_DIM}, "
             f"max_seq={_dense_model.max_seq_length}"
         )
     return _dense_model
@@ -89,12 +95,14 @@ def _get_sparse_model():
     if _sparse_model is None:
         logger.info("正在初始化 Sparse 编码器（复用 Dense 模型权重）...")
         dense = _get_dense_model()
+        import torch
+        device = "mps" if torch.backends.mps.is_available() else "cpu"
         # WHY: SentenceTransformer 内部结构为 modules[0] = Transformer(model + tokenizer)
         transformer_module = dense[0]
-        _sparse_model = transformer_module.auto_model
+        _sparse_model = transformer_module.auto_model.to(device)
         _sparse_tokenizer = transformer_module.tokenizer
         _sparse_model.eval()
-        logger.info("Sparse 编码器初始化完成（共享权重，零额外内存）")
+        logger.info(f"Sparse 编码器初始化完成 (device={device}，共享权重，零额外内存)")
     return _sparse_tokenizer, _sparse_model
 
 
@@ -136,14 +144,14 @@ def _compute_sparse_vectors(texts: List[str]) -> List[models.SparseVector]:
     tokenizer, model = _get_sparse_model()
     results = []
 
-    # WHY: 分批处理防止 OOM（每批最多 16 条，降低峰值内存）
+    device = "mps" if torch.backends.mps.is_available() else "cpu"
     batch_size = 16
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
         inputs = tokenizer(
             batch, padding=True, truncation=True,
             return_tensors="pt", max_length=1024
-        )
+        ).to(device)
         with torch.no_grad():
             out = model(**inputs, return_dict=True)
             hidden = out.last_hidden_state
@@ -153,10 +161,11 @@ def _compute_sparse_vectors(texts: List[str]) -> List[models.SparseVector]:
                 * inputs["attention_mask"].unsqueeze(-1)
             )
             # Max-pool over hidden dim → per-token weight
-            token_weights = torch.max(sparse_w, dim=-1).values
+            token_weights = torch.max(sparse_w, dim=-1).values.cpu()
 
+        token_ids_cpu = inputs["input_ids"].cpu()
         for j in range(len(batch)):
-            token_ids = inputs["input_ids"][j]
+            token_ids = token_ids_cpu[j]
             weights = token_weights[j]
 
             # 聚合相同 token_id 的权重（取 max）
@@ -180,8 +189,12 @@ def _compute_sparse_vectors(texts: List[str]) -> List[models.SparseVector]:
                 models.SparseVector(indices=indices, values=values)
             )
 
-        # WHY: 每批处理完主动释放中间 tensor，防止在大文件入库时内存累积
-        del inputs, out, hidden, sparse_w, token_weights
+        # WHY: 每批处理完主动释放中间 tensor 并同步 MPS 队列，防范 Metal Watchdog 超时
+        del inputs, out, hidden, sparse_w, token_weights, token_ids_cpu
+        if hasattr(torch, "mps") and hasattr(torch.mps, "synchronize"):
+            torch.mps.synchronize()
+        if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+            torch.mps.empty_cache()
 
     return results
 
@@ -713,13 +726,19 @@ def ingest_text(
     # WHY: Dense 用原始 chunks 编码，保证与查询端（也是原始文本）的
     #      向量空间对称，避免文件名前缀造成的语义漂移。
     dense_model = _get_dense_model()
-    dense_vecs_raw = dense_model.encode(
-        chunks, show_progress_bar=False, normalize_embeddings=True,
-        batch_size=16,  # WHY: 控制每批大小，降低峰值内存
-    )
-    # WHY: 立即转为 Python list 释放 numpy 大数组
-    dense_vecs = [v.tolist() for v in dense_vecs_raw]
-    del dense_vecs_raw
+    import torch
+    dense_vecs = []
+    _encode_batch = 16
+    for b_idx in range(0, len(chunks), _encode_batch):
+        sub_chunks = chunks[b_idx : b_idx + _encode_batch]
+        sub_raw = dense_model.encode(
+            sub_chunks, show_progress_bar=False, normalize_embeddings=True,
+            batch_size=_encode_batch,
+        )
+        dense_vecs.extend([v.tolist() for v in sub_raw])
+        del sub_raw
+        if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+            torch.mps.empty_cache()
 
     # ── Sparse 编码 ──
     # WHY: Sparse 用带前缀的 chunks 编码，利用文件名关键词增强

@@ -15,8 +15,11 @@ from core.config import settings, STORAGE_ROOT
 
 logger = logging.getLogger(__name__)
 
-# WHY: 核心数据库放到容器内部持久化目录，避免外置硬盘断连导致系统不可用
-DB_PATH = Path("/app/backend/data") / "shengyao.db"
+# WHY: 核心数据库放到持久化目录，自动兼容容器内 /app 与宿主机本地相对路径
+_DB_DIR = Path("/app/backend/data")
+if not _DB_DIR.exists():
+    _DB_DIR = Path(__file__).resolve().parent.parent / "data"
+DB_PATH = _DB_DIR / "shengyao.db"
 
 # ── Schema DDL ──────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 # 智能体通用知识库 RAG (AgentRAG)
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-iBubble/RAG-181717?logo=github)](https://github.com/iBubble/RAG)
-![Version](https://img.shields.io/badge/Version-4.6.1-blue)
+![Version](https://img.shields.io/badge/Version-4.6.2-blue)
 ![Go](https://img.shields.io/badge/Go-1.18+-00ADD8?logo=go&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128+-009688?logo=fastapi&logoColor=white)
@@ -319,6 +319,27 @@ Eino 有向图每个 Agent 节点在进行状态流转时，通过 SSE 实时向
 
 ---
 
+## 🛡️ 十一、 后台全自动流程巡检与故障自愈守护体系 (V4.6.2 Watchdog Engine)
+
+针对海量多模态文档离线切片与知识图谱构建过程中可能因大文件超时、含特殊字符子目录相对路径散列基准偏差、Celery Worker 抖动或社区摘要挂起导致的“学习流程局部卡死”痛点，系统在 V4.6.2 引入了**全生命周期后台自愈看门狗（Watchdog Engine）**：
+
+### 11.1 四维自愈防御矩阵与原子修复算法
+*   **向量化超时自愈 (`inspect_and_repair_vectors`)**：实时扫描处于 `processing` 且超过 10 分钟无心跳的切片任务，安全重置为 `pending` 并重新入队；大于 2MB 的复杂文件自动分流至 `slow_queue`，配合最大 3 次自愈上限阻断毒丸文件。
+*   **图谱提取超时与哈希偏差自愈 (`inspect_and_repair_graphs`)**：
+    - **双重哈希对齐机制**：针对全角括号或子层级目录案卷，自动探测 `q_fid` 与 `admin_fid` 散列基准差异并原子对齐，杜绝图谱已完成抽取却因看板散列差异显示未完成；
+    - **僵尸任务重启**：对超过 15 分钟无响应的图谱抽取任务自动重置并补发，彻底消除死锁。
+*   **社区摘要自动触发补偿 (`inspect_and_repair_community_summaries`)**：当 Neo4j 实体已就绪但全局 Leiden 社区摘要挂起时，通过 Redis 分布式互斥锁（TTL 600s）自动安全触发摘要计算队列。
+*   **公共法规/标准库高精双路纯向量状态机对齐**：对无需全量抽取重度微观图谱的公共库，自动对齐为“知识库模式”，避免看板状态错位。
+
+### 11.2 PM2 常驻高可用守护与毫秒级体检
+*   **PM2 常驻服务 (`genrag-learning-watchdog`)**：以 60 秒为固定周期循环巡检，全库 13 个项目单轮深度巡检仅耗时 **0.38s ~ 0.70s**，常驻内存仅约 15MB，并通过 `pm2 save` 实现开机自动拉起。
+*   **运维控制台与看板可视化闭环**：
+    - **RESTful 自愈控制接口**：提供 `POST /api/admin/system/auto-repair` 与 `GET /api/admin/system/watchdog-status`；
+    - **前端交互与状态透传**：管理看板顶部挂载「🛡️ 自愈守护中 (60s巡检)」动态呼吸绿灯与「立即排查卡顿」交互按钮，实现一键手动扫描与排查明细弹窗。
+
+---
+
+
 ## 📁 项目目录结构
 
 ```
@@ -343,7 +364,11 @@ Eino 有向图每个 Agent 节点在进行状态流转时，通过 SSE 实时向
 │   │   │   ├── retrieval_pipeline.py # 六路异构并行检索管线
 │   │   │   ├── reranker.py         # GPU 常驻大模型极速精排器
 │   │   │   ├── graph_rag.py        # Neo4j 知识图谱引擎
-│   │   │   └── table_registry.py   # AI 表格注册与精确直插引擎
+│   │   │   ├── table_registry.py   # AI 表格注册与精确直插引擎
+│   │   │   └── watchdog_engine.py  # 全系统后台卡顿自动探测与自愈引擎
+│   │   ├── scripts                 # 自动化脚本与守护进程
+│   │   │   ├── daemon_watchdog.py  # 60秒常驻自愈巡检看门狗脚本
+│   │   │   └── complete_auto_judgment.py # 自动研判学习全量补齐工具
 │   │   └── worker.py               # Celery 快慢任务队列调度
 │   ├── frontend                    # React 19 + TypeScript + Vite 前端工程
 │   └── Records                     # 项目滚动开发状态微状态日志目录
@@ -379,4 +404,5 @@ Eino 有向图每个 Agent 节点在进行状态流转时，通过 SSE 实时向
 * **`genrag-backend` (Python 算法微服务)**：监听 `8004` 端口，处理流式生成、ASR/OCR 多模态解析与 Docx 修订留痕。
 * **`genrag-frontend` (React 前端服务)**：运行在 `2028` 端口，托管并渲染前端 SPA 静态页面。
 * **`genrag-celery-fast` / `slow`**：后台高并发切片吞吐及慢速大计算量队列，守护本地资源防 OOM。
+* **`genrag-learning-watchdog` (后台学习流程自愈看门狗)**：每 60 秒常驻巡检，自动修复超时卡死、图谱哈希偏差并补发社区摘要。
 

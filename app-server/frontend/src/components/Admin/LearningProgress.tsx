@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuthStore } from '../../store/authStore';
-import { Loader2, Database, AlertCircle, Network, Cpu, Activity, AlertTriangle, X, Copy, Play, Pause, Clock, Sparkles, Scale } from 'lucide-react';
+import { Loader2, Database, AlertCircle, Network, Cpu, Activity, AlertTriangle, X, Copy, Play, Pause, Clock, Sparkles, Scale, ShieldCheck, RefreshCw } from 'lucide-react';
 import LogoSpinner from '../LogoSpinner';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
@@ -345,6 +345,31 @@ export default function LearningProgress() {
     } catch (e) {}
   };
 
+  const [repairing, setRepairing] = useState(false);
+
+  const handleManualAutoRepair = async () => {
+    setRepairing(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/system/auto-repair`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({})
+      });
+      if (!res.ok) throw new Error('触发自愈排查失败');
+      const data = await res.json();
+      const r = data.report || {};
+      alert(`✅ 自愈巡检完成（耗时 ${r.duration || 0} 秒）！\n已扫描项目: ${r.total_projects || 0} 个\n修复向量任务: ${r.vectors_repaired || 0} 个\n修复图谱任务: ${r.graphs_repaired || 0} 个\n补齐社区摘要: ${r.summaries_triggered || 0} 个`);
+      await fetchData();
+    } catch (err: any) {
+      alert(`❌ 自愈排查失败: ${err.message}`);
+    } finally {
+      setRepairing(false);
+    }
+  };
+
   const fetchData = async () => {
     await Promise.all([fetchProgress(), fetchSystemStats()]);
   };
@@ -362,11 +387,32 @@ export default function LearningProgress() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-gray-800">知识库智能构建监控</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          全局监控所有知识库的数字化拆解、主体 / 权责关联图谱提炼与智能研习预计算状态
-        </p>
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">知识库智能构建监控</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            全局监控所有知识库的数字化拆解、主体 / 权责关联图谱提炼与智能研习预计算状态
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs border border-emerald-200 shadow-sm">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="font-medium">自愈守护中 (60s巡检)</span>
+          </div>
+          <button
+            onClick={handleManualAutoRepair}
+            disabled={repairing}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60 rounded-lg text-xs font-medium border border-blue-200 transition-colors shadow-sm cursor-pointer"
+            title="立即对全系统向量化、图谱构建及社区摘要进行卡顿排查与原子修复"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${repairing ? 'animate-spin' : ''}`} />
+            {repairing ? '排查自愈中...' : '立即排查卡顿'}
+          </button>
+        </div>
       </div>
 
       {systemStats && (
@@ -730,7 +776,7 @@ export default function LearningProgress() {
                     </div>
                     {p.graph_rag.total_entities !== undefined && (
                       <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-medium border border-emerald-100/80 shadow-sm">
-                        {p.graph_rag.total_entities.toLocaleString()} 实体
+                        {isLib && p.graph_rag.total_entities === 0 ? "知识库模式" : `${p.graph_rag.total_entities.toLocaleString()} 实体`}
                       </span>
                     )}
                   </div>
@@ -752,7 +798,7 @@ export default function LearningProgress() {
                           <span className="ml-1 shrink-0">({p.graph_rag.current_task.size})</span>
                         </span>
                       ) : (
-                        p.graph_rag.status === 'pending' ? '等待向量化完成' : (p.graph_rag.percent >= 100 ? '实体关系提取完毕' : '构建节点与网络中...')
+                        p.graph_rag.status === 'pending' ? '等待向量化完成' : (p.graph_rag.percent >= 100 ? (isLib && p.graph_rag.total_entities === 0 ? '知识库双路检索已就绪' : '实体关系提取完毕') : '构建节点与网络中...')
                       )}
                     </span>
                     <div className="flex items-center gap-2">
@@ -786,7 +832,7 @@ export default function LearningProgress() {
                           <span className="truncate">正在提炼: {p.community_summary.current_task.filename}</span>
                         </span>
                       ) : (
-                        p.community_summary.status === 'pending' ? '等待图谱提取完成' : (p.community_summary.percent >= 100 ? '全局知识摘要完毕' : '分析节点簇群中...')
+                        p.community_summary.status === 'pending' ? '等待图谱提取完成' : (p.community_summary.percent >= 100 ? (isLib && p.graph_rag.total_entities === 0 ? '条款知识索引已就绪' : '全局知识摘要完毕') : '分析节点簇群中...')
                       )}
                     </span>
                     <div className="flex items-center gap-2">

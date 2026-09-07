@@ -891,6 +891,20 @@ async def get_learning_progress(user: dict = Depends(get_current_user)):
                 error_msg = status_data.get("error_message", "") or ""
                 updated_at = status_data.get("updated_at", "")
                 
+                # ── 双重保险：防范子文件夹相对路径差异导致的 Graph OK 状态失联 ──
+                if "Graph OK" not in error_msg:
+                    alt_fid = hashlib.md5(f"{pid}_{f}".encode("utf-8")).hexdigest()
+                    if alt_fid != file_id:
+                        try:
+                            alt_status = get_file_status(pid, alt_fid)
+                            if "Graph OK" in alt_status.get("error_message", ""):
+                                status_data = alt_status
+                                st = status_data.get("status", st)
+                                error_msg = status_data.get("error_message", error_msg)
+                                updated_at = status_data.get("updated_at", updated_at)
+                        except Exception:
+                            pass
+                
                 # ── 向量化与图谱提炼阶段卡死 Ghost Task 物理自愈重设为 failed ──
                 if st == "processing" and _is_stale_task(updated_at, 1800):
                     try:
@@ -1066,7 +1080,15 @@ async def get_learning_progress(user: dict = Depends(get_current_user)):
             graph_percent = round(graph_completed / total * 100, 2)
             
             # 图谱状态判定
-            if graph_processing > 0:
+            if is_library and graph_processing == 0 and graph_completed == 0:
+                # 公共法规与标准库（library）默认采用纯向量双路高精度检索模式，无需全量重度图谱三元组抽取
+                if vec_percent >= 100:
+                    graph_status = "completed"
+                    graph_completed = total
+                    graph_percent = 100.0
+                else:
+                    graph_status = "pending"
+            elif graph_processing > 0:
                 graph_status = "processing"
             elif vec_percent < 100:
                 graph_status = "pending"
@@ -1974,4 +1996,62 @@ async def trigger_auto_judgment_learn(
     except Exception as e:
         logger.error(f"自动研判学习执行失败 pid={project_id}: {e}")
         return {"success": False, "error": str(e)}
+
+
+@router.post("/system/auto-repair")
+async def trigger_system_auto_repair(
+    user: dict = Depends(get_current_user)
+):
+    """
+    手动触发全系统卡顿学习流程自愈排查（扫描向量化、图谱抽取、社区摘要等环节并自动修复）
+    """
+    global _LEARNING_PROGRESS_CACHE
+    _LEARNING_PROGRESS_CACHE = None
+    try:
+        from core.watchdog_engine import run_full_inspection_and_repair
+        report = run_full_inspection_and_repair()
+        return {
+            "success": True,
+            "message": "自愈扫描与修复执行成功",
+            "report": report
+        }
+    except Exception as e:
+        logger.error(f"[trigger_system_auto_repair] 执行异常: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@router.get("/system/watchdog-status")
+async def get_watchdog_status(
+    user: dict = Depends(get_current_user)
+):
+    """
+    获取后台定时自愈守护引擎的运行状态
+    """
+    import subprocess
+    try:
+        res = subprocess.run(
+            ["pm2", "jlist"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if res.returncode == 0:
+            import json
+            apps = json.loads(res.stdout)
+            watchdog = next((a for a in apps if a.get("name") == "genrag-learning-watchdog"), None)
+            if watchdog:
+                mon = watchdog.get("monit", {})
+                pm2_env = watchdog.get("pm2_env", {})
+                return {
+                    "running": pm2_env.get("status") == "online",
+                    "status": pm2_env.get("status"),
+                    "uptime_ms": pm2_env.get("pm_uptime"),
+                    "restarts": pm2_env.get("restart_time", 0),
+                    "memory_bytes": mon.get("memory", 0),
+                    "cpu_percent": mon.get("cpu", 0),
+                }
+        return {"running": False, "status": "unknown"}
+    except Exception as e:
+        return {"running": False, "error": str(e)}
+
 

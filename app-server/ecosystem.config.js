@@ -153,6 +153,22 @@ module.exports = {
         JWT_SECRET: JWT_SECRET_VAL,
         ...NO_PROXY_ENV,
       }
+    },
+    {
+      name: 'genrag-learning-watchdog',
+      script: 'python3',
+      args: 'scripts/daemon_watchdog.py',
+      cwd: './backend',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      env: {
+        PYTHONPATH: '.',
+        JWT_SECRET: JWT_SECRET_VAL,
+        REDIS_URL: REDIS_URL_VAL,
+        QDRANT_URL: 'http://genrag-database:6333',
+        ...NO_PROXY_ENV,
+      }
     }
   ]
 };
