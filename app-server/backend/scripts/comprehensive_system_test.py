@@ -72,7 +72,8 @@ def test_infrastructure():
     try:
         from core.graph_rag import graph_engine
         st = graph_engine.get_stats()
-        res["details"]["neo4j"] = {"nodes": st.get("nodes", 0), "relationships": st.get("relationships", 0)}
+        rel_count = st.get("edges", 0) or st.get("relationships", 0)
+        res["details"]["neo4j"] = {"nodes": st.get("nodes", 0), "relationships": rel_count}
     except Exception as e:
         res["status"] = "FAIL"
         res["details"]["neo4j_error"] = str(e)
