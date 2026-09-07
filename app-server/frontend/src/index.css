@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@variant dark (&:where(.dark, [data-mode="dark"], [data-mode="dark"] *));
+@variant dark (&:where(.dark, .dark *, [data-mode="dark"], [data-mode="dark"] *));
 @plugin "@tailwindcss/typography";
 
 /* ═══════════════════════════════════════════════════════════════
