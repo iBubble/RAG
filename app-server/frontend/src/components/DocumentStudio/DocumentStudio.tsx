@@ -1142,7 +1142,7 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
            {/* Main A4 Canvas */}
             <div className="w-[850px] max-w-full h-full transition-all duration-300 flex flex-col gap-4">
              {/* 自定义要求输入框（扁平无外框、自适应主题模式） */}
-             <div className="bg-[#fcfbf9] dark:bg-[#1a1b1e] text-stone-850 dark:text-stone-200 p-3 rounded-xl shadow-sm border border-stone-200 dark:border-[#2e3035] flex flex-col gap-1.5 shrink-0">
+             <div className="bg-[#fcfbf9] dark:bg-[#1a1b1e] text-stone-800 dark:text-stone-200 p-3 rounded-xl shadow-sm border border-stone-200 dark:border-[#2e3035] flex flex-col gap-1.5 shrink-0">
                <div className="flex items-center gap-1.5 text-stone-500 dark:text-stone-400 font-bold text-xs select-none">
                  <Wand2 className="w-3.5 h-3.5 text-[#8B7355] dark:text-[#C4B5A0]" />
                  <span>文档要求</span>
@@ -1338,7 +1338,7 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
             className="absolute inset-0 bg-[#0F0F11]/45 backdrop-blur-[2px] transition-opacity" 
             onClick={() => setShowClearContentConfirm(false)}
           />
-          <div className="relative bg-white dark:bg-[#1E1F22] rounded-xl p-5 shadow-2xl border border-stone-200 dark:border-stone-850 max-w-sm w-full flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="relative bg-white dark:bg-[#1E1F22] rounded-xl p-5 shadow-2xl border border-stone-200 dark:border-stone-800 max-w-sm w-full flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-start gap-3 text-stone-800 dark:text-stone-200">
               <div className="p-2.5 rounded-full bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 shrink-0">
                 <AlertTriangle className="w-5 h-5" />
@@ -1377,7 +1377,7 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
             className="absolute inset-0 bg-[#0F0F11]/45 backdrop-blur-[2px] transition-opacity" 
             onClick={() => setSectionToDelete(null)}
           />
-          <div className="relative bg-white dark:bg-[#1E1F22] rounded-xl p-5 shadow-2xl border border-stone-200 dark:border-stone-850 max-w-sm w-full flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="relative bg-white dark:bg-[#1E1F22] rounded-xl p-5 shadow-2xl border border-stone-200 dark:border-stone-800 max-w-sm w-full flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-start gap-3 text-stone-800 dark:text-stone-200">
               <div className="p-2.5 rounded-full bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 shrink-0">
                 <AlertTriangle className="w-5 h-5" />
@@ -1419,7 +1419,7 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
             className="absolute inset-0 bg-[#0F0F11]/45 backdrop-blur-[2px] transition-opacity" 
             onClick={() => setShowAddChapterModal(false)}
           />
-          <div className="relative bg-white dark:bg-[#1E1F22] rounded-xl p-5 shadow-2xl border border-stone-200 dark:border-stone-850 max-w-sm w-full flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+          <div className="relative bg-white dark:bg-[#1E1F22] rounded-xl p-5 shadow-2xl border border-stone-200 dark:border-stone-800 max-w-sm w-full flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex flex-col gap-1.5 min-w-0">
               <h3 className="text-sm font-bold text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
                 ➕ 追加一级新章节
@@ -1473,7 +1473,7 @@ export default function DocumentStudio({ canWrite = true, projectName = '' }: { 
             className="absolute inset-0 bg-[#0F0F11]/45 backdrop-blur-[2px] transition-opacity" 
             onClick={() => setSubsectionToAdd(null)}
           />
-          <div className="relative bg-white dark:bg-[#1E1F22] rounded-xl p-5 shadow-2xl border border-stone-200 dark:border-stone-850 max-w-sm w-full flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+          <div className="relative bg-white dark:bg-[#1E1F22] rounded-xl p-5 shadow-2xl border border-stone-200 dark:border-stone-800 max-w-sm w-full flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex flex-col gap-1.5 min-w-0">
               <h3 className="text-sm font-bold text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
                 ➕ 添加同级小节

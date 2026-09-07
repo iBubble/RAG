@@ -710,7 +710,7 @@ function StudioLayout() {
             {/* 贴在左栏和中栏分界线中间的收起按钮 */}
             <button
               onClick={() => setIsSidebarCollapsed(true)}
-              className="absolute left-full top-1/2 -translate-y-1/2 w-4 h-10 bg-white dark:bg-[#202124] border border-stone-200 dark:border-stone-850 border-l-0 rounded-r-lg shadow-md flex items-center justify-center text-stone-500 hover:text-[#8B7355] dark:hover:text-[#C4B5A0] hover:bg-stone-50 dark:hover:bg-stone-800 cursor-pointer z-50 transition-all duration-200"
+              className="absolute left-full top-1/2 -translate-y-1/2 w-4 h-10 bg-white dark:bg-[#202124] border border-stone-200 dark:border-stone-800 border-l-0 rounded-r-lg shadow-md flex items-center justify-center text-stone-500 hover:text-[#8B7355] dark:hover:text-[#C4B5A0] hover:bg-stone-50 dark:hover:bg-stone-800 cursor-pointer z-50 transition-all duration-200"
               title="收起材料栏"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
@@ -883,7 +883,7 @@ function StudioLayout() {
         {!isRightSidebarCollapsed && (
           <button
             onClick={() => setIsRightSidebarCollapsed(true)}
-            className="absolute right-full top-1/2 -translate-y-1/2 w-4 h-10 bg-white dark:bg-[#202124] border border-stone-200 dark:border-stone-850 border-r-0 rounded-l-lg shadow-md flex items-center justify-center text-stone-500 hover:text-[#8B7355] dark:hover:text-[#C4B5A0] hover:bg-stone-50 dark:hover:bg-stone-800 cursor-pointer z-50 transition-all duration-200"
+            className="absolute right-full top-1/2 -translate-y-1/2 w-4 h-10 bg-white dark:bg-[#202124] border border-stone-200 dark:border-stone-800 border-r-0 rounded-l-lg shadow-md flex items-center justify-center text-stone-500 hover:text-[#8B7355] dark:hover:text-[#C4B5A0] hover:bg-stone-50 dark:hover:bg-stone-800 cursor-pointer z-50 transition-all duration-200"
             title="收起素材库"
           >
             <ChevronRight className="w-3.5 h-3.5" />

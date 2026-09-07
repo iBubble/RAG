@@ -509,7 +509,7 @@ export default function LearningProgress() {
         <div className="bg-white/80 backdrop-blur-md rounded-2xl border border-gray-200/80 p-6 shadow-sm mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-100">
             <span className="text-lg">📊</span>
-            <h3 className="font-bold text-gray-850 text-base">全局综合学习状态</h3>
+            <h3 className="font-bold text-gray-900 text-base">全局综合学习状态</h3>
             <span className="ml-auto text-xs text-gray-400 font-medium">共监控 {summaryData.totalProjects} 个活跃项目</span>
           </div>
 

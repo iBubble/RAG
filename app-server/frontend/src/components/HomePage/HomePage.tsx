@@ -250,8 +250,8 @@ export default function HomePage() {
       <div className="absolute top-3.5 right-3.5 flex items-center gap-1.5">
         <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
           isPrivate
-            ? 'bg-amber-50 text-amber-700 border border-amber-250/50 dark:bg-amber-950/20 dark:text-amber-400'
-            : 'bg-emerald-50 text-emerald-700 border border-emerald-250/50 dark:bg-emerald-950/20 dark:text-emerald-400'
+            ? 'bg-amber-50 text-amber-700 border border-amber-200/50 dark:bg-amber-950/20 dark:text-amber-400'
+            : 'bg-emerald-50 text-emerald-700 border border-emerald-200/50 dark:bg-emerald-950/20 dark:text-emerald-400'
         }`}>
           {isPrivate ? '私有' : '公开'}
         </span>
@@ -330,7 +330,7 @@ export default function HomePage() {
               <th className="px-5 py-3 w-[100px] text-center">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-150 dark:divide-border-soft/60 text-gray-700 dark:text-text-main">
+          <tbody className="divide-y divide-gray-200 dark:divide-border-soft/60 text-gray-700 dark:text-text-main">
             {projectsList.map((proj) => {
               const isPrivate = proj.visibility === 'private';
               const canEdit = proj.owner_id === user?.id || user?.role === 'admin';
@@ -353,13 +353,13 @@ export default function HomePage() {
                     </span>
                   </td>
                   <td className="px-5 py-3 text-gray-500 dark:text-text-muted">{proj.sourceCount} 个文档</td>
-                  <td className="px-5 py-3 text-gray-550 dark:text-text-muted">{proj.owner_name || '系统'}</td>
+                  <td className="px-5 py-3 text-gray-500 dark:text-text-muted">{proj.owner_name || '系统'}</td>
                   <td className="px-5 py-3 text-gray-400 dark:text-text-muted">{formatDate(proj.createdAt)}</td>
                   <td className="px-5 py-3 text-center" onClick={e => e.stopPropagation()}>
                     <div className="relative inline-block text-left" ref={activeMenu === menuKey ? menuRef : null}>
                       <button 
                         onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === menuKey ? null : menuKey); }}
-                        className="text-gray-400 hover:text-gray-650 px-2 py-1 rounded hover:bg-gray-150 dark:hover:bg-outline-bg cursor-pointer transition-colors font-bold"
+                        className="text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-outline-bg cursor-pointer transition-colors font-bold"
                       >
                         •••
                       </button>
@@ -376,7 +376,7 @@ export default function HomePage() {
                               <button onClick={() => { handleToggleVisibility(proj.id, proj.visibility || 'public'); setActiveMenu(null); }} className="w-full px-3 py-2 text-left text-xs text-gray-700 dark:text-text-main hover:bg-gray-50 dark:hover:bg-outline-bg flex items-center gap-2 cursor-pointer">
                                 {isPrivate ? <><Globe className="w-3.5 h-3.5 text-green-500" /> 设为公开</> : <><Lock className="w-3.5 h-3.5 text-orange-500" /> 设为私有</>}
                               </button>
-                              <button onClick={() => { handleDeleteProject(proj.id, proj.name); setActiveMenu(null); }} className="w-full px-3 py-2 text-left text-xs text-red-650 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2 cursor-pointer">
+                              <button onClick={() => { handleDeleteProject(proj.id, proj.name); setActiveMenu(null); }} className="w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2 cursor-pointer">
                                 <Trash2 className="w-3.5 h-3.5" /> 删除项目
                               </button>
                             </>
@@ -452,7 +452,7 @@ export default function HomePage() {
           {pageLoading && <LogoSpinner size={72} overlay={false} />}
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-4">
-              <div className="text-xl font-bold tracking-tight text-gray-850 dark:text-text-main">项目空间</div>
+              <div className="text-xl font-bold tracking-tight text-gray-900 dark:text-text-main">项目空间</div>
               {/* 视图切换按钮组 */}
               <div className="flex items-center border border-gray-200 dark:border-border-soft rounded-lg p-0.5 bg-gray-100/60 dark:bg-outline-bg">
                 <button
@@ -712,7 +712,7 @@ export default function HomePage() {
             className="absolute inset-0 bg-[#0F0F11]/45 backdrop-blur-[2px] transition-opacity" 
             onClick={() => setProjectToDelete(null)}
           />
-          <div className="relative bg-white dark:bg-[#1E1F22] rounded-xl p-5 shadow-2xl border border-stone-200 dark:border-stone-850 max-w-sm w-full flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+          <div className="relative bg-white dark:bg-[#1E1F22] rounded-xl p-5 shadow-2xl border border-stone-200 dark:border-stone-800 max-w-sm w-full flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <div className="flex items-start gap-3 text-stone-800 dark:text-stone-200">
               <div className="p-2.5 rounded-full bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 shrink-0">
                 <AlertTriangle className="w-5 h-5" />

@@ -473,7 +473,7 @@ export default function AITemplateManagement() {
                     </div>
                     {/* 表格操作快捷键 */}
                     {editor && (
-                      <div className="flex items-center gap-1 bg-white dark:bg-[#1E1F22] px-2 py-1 rounded-lg border border-gray-200 dark:border-stone-850 flex-wrap">
+                      <div className="flex items-center gap-1 bg-white dark:bg-[#1E1F22] px-2 py-1 rounded-lg border border-gray-200 dark:border-stone-800 flex-wrap">
                         <button onClick={() => editor.chain().focus().toggleBold().run()} className={`p-1 rounded ${editor.isActive('bold') ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-gray-100'}`} title="加粗"><Bold className="w-3.5 h-3.5" /></button>
                         <button onClick={() => editor.chain().focus().toggleItalic().run()} className={`p-1 rounded ${editor.isActive('italic') ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-gray-100'}`} title="斜体"><Italic className="w-3.5 h-3.5" /></button>
                         
@@ -485,19 +485,19 @@ export default function AITemplateManagement() {
                         
                         <div className="w-[1px] h-3.5 bg-gray-200 dark:bg-stone-800 mx-1" />
                         
-                        <button onClick={() => editor.chain().focus().addRowAfter().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded flex items-center gap-0.5" title="下方增行"><Plus className="w-3 h-3" /><ChevronDown className="w-3 h-3" /></button>
-                        <button onClick={() => editor.chain().focus().addRowBefore().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded flex items-center gap-0.5" title="上方增行"><Plus className="w-3 h-3" /><ChevronUp className="w-3 h-3" /></button>
+                        <button onClick={() => editor.chain().focus().addRowAfter().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-800 rounded flex items-center gap-0.5" title="下方增行"><Plus className="w-3 h-3" /><ChevronDown className="w-3 h-3" /></button>
+                        <button onClick={() => editor.chain().focus().addRowBefore().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-800 rounded flex items-center gap-0.5" title="上方增行"><Plus className="w-3 h-3" /><ChevronUp className="w-3 h-3" /></button>
                         <button onClick={() => editor.chain().focus().deleteRow().run()} className="p-1 hover:bg-red-50 text-red-500 dark:hover:bg-red-950/20 rounded flex items-center gap-0.5" title="删行"><Trash2 className="w-3 h-3" /><ChevronDown className="w-3 h-3" /></button>
                         
                         <div className="w-[1px] h-3.5 bg-gray-200 dark:bg-stone-800 mx-1" />
                         
-                        <button onClick={() => editor.chain().focus().addColumnAfter().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded flex items-center gap-0.5" title="右侧增列"><Plus className="w-3 h-3" /><Columns className="w-3 h-3" /></button>
+                        <button onClick={() => editor.chain().focus().addColumnAfter().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-800 rounded flex items-center gap-0.5" title="右侧增列"><Plus className="w-3 h-3" /><Columns className="w-3 h-3" /></button>
                         <button onClick={() => editor.chain().focus().deleteColumn().run()} className="p-1 hover:bg-red-50 text-red-500 dark:hover:bg-red-950/20 rounded flex items-center gap-0.5" title="删列"><Trash2 className="w-3 h-3" /><Columns className="w-3 h-3" /></button>
                         
                         <div className="w-[1px] h-3.5 bg-gray-200 dark:bg-stone-800 mx-1" />
                         
-                        <button onClick={() => editor.chain().focus().mergeCells().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded" title="合并单元格"><Layers className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => editor.chain().focus().splitCell().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-850 rounded" title="拆分单元格"><TableIcon className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => editor.chain().focus().mergeCells().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-800 rounded" title="合并单元格"><Layers className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => editor.chain().focus().splitCell().run()} className="p-1 hover:bg-gray-100 dark:hover:bg-stone-800 rounded" title="拆分单元格"><TableIcon className="w-3.5 h-3.5" /></button>
                         
                         {(() => {
                           const getTableAttrs = () => {
