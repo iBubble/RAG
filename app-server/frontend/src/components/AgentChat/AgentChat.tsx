@@ -219,6 +219,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
   const currentHoveredTextRef = useRef<string | null>(null);
   const isOverCitationRef = useRef<boolean>(false);
   const isOverCardRef = useRef<boolean>(false);
+  const hoverCardRef = useRef<HTMLDivElement>(null);
 
   const [activeModalCitation, setActiveModalCitation] = useState<{
     info: CitationInfo;
@@ -240,7 +241,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
     }, delay);
   };
 
-  // 页面滚动时关闭（若鼠标正在卡片上交互则保护不关）
+  // 页面滚动与点击外部时平滑关闭悬浮卡片
   useEffect(() => {
     const handleDismissHover = () => {
       if (isOverCardRef.current) return;
@@ -252,11 +253,85 @@ export default function AgentChat({ projectId }: { projectId: string }) {
       currentHoveredTextRef.current = null;
       setHoveredCitation(null);
     };
+
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && !target.closest('.legal-citation-card') && !target.closest('.legal-citation')) {
+        isOverCitationRef.current = false;
+        isOverCardRef.current = false;
+        if (citationHoverTimerRef.current) {
+          clearTimeout(citationHoverTimerRef.current);
+          citationHoverTimerRef.current = null;
+        }
+        currentHoveredTextRef.current = null;
+        setHoveredCitation(null);
+      }
+    };
+
     window.addEventListener('scroll', handleDismissHover, true);
+    window.addEventListener('click', handleGlobalClick, true);
     return () => {
       window.removeEventListener('scroll', handleDismissHover, true);
+      window.removeEventListener('click', handleGlobalClick, true);
     };
   }, []);
+
+  // 🏛️ 几何包围盒动态巡检：卡片打开时监听全局指针移动，一旦脱离【法条+卡片】安全区立即自动平滑关闭
+  useEffect(() => {
+    if (!hoveredCitation) return;
+
+    let rafId: number | null = null;
+    const checkPointInBox = (x: number, y: number, rect: DOMRect, padding = 4) => {
+      return (
+        x >= rect.left - padding &&
+        x <= rect.right + padding &&
+        y >= rect.top - padding &&
+        y <= rect.bottom + padding
+      );
+    };
+
+    const handlePointerMove = (e: MouseEvent) => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const x = e.clientX;
+        const y = e.clientY;
+
+        const inCitation = checkPointInBox(x, y, hoveredCitation.rect, 6);
+        let inCard = false;
+        if (hoverCardRef.current) {
+          inCard = checkPointInBox(x, y, hoverCardRef.current.getBoundingClientRect(), 6);
+        }
+
+        if (inCitation || inCard) {
+          if (inCard) {
+            isOverCardRef.current = true;
+            isOverCitationRef.current = false;
+          } else {
+            isOverCitationRef.current = true;
+            isOverCardRef.current = false;
+          }
+          if (citationHoverTimerRef.current) {
+            clearTimeout(citationHoverTimerRef.current);
+            citationHoverTimerRef.current = null;
+          }
+        } else {
+          // 鼠标物理坐标已明确脱离有效区域，解开所有锁并在 160ms 后安全关闭
+          isOverCitationRef.current = false;
+          isOverCardRef.current = false;
+          if (!citationHoverTimerRef.current) {
+            scheduleCitationClose(160);
+          }
+        }
+      });
+    };
+
+    window.addEventListener('mousemove', handlePointerMove, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', handlePointerMove);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [hoveredCitation]);
 
   const handleCitationHover = (
     info: CitationInfo | null,
@@ -270,8 +345,9 @@ export default function AgentChat({ projectId }: { projectId: string }) {
       return;
     }
 
-    // 鼠标进入法条元素，立刻消除任何待关闭定时器并激活法条锁
+    // 鼠标进入法条元素：激活法条锁并确定复位卡片锁，消除待关闭定时器
     isOverCitationRef.current = true;
+    isOverCardRef.current = false;
     if (citationHoverTimerRef.current) {
       clearTimeout(citationHoverTimerRef.current);
       citationHoverTimerRef.current = null;
@@ -1155,7 +1231,8 @@ export default function AgentChat({ projectId }: { projectId: string }) {
         const left = Math.min(window.innerWidth - 340, Math.max(16, hoveredCitation.rect.left - 20));
         return (
           <div
-            className="fixed z-[9999] pointer-events-auto select-none"
+            ref={hoverCardRef}
+            className="legal-citation-card fixed z-[9999] pointer-events-auto select-none"
             style={{
               top: isPlacementTop ? `${hoveredCitation.rect.top}px` : `${hoveredCitation.rect.bottom}px`,
               left: `${left}px`,
@@ -1166,6 +1243,7 @@ export default function AgentChat({ projectId }: { projectId: string }) {
             }}
             onMouseEnter={() => {
               isOverCardRef.current = true;
+              isOverCitationRef.current = false; // 鼠标已进入卡片，确定离开法条
               if (citationHoverTimerRef.current) {
                 clearTimeout(citationHoverTimerRef.current);
                 citationHoverTimerRef.current = null;

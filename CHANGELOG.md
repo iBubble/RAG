@@ -6,7 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **智能助手法条悬浮提示框交互与生命周期双向锁重构**：
-  - **根除颠倒与误关闭缺陷**：重构浮窗生命周期裁决机制，建立 `isOverCitationRef` 与 `isOverCardRef` 双向互锁模型，由 `scheduleCitationClose` 统一延时 200ms 防抖，彻底杜绝“鼠标一移到提示框就消失、移到其他地方却不消失”的反向异常；
+  - **几何包围盒全局指针巡检与绝对自愈**：引入 `hoverCardRef` 与 `requestAnimationFrame` 单帧节流指针探测器，实时核验鼠标坐标与法条及卡片的几何边界（6px 容差安全区），鼠标一旦离开有效感应区立即触发 160ms 倒计时自愈关闭，彻底杜绝移开提示框不自动消失的偶发死锁；
+  - **根除颠倒与误关闭缺陷**：重构浮窗生命周期裁决机制，建立 `isOverCitationRef` 与 `isOverCardRef` 双向互锁模型，严格保证卡片激活时复位法条锁、法条激活时复位卡片锁，彻底根除“单向锁死导致移开不灭”与“误判导致移入即灭”的矛盾缺陷；
+  - **全屏点击外部兜底**：引入 `window.click` 全局委托监听，点击任意非卡片正文区域即刻瞬时收起浮窗；
   - **连续感应区域重塑**：废除外部绝对定位透明桥梁，浮窗容器边界与法条外沿 0 像素贴合，利用容器内置的 `padding`（上方 `paddingBottom: 8px` / 下方 `paddingTop: 8px`）构建坚如磐石的无缝感应区；
   - **动画与视口防抖优化**：去除造成挂载瞬间坐标抖动的 `transition-all` 属性，深浅色模式下悬浮稳定常驻，并保障“详情 ↗”弹窗点击体验。
 
