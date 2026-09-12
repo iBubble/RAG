@@ -130,48 +130,77 @@ def _call_vision_llm(
     ollama_url: str,
     timeout: int = 300,
     temperature: float = 0.1,
+    api_key: str = "",
 ) -> str:
     """
-    调用 Ollama Vision 模型解析单张图片。
-
-    WHY: 使用同步 httpx（Celery Worker 是同步进程），
-         通过 /api/chat 端点发送 base64 编码的图片。
+    调用 Vision 模型解析单张图片（支持 Ollama 与 OpenAI-compatible 兼容接口）。
     """
+    from core.llm_config import normalize_endpoint
     b64_img = base64.b64encode(image_bytes).decode("utf-8")
+    is_ollama = "11434" in ollama_url or "/api/" in ollama_url
 
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt,
-                "images": [b64_img],
-            }
-        ],
-        "stream": False,
-        # WHY: keep_alive="10m" 让 Vision 模型在首次加载后
-        #      保留 10 分钟不被卸载，后续文件无需冷加载。
-        #      10 分钟后无调用则自动释放，避免长期占用 GPU。
-        "keep_alive": "10m",
-        "options": {
+    headers = {"Content-Type": "application/json"}
+    if api_key and api_key.strip().upper() != "EMPTY":
+        headers["Authorization"] = f"Bearer {api_key.strip()}"
+
+    if is_ollama:
+        req_url = f"{ollama_url.rstrip('/')}/api/chat"
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt,
+                    "images": [b64_img],
+                }
+            ],
+            "stream": False,
+            "keep_alive": "10m",
+            "options": {
+                "temperature": temperature,
+                "num_predict": 6144,
+            },
+        }
+    else:
+        # OpenAI 兼容多模态端点 (如 http://40dd.shop:8000/v1)
+        req_url = normalize_endpoint(ollama_url, is_openai_chat=True)
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{b64_img}"}
+                        }
+                    ]
+                }
+            ],
+            "max_tokens": 4096,
             "temperature": temperature,
-            "num_predict": 6144,
-        },
-    }
+            "stream": False,
+        }
 
-    # WHY: Ollama 在模型切换时偶发 503，加重试避免单页解析失败。
     import time as _time
     _max_retries = 3
     for _attempt in range(_max_retries):
         try:
             resp = httpx.post(
-                f"{ollama_url}/api/chat",
+                req_url,
                 json=payload,
+                headers=headers,
                 timeout=httpx.Timeout(float(timeout)),
             )
             resp.raise_for_status()
             data = resp.json()
-            content = data.get("message", {}).get("content", "")
+            # 兼容 OpenAI 与 Ollama 格式
+            if not is_ollama:
+                choices = data.get("choices", [])
+                content = choices[0].get("message", {}).get("content", "") if choices else ""
+            else:
+                content = data.get("message", {}).get("content", "")
             return content.strip()
         except httpx.TimeoutException:
             logger.warning(f"Vision LLM 超时 ({timeout}s)")
@@ -180,7 +209,6 @@ def _call_vision_llm(
             status = getattr(getattr(e, "response", None), "status_code", 0)
             if status == 503 and _attempt < _max_retries - 1:
                 logger.warning(f"Vision LLM 503 (attempt {_attempt+1}), 重试中...")
-                # WHY: 503 说明模型正在切换，等待后重试
                 _time.sleep(3 + _attempt * 2)
                 continue
             logger.error(f"Vision LLM 调用失败: {e}")
@@ -250,16 +278,19 @@ def extract_pdf_vision(
     如果 Vision 模型未配置或调用失败，返回空字符串。
     """
     from core.config import settings
+    from core.llm_config import get_active_vision_config
     
-    _model = model or getattr(settings, "VISION_MODEL", None)
+    vision_cfg = get_active_vision_config()
+    _model = model or vision_cfg.get("model") or getattr(settings, "VISION_MODEL", "qwen3-vl-32b-awq")
     if not _model:
         logger.debug("Vision 模型未配置，跳过视觉解析")
         return ""
 
     _max_pages = max_pages or getattr(settings, "VISION_MAX_PAGES", 30)
     _dpi = dpi or getattr(settings, "VISION_DPI", 300)
-    _timeout = timeout or settings.VISION_TIMEOUT
-    _ollama_url = settings.OLLAMA_BASE_URL
+    _timeout = timeout or int(vision_cfg.get("timeoutSeconds", 300))
+    _ollama_url = vision_cfg.get("baseURL") or settings.OLLAMA_BASE_URL
+    _api_key = vision_cfg.get("apiKey", "")
     filename = Path(file_path).name
 
     logger.info(
@@ -318,6 +349,7 @@ def extract_pdf_vision(
             ollama_url=_ollama_url,
             timeout=_timeout,
             temperature=_vision_temp,
+            api_key=_api_key,
         )
 
         elapsed = time.time() - t_page
@@ -408,37 +440,38 @@ def extract_image_vision(
          对工程扫描件、地价分布图等进行深度视觉理解。
     """
     from core.config import settings
+    from core.llm_config import get_active_vision_config
 
-    _model = model or getattr(settings, "VISION_MODEL", "qwen2.5vl:7b")
+    vision_cfg = get_active_vision_config()
+    _model = model or vision_cfg.get("model") or getattr(settings, "VISION_MODEL", "qwen3-vl-32b-awq")
     if not _model:
         return ""
 
-    _timeout = timeout or getattr(settings, "VISION_TIMEOUT", 300)
-    _ollama_url = getattr(settings, "OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+    _timeout = timeout or int(vision_cfg.get("timeoutSeconds", 300))
+    _ollama_url = vision_cfg.get("baseURL") or getattr(settings, "OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+    _api_key = vision_cfg.get("apiKey", "")
     filename = Path(file_path).name
 
-    # ── [NEW] Ollama 模型存在性自检与自动降级机制 ──
-    # WHY: 当配置的模型不存在于本地 Ollama 时，自适应选用本地已存在的可用视觉模型。
-    try:
-        resp = httpx.get(f"{_ollama_url}/api/tags", timeout=5.0)
-        if resp.status_code == 200:
-            local_models = [m.get("name") for m in resp.json().get("models", [])]
-            if _model not in local_models and f"{_model}:latest" not in local_models:
-                logger.warning(f"⚠️ 本地 Ollama 未检测到多模态模型 {_model}，执行降级自愈...")
-                if "qwen2.5vl:7b" in local_models or "qwen2.5vl:latest" in local_models:
-                    _model = "qwen2.5vl:7b" if "qwen2.5vl:7b" in local_models else "qwen2.5vl:latest"
-                    logger.info(f"🔄 自适应降级为本地已就绪的多模态模型: {_model}")
-                elif "minicpm-v:latest" in local_models:
-                    _model = "minicpm-v:latest"
-                    logger.info(f"🔄 自适应降级为本地已就绪的多模态模型: minicpm-v:latest")
-                elif "moondream:latest" in local_models:
-                    _model = "moondream:latest"
-                    logger.info(f"🔄 自适应降级为本地已就绪的多模态模型: moondream:latest")
-                else:
-                    logger.warning(f"❌ 本地无可用的多模态模型，直接绕过 Vision LLM 并降级启用本地 OCR")
-                    return ""
-    except Exception as check_err:
-        logger.warning(f"模型存在性自检失败 (跳过): {check_err}")
+    is_ollama = "11434" in _ollama_url or "/api/" in _ollama_url
+    # 仅针对本地 Ollama 执行模型存在性自检，外部 Gateway 直接透传
+    if is_ollama:
+        try:
+            resp = httpx.get(f"{_ollama_url}/api/tags", timeout=5.0)
+            if resp.status_code == 200:
+                local_models = [m.get("name") for m in resp.json().get("models", [])]
+                if _model not in local_models and f"{_model}:latest" not in local_models:
+                    logger.warning(f"⚠️ 本地 Ollama 未检测到多模态模型 {_model}，执行降级自愈...")
+                    if "qwen2.5vl:7b" in local_models or "qwen2.5vl:latest" in local_models:
+                        _model = "qwen2.5vl:7b" if "qwen2.5vl:7b" in local_models else "qwen2.5vl:latest"
+                    elif "minicpm-v:latest" in local_models:
+                        _model = "minicpm-v:latest"
+                    elif "moondream:latest" in local_models:
+                        _model = "moondream:latest"
+                    else:
+                        logger.warning(f"❌ 本地无可用的多模态模型，降级启用本地 OCR")
+                        return ""
+        except Exception as check_err:
+            logger.warning(f"模型存在性自检跳过: {check_err}")
 
 
     logger.info(f"🔍 Vision 图片解析: {filename} (model={_model})")
@@ -472,6 +505,7 @@ def extract_image_vision(
         ollama_url=_ollama_url,
         timeout=_timeout,
         temperature=_vision_temp_img,
+        api_key=_api_key,
     )
 
     # WHY: 单张图片解析后不卸载模型——可能后续还有同批次的其他图片。

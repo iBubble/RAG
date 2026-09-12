@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { User, Loader2, Save, Trash2, Settings as SettingsIcon, X, ArrowUp, Square, FileText } from 'lucide-react';
+import { User, Loader2, Save, Trash2, Settings as SettingsIcon, X, ArrowUp, Square, FileText, BookOpen, Copy, Check } from 'lucide-react';
 import { useProjectStore, useChatStore } from '../../store/projectStore';
 import { useAuthStore } from '../../store/authStore';
 import type { Message } from '../../store/projectStore';
 import DataTable from './DataTable';
 import MarkdownBlock from './MarkdownBlock';
+import type { CitationInfo } from './MarkdownBlock';
 import SavedChatSnippets from '../SavedResults/SavedChatSnippets';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
@@ -203,6 +204,179 @@ export default function AgentChat({ projectId }: { projectId: string }) {
 
   const streamingContent = isGenerating ? chatStreamingState.streamingContent : '';
   const streamingSources = isGenerating ? chatStreamingState.streamingSources : [];
+  const streamingCitations = isGenerating ? (chatStreamingState.streamingCitations || []) : [];
+  const isThinking = isGenerating && !!chatStreamingState.isThinking;
+  const thinkingChars = isGenerating ? (chatStreamingState.thinkingChars || 0) : 0;
+
+  // 🏛️ 法条与公共文档悬浮与点击弹窗状态
+  const [hoveredCitation, setHoveredCitation] = useState<{
+    info: CitationInfo;
+    rect: DOMRect;
+    excerpt?: string;
+  } | null>(null);
+  const citationHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const citationCacheRef = useRef<Map<string, { excerpt: string; content?: string }>>(new Map());
+  const currentHoveredTextRef = useRef<string | null>(null);
+  const isOverCitationRef = useRef<boolean>(false);
+  const isOverCardRef = useRef<boolean>(false);
+
+  const [activeModalCitation, setActiveModalCitation] = useState<{
+    info: CitationInfo;
+    content: string;
+    isLoading: boolean;
+  } | null>(null);
+  const [copiedCitation, setCopiedCitation] = useState(false);
+
+  // 协调关闭定时器：只有当鼠标既不在法条上、又不在卡片上时，才真正关闭浮窗
+  const scheduleCitationClose = (delay = 200) => {
+    if (citationHoverTimerRef.current) {
+      clearTimeout(citationHoverTimerRef.current);
+    }
+    citationHoverTimerRef.current = setTimeout(() => {
+      if (!isOverCitationRef.current && !isOverCardRef.current) {
+        currentHoveredTextRef.current = null;
+        setHoveredCitation(null);
+      }
+    }, delay);
+  };
+
+  // 页面滚动时关闭（若鼠标正在卡片上交互则保护不关）
+  useEffect(() => {
+    const handleDismissHover = () => {
+      if (isOverCardRef.current) return;
+      if (citationHoverTimerRef.current) {
+        clearTimeout(citationHoverTimerRef.current);
+        citationHoverTimerRef.current = null;
+      }
+      isOverCitationRef.current = false;
+      currentHoveredTextRef.current = null;
+      setHoveredCitation(null);
+    };
+    window.addEventListener('scroll', handleDismissHover, true);
+    return () => {
+      window.removeEventListener('scroll', handleDismissHover, true);
+    };
+  }, []);
+
+  const handleCitationHover = (
+    info: CitationInfo | null,
+    rect?: DOMRect,
+    citations?: Array<{ title?: string; doc?: string; content: string }>
+  ) => {
+    if (!info || !rect) {
+      // 鼠标离开法条元素，标记法条未悬浮并安排延时关闭
+      isOverCitationRef.current = false;
+      scheduleCitationClose(200);
+      return;
+    }
+
+    // 鼠标进入法条元素，立刻消除任何待关闭定时器并激活法条锁
+    isOverCitationRef.current = true;
+    if (citationHoverTimerRef.current) {
+      clearTimeout(citationHoverTimerRef.current);
+      citationHoverTimerRef.current = null;
+    }
+
+    currentHoveredTextRef.current = info.text;
+    const cacheKey = `${info.law}__${info.section}`;
+    const cached = citationCacheRef.current.get(cacheKey);
+    let excerpt = cached?.excerpt || '';
+
+    if (!excerpt) {
+      const pool = citations && citations.length > 0 ? citations : streamingCitations;
+      if (pool && pool.length > 0) {
+        const match = pool.find(c =>
+          (info.section && c.content?.includes(info.section)) ||
+          (info.law && (c.title?.includes(info.law) || c.doc?.includes(info.law)))
+        );
+        if (match?.content) {
+          excerpt = match.content.trim().slice(0, 140) + (match.content.length > 140 ? '...' : '');
+        }
+      }
+    }
+
+    setHoveredCitation({
+      info,
+      rect,
+      excerpt: excerpt || `正在检索《${info.law || '相关法规'}》${info.section || '条款'}权威条文摘要...`,
+    });
+
+    // 若未缓存真实摘要，发起轻量异步查询，秒级回填权威条文原文摘要
+    if (!cached) {
+      fetch(
+        `${API_BASE}/api/legal/lookup?law=${encodeURIComponent(info.law)}&section=${encodeURIComponent(info.section)}`,
+        { headers: getAuthHeaders() }
+      )
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => {
+          // 竞态防御：若此时用户鼠标已移开或切换到其他法条，坚决丢弃，绝不复活已关闭的浮窗！
+          if (currentHoveredTextRef.current !== info.text) {
+            return;
+          }
+          if (data && (data.excerpt || data.content)) {
+            const realExcerpt = data.excerpt || (data.content.slice(0, 140) + '...');
+            citationCacheRef.current.set(cacheKey, { excerpt: realExcerpt, content: data.content });
+            setHoveredCitation(prev =>
+              prev && prev.info.text === info.text ? { ...prev, excerpt: realExcerpt } : prev
+            );
+          }
+        })
+        .catch(() => {});
+    }
+  };
+
+  const handleCitationClick = async (
+    info: CitationInfo,
+    citations?: Array<{ title?: string; doc?: string; content: string }>
+  ) => {
+    if (citationHoverTimerRef.current) {
+      clearTimeout(citationHoverTimerRef.current);
+      citationHoverTimerRef.current = null;
+    }
+    setHoveredCitation(null);
+
+    const cacheKey = `${info.law}__${info.section}`;
+    const cached = citationCacheRef.current.get(cacheKey);
+    let initialContent = cached?.content || '';
+
+    if (!initialContent) {
+      const pool = citations && citations.length > 0 ? citations : streamingCitations;
+      if (pool && pool.length > 0) {
+        const match = pool.find(c =>
+          (info.section && c.content?.includes(info.section)) ||
+          (info.law && (c.title?.includes(info.law) || c.doc?.includes(info.law)))
+        );
+        if (match?.content) {
+          initialContent = match.content.trim();
+        }
+      }
+    }
+
+    setActiveModalCitation({
+      info,
+      content: initialContent,
+      isLoading: !initialContent,
+    });
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/legal/lookup?law=${encodeURIComponent(info.law)}&section=${encodeURIComponent(info.section)}`,
+        { headers: getAuthHeaders() }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.content) {
+          setActiveModalCitation(prev => prev ? {
+            ...prev,
+            content: data.content,
+            isLoading: false,
+          } : null);
+        }
+      }
+    } catch {
+      setActiveModalCitation(prev => prev ? { ...prev, isLoading: false } : null);
+    }
+  };
 
   // When settings open, fetch current persona
   useEffect(() => {
@@ -389,17 +563,24 @@ export default function AgentChat({ projectId }: { projectId: string }) {
 
 
 
-    const renderMessageContent = (content: string, isStreaming?: boolean) => {
+    const renderMessageContent = (
+      content: string,
+      isStreaming?: boolean,
+      messageCitations?: Array<{ title?: string; doc?: string; content: string }>
+    ) => {
+      // 🌟 彻底清除任何 Thinking 思考内容（无论是否闭合），保证回答绝对纯净
+      const cleanContent = (content || '').replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+
       // WHY: 解析 DuckDB 分析元数据标记
       let daMeta: { sql?: string; result_markdown?: string; row_count?: number; tables_used?: Array<{display: string; name: string; rows: number}> } | null = null;
-      let textContent = content;
+      let textContent = cleanContent;
 
-      const daMatch = content.match(/<!--DA_META:(.+?):DA_META-->/);
+      const daMatch = cleanContent.match(/<!--DA_META:(.+?):DA_META-->/);
       if (daMatch) {
         try {
           daMeta = JSON.parse(daMatch[1]);
         } catch { /* ignore */ }
-        textContent = content.replace(/<!--DA_META:.+?:DA_META-->\n?/, '');
+        textContent = cleanContent.replace(/<!--DA_META:.+?:DA_META-->\n?/, '');
       }
 
       // WHY: 数据分析模式的结果包含 Markdown 表格和 SQL 代码块，
@@ -477,7 +658,13 @@ export default function AgentChat({ projectId }: { projectId: string }) {
               }
 
               return (
-                <MarkdownBlock key={idx} content={block.content} isStreaming={isStreaming} />
+                <MarkdownBlock
+                  key={idx}
+                  content={block.content}
+                  isStreaming={isStreaming}
+                  onCitationHover={(info, rect) => handleCitationHover(info, rect, messageCitations)}
+                  onCitationClick={(info) => handleCitationClick(info, messageCitations)}
+                />
               );
             })}
           </div>
@@ -521,69 +708,48 @@ export default function AgentChat({ projectId }: { projectId: string }) {
       const hasSql = textContent.includes('```sql');
       const needsEnhanced = hasTable || hasSql;
 
-      if (!textContent.includes('<think>')) {
+      // 若流式生成中且清洗后的文本暂时为空，展示具有高可见度的深度研判推演动态进度条
+      if (isStreaming && !textContent && !daBlock) {
         return (
-          <>
-            {daBlock}
-            {needsEnhanced
-              ? renderEnhancedContent(textContent, isStreaming)
-              : <MarkdownBlock content={textContent} isStreaming={isStreaming} />
-            }
-            {isStreaming && (
-              <span className="inline-block w-1.5 h-4 bg-indigo-500 ml-0.5 animate-pulse rounded-sm mt-1 align-middle" />
-            )}
-          </>
+          <div className="space-y-2 py-1 animate-in fade-in duration-300">
+            <div className="flex items-center justify-between p-3.5 bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 rounded-xl text-xs text-indigo-700 dark:text-indigo-300 shadow-sm">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <span className="font-medium truncate">
+                  {isThinking || thinkingChars > 0 ? 'AI 正在深度研判案件事实与检索适用法条依据...' : 'AI 正在组织回答...'}
+                </span>
+              </div>
+              {thinkingChars > 0 && (
+                <div className="flex items-center gap-1 font-mono text-[11px] bg-white/90 dark:bg-[#1E2028] px-2.5 py-0.5 rounded-full border border-indigo-200/70 dark:border-indigo-800/70 text-indigo-600 dark:text-indigo-400 shrink-0 shadow-xs">
+                  <span>已推演</span>
+                  <strong className="font-bold">{thinkingChars.toLocaleString()}</strong>
+                  <span>字</span>
+                </div>
+              )}
+            </div>
+          </div>
         );
       }
 
-    const thinkStartIdx = content.indexOf('<think>');
-    const thinkEndIdx = content.indexOf('</think>');
-    const preThinkText = content.substring(0, thinkStartIdx);
-
-    if (thinkEndIdx !== -1) {
-      const thinkStr = content.substring(thinkStartIdx + 7, thinkEndIdx).trim();
-      const normalStr = content.substring(thinkEndIdx + 8);
       return (
-        <div className="space-y-3">
-          {preThinkText && <MarkdownBlock content={preThinkText} isStreaming={isStreaming} />}
-          {thinkStr && (
-            <details className="mb-3 group">
-              <summary className="text-xs text-indigo-400 font-medium cursor-pointer select-none hover:text-indigo-500 flex items-center gap-1.5 w-max">
-                <span className="opacity-80 transition-transform group-open:rotate-90">▹</span>
-                深度思考过程
-              </summary>
-              <div className="mt-2 p-3 bg-gray-50/80 rounded-lg text-[13px] text-gray-500 border border-gray-100 whitespace-pre-wrap leading-relaxed shadow-sm">
-                {thinkStr}
-              </div>
-            </details>
+        <>
+          {daBlock}
+          {needsEnhanced
+            ? renderEnhancedContent(textContent, isStreaming)
+            : (
+              <MarkdownBlock
+                content={textContent}
+                isStreaming={isStreaming}
+                onCitationHover={(info, rect) => handleCitationHover(info, rect, messageCitations)}
+                onCitationClick={(info) => handleCitationClick(info, messageCitations)}
+              />
+            )
+          }
+          {isStreaming && (
+            <span className="inline-block w-1.5 h-4 bg-indigo-500 ml-0.5 animate-pulse rounded-sm mt-1 align-middle" />
           )}
-          {normalStr && <MarkdownBlock content={normalStr} isStreaming={isStreaming} />}
-        </div>
+        </>
       );
-    } else {
-      const thinkStr = content.substring(thinkStartIdx + 7).trim();
-      const isTruncated = !isStreaming;
-      return (
-        <div className="space-y-3">
-          {preThinkText && <MarkdownBlock content={preThinkText} isStreaming={isStreaming} />}
-          <div className="mb-3">
-            <div className={`text-xs font-medium pb-1.5 flex items-center gap-1.5 w-max border-b ${isTruncated ? 'text-amber-500 border-amber-200' : 'text-indigo-400 border-indigo-100'}`}>
-              {isTruncated ? (
-                <><span className="opacity-80">⚠️</span> 推理过程被截断（输出已达上限）</>
-              ) : (
-                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> AI 正在推理思考中...</>
-              )}
-            </div>
-            <div className={`mt-2 p-3 rounded-lg text-[13px] whitespace-pre-wrap leading-relaxed border overflow-hidden relative flex flex-col justify-end max-h-[4.5rem] ${isTruncated ? 'bg-amber-50/40 text-amber-600/80 border-amber-100' : 'bg-indigo-50/40 text-indigo-500/80 border-indigo-50'}`}>
-              <div className="opacity-80">
-                {thinkStr.length > 150 ? '...' + thinkStr.slice(-150) : thinkStr}
-                {isStreaming && !isTruncated && <span className="inline-block w-1.5 h-3.5 bg-indigo-400 ml-1 animate-pulse align-middle" />}
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
   };
 
 
@@ -812,7 +978,11 @@ export default function AgentChat({ projectId }: { projectId: string }) {
                       <div className="whitespace-pre-wrap">{msg.content}</div>
                     </div>
                   )
-                  : renderMessageContent(msg.isStreaming ? streamingContent : msg.content, msg.isStreaming)
+                  : renderMessageContent(
+                      msg.isStreaming ? streamingContent : msg.content,
+                      msg.isStreaming,
+                      msg.isStreaming ? streamingCitations : msg.citations
+                    )
                 }
                 
                 {((msg.isStreaming ? streamingSources : msg.sources) || []).length > 0 && (
@@ -974,10 +1144,162 @@ export default function AgentChat({ projectId }: { projectId: string }) {
         {isGenerating && (
           <div className="mt-2 flex items-center gap-2 text-xs text-[#8B7355]">
             <Loader2 className="w-3 h-3 animate-spin" />
-            {chatAgentName}正在思考...
+            {chatAgentName}正在组织回答...
           </div>
         )}
       </div>
+
+      {/* 🏛️ 鼠标划过法条悬浮卡片 (Tooltip) */}
+      {hoveredCitation && (() => {
+        const isPlacementTop = hoveredCitation.rect.top >= 180;
+        const left = Math.min(window.innerWidth - 340, Math.max(16, hoveredCitation.rect.left - 20));
+        return (
+          <div
+            className="fixed z-[9999] pointer-events-auto select-none"
+            style={{
+              top: isPlacementTop ? `${hoveredCitation.rect.top}px` : `${hoveredCitation.rect.bottom}px`,
+              left: `${left}px`,
+              width: '320px',
+              transform: isPlacementTop ? 'translateY(-100%)' : 'none',
+              paddingBottom: isPlacementTop ? '8px' : '0px',
+              paddingTop: isPlacementTop ? '0px' : '8px',
+            }}
+            onMouseEnter={() => {
+              isOverCardRef.current = true;
+              if (citationHoverTimerRef.current) {
+                clearTimeout(citationHoverTimerRef.current);
+                citationHoverTimerRef.current = null;
+              }
+            }}
+            onMouseLeave={() => {
+              isOverCardRef.current = false;
+              scheduleCitationClose(200);
+            }}
+          >
+            <div
+              onClick={() => {
+                if (citationHoverTimerRef.current) {
+                  clearTimeout(citationHoverTimerRef.current);
+                  citationHoverTimerRef.current = null;
+                }
+                const info = hoveredCitation.info;
+                isOverCitationRef.current = false;
+                isOverCardRef.current = false;
+                setHoveredCitation(null);
+                handleCitationClick(info);
+              }}
+              className="group cursor-pointer bg-white/95 dark:bg-[#1E2028]/95 backdrop-blur-md border border-indigo-200/80 dark:border-indigo-800/80 rounded-xl p-3 shadow-xl text-xs text-gray-700 dark:text-stone-200 transition-shadow hover:border-indigo-400 dark:hover:border-indigo-600 hover:shadow-2xl"
+            >
+              <div className="flex items-center justify-between pb-1.5 border-b border-indigo-100 dark:border-indigo-900/50 mb-1.5 font-semibold text-indigo-600 dark:text-indigo-400">
+                <span className="flex items-center gap-1.5 truncate">
+                  ⚖️ {hoveredCitation.info.text}
+                </span>
+                <span className="text-[10px] font-normal px-1.5 py-0.2 bg-indigo-50 dark:bg-indigo-950/60 rounded text-indigo-500 shrink-0">
+                  法条摘要
+                </span>
+              </div>
+              <div className="text-[11.5px] leading-relaxed text-gray-600 dark:text-stone-300 max-h-24 overflow-hidden text-ellipsis line-clamp-3">
+                {hoveredCitation.excerpt || `《${hoveredCitation.info.law}》${hoveredCitation.info.section}：涉及相关法律主体的权利、义务及监督管理部门职权规定。`}
+              </div>
+              <div className="mt-2 pt-1.5 border-t border-dashed border-gray-100 dark:border-gray-800 flex items-center justify-between text-[10px] text-gray-400 dark:text-stone-500">
+                <span>💡 点击弹窗查看具体章节条目</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (citationHoverTimerRef.current) {
+                      clearTimeout(citationHoverTimerRef.current);
+                      citationHoverTimerRef.current = null;
+                    }
+                    const info = hoveredCitation.info;
+                    isOverCitationRef.current = false;
+                    isOverCardRef.current = false;
+                    setHoveredCitation(null);
+                    handleCitationClick(info);
+                  }}
+                  className="px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-400 font-semibold transition-colors flex items-center gap-1 group-hover:bg-indigo-600 group-hover:text-white"
+                >
+                  详情 ↗
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 🏛️ 点击法条展开的完整章节条目模态弹窗 (Modal) */}
+      {activeModalCitation && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div 
+            className="absolute inset-0"
+            onClick={() => setActiveModalCitation(null)}
+          />
+          <div className="relative bg-white dark:bg-[#1E2028] border border-gray-200 dark:border-[#2E313A] rounded-2xl p-6 shadow-2xl max-w-lg w-full flex flex-col gap-4 max-h-[85vh] animate-in zoom-in-95 duration-200">
+            {/* 弹窗头部 */}
+            <div className="flex items-start justify-between gap-3 border-b border-gray-100 dark:border-[#2E313A] pb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 shrink-0">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white truncate">
+                    {activeModalCitation.info.law ? `《${activeModalCitation.info.law}》` : '公共文档法规条目'}
+                  </h3>
+                  <div className="text-xs text-indigo-600 dark:text-indigo-400 font-medium mt-0.5">
+                    {activeModalCitation.info.section || '具体章节条款'}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveModalCitation(null)}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-[#2E313A] transition-colors"
+                title="关闭"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 条文正文内容区 */}
+            <div className="flex-1 overflow-y-auto pr-1 text-sm leading-relaxed text-gray-700 dark:text-stone-300 font-sans space-y-3 min-h-[140px]">
+              {activeModalCitation.isLoading ? (
+                <div className="h-32 flex flex-col items-center justify-center gap-2 text-gray-400 text-xs">
+                  <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
+                  <span>正在从公共知识库检索【{activeModalCitation.info.text}】条文全文...</span>
+                </div>
+              ) : (
+                <div className="p-4 bg-gray-50/80 dark:bg-[#15161B]/80 rounded-xl border border-gray-200/70 dark:border-[#2E313A] whitespace-pre-wrap font-sans text-xs leading-relaxed text-gray-800 dark:text-stone-200 select-text">
+                  {activeModalCitation.content || '未检索到该法条的完整切片正文，建议查阅该公共法规的官方原版文件。'}
+                </div>
+              )}
+            </div>
+
+            {/* 底部操作栏 */}
+            <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-[#2E313A] text-xs">
+              <span className="text-gray-400 text-[11px]">来源：貔貅知识库公共文档与国家法规库</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    const txt = `${activeModalCitation.info.text}\n\n${activeModalCitation.content || ''}`;
+                    await navigator.clipboard.writeText(txt);
+                    setCopiedCitation(true);
+                    setTimeout(() => setCopiedCitation(false), 2000);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-[#2E313A] text-gray-700 dark:text-stone-300 hover:bg-gray-100 dark:hover:bg-[#2E313A] active:scale-95 transition-all cursor-pointer font-medium"
+                >
+                  {copiedCitation ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedCitation ? '已复制条文' : '复制条文'}</span>
+                </button>
+                <button
+                  onClick={() => setActiveModalCitation(null)}
+                  className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-medium shadow-sm transition-all cursor-pointer"
+                >
+                  关闭
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

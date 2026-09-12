@@ -34,7 +34,8 @@ import {
   ChevronRight,
   GitFork,
   ClipboardCheck,
-  Scale
+  Scale,
+  RefreshCw
 } from 'lucide-react';
 import { useThemeStore } from './store/themeStore';
 import { APP_VERSION, APP_NAME } from './version';
@@ -131,6 +132,10 @@ export function SystemStatusIndicator({ mode = 'dot' }: { mode?: 'dot' | 'capsul
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState<'checking'|'online'|'offline'>('checking');
   const [raidStatus, setRaidStatus] = useState<'checking'|'online'|'offline'>('checking');
+  const [isRetryingRaid, setIsRetryingRaid] = useState(false);
+  const raidFailCountRef = useRef<number>(0);
+  const raidRetryTimerRef = useRef<any>(null);
+
   const [health, setHealth] = useState<{
     status: 'green'|'yellow'|'red';
     details: string;
@@ -141,6 +146,16 @@ export function SystemStatusIndicator({ mode = 'dot' }: { mode?: 'dot' | 'capsul
       qdrant: string;
       neo4j: string;
       raid: string;
+      active_llm?: {
+        provider: string;
+        baseURL: string;
+        model: string;
+      };
+      active_vision?: {
+        mode: string;
+        baseURL: string;
+        model: string;
+      };
     }
   } | null>(null);
 
@@ -153,43 +168,74 @@ export function SystemStatusIndicator({ mode = 'dot' }: { mode?: 'dot' | 'capsul
     selectedModelRef.current = selectedModel;
   }, [selectedModel]);
 
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const API_BASE = import.meta.env.VITE_API_BASE || '';
-        const res = await fetch(`${API_BASE}/api/llm/status`, { headers: getAuthHeaders() });
-        const data = await res.json();
-        setOllamaStatus(data.status === 'online' ? 'online' : 'offline');
-        if (data.raid_status) {
-          setRaidStatus(data.raid_status);
-        }
-        if (data.health) {
-          setHealth(data.health);
-        }
+  const checkStatus = async () => {
+    try {
+      const API_BASE = import.meta.env.VITE_API_BASE || '';
+      const res = await fetch(`${API_BASE}/api/llm/status`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      setOllamaStatus(data.status === 'online' ? 'online' : 'offline');
 
-        // 自动同步模型
-        if (data.status === 'online' && Array.isArray(data.models)) {
-          const qwenModels = data.models
-            .map((m: any) => m.name)
-            .filter((name: string) => name.toLowerCase().includes('qwen3.8') || name.toLowerCase().includes('qwen3.6') || name.toLowerCase().includes('qwen'));
-          
-          if (qwenModels.length > 0) {
-            const currentSelected = selectedModelRef.current;
-            const targetModel = qwenModels.find((name: string) => name.includes('qwen3.8:27b-q4')) || qwenModels[0];
-            if (!currentSelected || !qwenModels.includes(currentSelected) || currentSelected.includes('qwen3.6')) {
-              setSelectedModel(targetModel);
-            }
+      // 存储阵列防抖自愈逻辑：
+      // 休眠唤醒或重启瞬态时给予快速自动重试缓冲（连续 3 次间隔 2.5 秒仍脱机才置为 offline）
+      if (data.raid_status === 'online') {
+        raidFailCountRef.current = 0;
+        setRaidStatus('online');
+      } else if (data.raid_status === 'offline') {
+        raidFailCountRef.current += 1;
+        if (raidFailCountRef.current >= 3) {
+          setRaidStatus('offline');
+        } else {
+          // 仍在防抖缓冲窗口期内，触发静默快速重试探活
+          if (raidRetryTimerRef.current) clearTimeout(raidRetryTimerRef.current);
+          raidRetryTimerRef.current = setTimeout(() => {
+            checkStatus();
+          }, 2500);
+        }
+      }
+
+      if (data.health) {
+        setHealth(data.health);
+      }
+
+      // 自动同步模型
+      if (data.status === 'online' && Array.isArray(data.models)) {
+        const qwenModels = data.models
+          .map((m: any) => m.name)
+          .filter((name: string) => name.toLowerCase().includes('qwen3.8') || name.toLowerCase().includes('qwen3.6') || name.toLowerCase().includes('qwen'));
+        
+        if (qwenModels.length > 0) {
+          const currentSelected = selectedModelRef.current;
+          const targetModel = qwenModels.find((name: string) => name.includes('qwen3.8:27b-q4')) || qwenModels[0];
+          if (!currentSelected || !qwenModels.includes(currentSelected) || currentSelected.includes('qwen3.6')) {
+            setSelectedModel(targetModel);
           }
         }
-      } catch {
-        setOllamaStatus('offline');
-        setHealth({ status: 'red', details: '无法连接后端API网关' });
       }
-    };
+    } catch {
+      setOllamaStatus('offline');
+      setHealth({ status: 'red', details: '无法连接后端API网关' });
+    }
+  };
+
+  const handleManualRaidRetry = async () => {
+    setIsRetryingRaid(true);
+    try {
+      await checkStatus();
+    } finally {
+      setIsRetryingRaid(false);
+    }
+  };
+
+  useEffect(() => {
     checkStatus();
-    const interval = setInterval(checkStatus, 60000);
-    return () => clearInterval(interval);
-  }, [getAuthHeaders, setSelectedModel]);
+    // 脱机时以 5 秒高频快速探活自愈，正常状态保持 60 秒轻量巡检
+    const pollIntervalMs = raidStatus === 'offline' ? 5000 : 60000;
+    const interval = setInterval(checkStatus, pollIntervalMs);
+    return () => {
+      clearInterval(interval);
+      if (raidRetryTimerRef.current) clearTimeout(raidRetryTimerRef.current);
+    };
+  }, [getAuthHeaders, setSelectedModel, raidStatus]);
 
   if (ollamaStatus === 'checking') {
     return mode === 'capsule' ? (
@@ -288,8 +334,18 @@ export function SystemStatusIndicator({ mode = 'dot' }: { mode?: 'dot' | 'capsul
   return (
     <>
       {raidStatus === 'offline' && (
-        <div className="fixed top-0 left-0 w-full bg-[#ef4444] text-white z-[9999] px-4 py-2 text-center text-sm font-bold shadow-lg flex items-center justify-center gap-2">
-          <span className="text-xl">🚨</span> 大载荷独立磁盘阵列（RAID）异常脱机！系统已降级运行。项目框架数据已锁定在固态盘安全生效，但重型图纸文件访问及全文高维检索暂时被阻断。请火速检查硬盘物理连线！
+        <div className="fixed top-0 left-0 w-full bg-[#ef4444] text-white z-[9999] px-4 py-2 text-center text-sm font-bold shadow-lg flex items-center justify-center gap-3">
+          <span className="text-xl shrink-0">🚨</span>
+          <span>大载荷独立磁盘阵列（RAID）异常脱机！系统已降级运行。项目框架数据已锁定在固态盘安全生效，但重型图纸文件访问及全文高维检索暂时被阻断。请火速检查硬盘物理连线！</span>
+          <button
+            onClick={handleManualRaidRetry}
+            disabled={isRetryingRaid}
+            className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 active:scale-95 text-white text-xs font-semibold rounded-lg border border-white/30 backdrop-blur-sm transition-all cursor-pointer shrink-0 disabled:opacity-50"
+            title="手动触发外部存储重新探测与自愈"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRetryingRaid ? 'animate-spin' : ''}`} />
+            <span>{isRetryingRaid ? '正在探活...' : '立即重试自愈'}</span>
+          </button>
         </div>
       )}
       <div 
@@ -315,9 +371,22 @@ export function SystemStatusIndicator({ mode = 'dot' }: { mode?: 'dot' | 'capsul
                 <h3 className="text-sm font-semibold leading-none text-text-main flex items-center gap-1.5">
                   🛡️ 全链路智能巡检结果
                 </h3>
-                <div className="text-xs text-text-muted leading-relaxed mt-3 whitespace-pre-wrap font-sans border-t border-border-soft pt-3 space-y-2">
+                <div className="text-xs text-text-muted leading-relaxed mt-3 whitespace-pre-wrap font-sans border-t border-border-soft pt-3 space-y-1.5">
                   <p>🔹 <strong>巡检诊断：</strong>{health?.details || color.text}</p>
-                  <p>🔹 <strong>当前模型：</strong>{ollamaStatus === 'online' ? `🟢 ${selectedModel}` : '🔴 离线'}</p>
+                  <p>🔹 <strong>当前模型：</strong>{ollamaStatus === 'online' ? `🟢 ${health?.metrics?.active_llm?.model || selectedModel}` : '🔴 离线'}</p>
+                  {health?.metrics?.active_llm?.baseURL && (
+                    <p className="truncate" title={health.metrics.active_llm.baseURL}>
+                      🔹 <strong>模型端点：</strong><span className="font-mono text-[11px] text-indigo-600 bg-indigo-50/80 px-1.5 py-0.5 rounded">{health.metrics.active_llm.baseURL}</span>
+                    </p>
+                  )}
+                  {health?.metrics?.active_llm?.provider && (
+                    <p>🔹 <strong>引擎服务商：</strong>{health.metrics.active_llm.provider}</p>
+                  )}
+                  {health?.metrics?.active_vision && (
+                    <p className="truncate" title={health.metrics.active_vision.baseURL}>
+                      🔹 <strong>多模态视觉：</strong>🟢 {health.metrics.active_vision.model} {health.metrics.active_vision.mode === 'same_as_main' ? '(与主力同用)' : `(${health.metrics.active_vision.baseURL})`}
+                    </p>
+                  )}
                   <p>🔹 <strong>AI推理服务：</strong>{health?.metrics?.ollama === 'online' ? '🟢 正常' : '🔴 异常/未装载'}</p>
                   <p>🔹 <strong>向量存储 (Qdrant)：</strong>{health?.metrics?.qdrant === 'online' ? '🟢 正常' : '🔴 连接超时'}</p>
                   <p>🔹 <strong>知识图谱 (Neo4j)：</strong>{health?.metrics?.neo4j === 'online' ? '🟢 正常' : '🔴 连接超时'}</p>
@@ -506,6 +575,14 @@ function StudioLayout() {
   useEffect(() => {
     fetchPublicSettings();
   }, [fetchPublicSettings]);
+
+  // 项目打开或切换时，预览窗口默认不打开，彻底清除之前项目的残留文件预览
+  useEffect(() => {
+    setActivePreviewFile(null);
+    return () => {
+      setActivePreviewFile(null);
+    };
+  }, [projectId, setActivePreviewFile]);
 
   const getTabLabel = (_id: string, defaultLabel: string) => {
     return defaultLabel;
@@ -736,7 +813,7 @@ function StudioLayout() {
                onClick={() => { setEditName(projectName); setIsEditingName(true); }}
              >{projectName || '未命名项目'}</span>
            )}
-           <button onClick={() => navigate('/')} className="text-blue-600 text-xs hover:underline shrink-0">返回</button>
+           <button onClick={() => { setActivePreviewFile(null); navigate('/'); }} className="text-blue-600 text-xs hover:underline shrink-0">返回</button>
         </div>
         <div className="flex-1 p-4 text-xs text-gray-500 overflow-y-auto">
            {canWrite && (

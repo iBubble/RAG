@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Settings, X, Loader2, LogIn, Trash2, Globe, Lock, Library, Search, AlertTriangle, LayoutGrid, List } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { useProjectStore } from '../../store/projectStore';
 import { SystemStatusIndicator, ThemeSwitcher } from '../../App';
 import { APP_VERSION, APP_NAME } from '../../version';
 import LogoSpinner from '../LogoSpinner';
@@ -23,6 +24,10 @@ interface Project {
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const setActivePreviewFile = useProjectStore(state => state.setActivePreviewFile);
+  useEffect(() => {
+    setActivePreviewFile(null);
+  }, [setActivePreviewFile]);
   const { user, logout, getAuthHeaders } = useAuthStore();
   const [systemName, setSystemName] = useState(`${APP_NAME} V${APP_VERSION}`);
   const [linvisName, setLinvisName] = useState('麟维斯');

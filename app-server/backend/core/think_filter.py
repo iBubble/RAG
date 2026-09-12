@@ -101,6 +101,10 @@ async def filter_think_stream(
     in_think = False
 
     async for chunk in stream:
+        if isinstance(chunk, str) and chunk.startswith("<<<THINK_"):
+            yield chunk
+            continue
+
         filtered = filt.feed(chunk)
 
         # 当状态进入 IN_THINK 且之前不在 think 中时，下发开始标记
@@ -129,6 +133,10 @@ async def format_think_stream(
     in_think = False
     
     async for chunk in stream:
+        if isinstance(chunk, str) and chunk.startswith("<<<THINK_"):
+            yield chunk
+            continue
+
         buffer += chunk
         output = ""
         

@@ -35,6 +35,7 @@ export interface Message {
   content: string;
   isStreaming?: boolean;
   sources?: string[];
+  citations?: Array<{ title?: string; doc?: string; content: string }>;
   stats?: {
     time: number;
     tokens: number;
@@ -49,6 +50,9 @@ export interface ChatStreamingState {
   projectId: string | null;
   streamingContent: string;
   streamingSources: string[];
+  streamingCitations?: Array<{ title?: string; doc?: string; content: string }>;
+  isThinking?: boolean;
+  thinkingChars?: number;
   abortController: AbortController | null;
 }
 
@@ -356,6 +360,9 @@ export const useChatStore = create<ChatState>((set) => ({
         projectId,
         streamingContent: '',
         streamingSources: [],
+        streamingCitations: [],
+        isThinking: false,
+        thinkingChars: 0,
         abortController: controller,
       }
     });
@@ -363,7 +370,10 @@ export const useChatStore = create<ChatState>((set) => ({
     let localBufferContent = '';
     let tokenContent = '';
     let currentProgress = '';
+    let localIsThinking = false;
+    let localThinkingChars = 0;
     let localBufferSources: string[] = [];
+    let localBufferCitations: Array<{ title?: string; doc?: string; content: string }> = [];
     const startTime = Date.now();
 
     try {
@@ -422,6 +432,23 @@ export const useChatStore = create<ChatState>((set) => ({
               localBufferSources = data.sources;
               hasUpdated = true;
             }
+            if (data.citations) {
+              localBufferCitations = data.citations;
+              hasUpdated = true;
+            }
+            if (data.think_active) {
+              localIsThinking = true;
+              hasUpdated = true;
+            }
+            if (data.think_progress !== undefined) {
+              localIsThinking = true;
+              localThinkingChars = data.think_progress;
+              hasUpdated = true;
+            }
+            if (data.think_end) {
+              localIsThinking = false;
+              hasUpdated = true;
+            }
             if (data.status) {
               // 只接收状态
             }
@@ -446,10 +473,12 @@ export const useChatStore = create<ChatState>((set) => ({
               hasUpdated = true;
             }
             if (data.type === 'token' && data.content) {
+              localIsThinking = false;
               tokenContent += data.content;
               hasUpdated = true;
             }
             if (data.token) {
+              localIsThinking = false;
               tokenContent += data.token;
               hasUpdated = true;
             }
@@ -465,6 +494,9 @@ export const useChatStore = create<ChatState>((set) => ({
               ...state.chatStreamingState,
               streamingContent: localBufferContent,
               streamingSources: localBufferSources,
+              streamingCitations: localBufferCitations,
+              isThinking: localIsThinking,
+              thinkingChars: localThinkingChars,
             }
           }));
         }
@@ -489,6 +521,7 @@ export const useChatStore = create<ChatState>((set) => ({
         role: 'agent',
         content: localBufferContent,
         sources: localBufferSources,
+        citations: localBufferCitations,
         isStreaming: false,
         stats: {
           time: Number(((Date.now() - startTime) / 1000).toFixed(1)),

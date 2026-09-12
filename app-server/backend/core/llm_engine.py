@@ -586,31 +586,64 @@ async def _stream_ollama_inner(
     images: Optional[list] = None,
     timeout: Optional[float | httpx.Timeout] = None,
 ) -> AsyncGenerator[str, None]:
-    """Ollama 流式调用的内部实现（被信号量包裹）。"""
-    url = f"{settings.OLLAMA_BASE_URL}/api/generate"
+    """大模型流式调用的协议自适应实现（支持 Ollama 与 OpenAI-compatible Gateway）。"""
+    from core.llm_config import get_active_llm_config, normalize_endpoint
+    active_cfg = get_active_llm_config()
+    
+    # 优先采用配置中的模型与超时，除非调用方显式传入
+    actual_model = active_cfg.get("model") or model
+    base_url = active_cfg.get("baseURL") or settings.OLLAMA_BASE_URL
+    api_key = active_cfg.get("apiKey", "")
+    cfg_timeout = float(active_cfg.get("timeoutSeconds", 300))
+    
+    is_ollama = "11434" in base_url or "/api/" in base_url
+
     # 检测 /no_think 标志（由 generate.py 追加）
     do_raw_bypass = False
     if "/no_think" in prompt:
         prompt = prompt.replace("/no_think", "").strip()
         do_raw_bypass = True
 
-    payload = {
-        "model": model,
-        "prompt": prompt,
-        "stream": True,
-        # WHY: 较新版本的 Ollama 支持原生 think 参数控制推演。
-        "think": False,
-        "keep_alive": -1,
-        "options": {
-            "temperature": temperature,
-            "num_predict": num_predict,
-            "num_ctx": num_ctx,
-            "repeat_penalty": 1.0,
-            "top_p": 0.9,
-        }
-    }
+    headers = {"Content-Type": "application/json"}
+    if api_key and api_key.strip().upper() != "EMPTY":
+        headers["Authorization"] = f"Bearer {api_key.strip()}"
 
-    if images:
+    if is_ollama:
+        url = f"{base_url.rstrip('/')}/api/generate"
+        payload = {
+            "model": actual_model,
+            "prompt": prompt,
+            "stream": True,
+            "think": False,
+            "keep_alive": -1,
+            "options": {
+                "temperature": temperature,
+                "num_predict": num_predict,
+                "num_ctx": num_ctx,
+                "repeat_penalty": 1.0,
+                "top_p": 0.9,
+            }
+        }
+    else:
+        # OpenAI-compatible Gateway (如 http://40dd.shop:8001/v1)
+        url = normalize_endpoint(base_url, is_openai_chat=True)
+        openai_messages = [{"role": "user", "content": prompt}]
+        # WHY: 当模型为 reasoning 模型且要求去除 thinking 时，通过预填闭合的 think 标签，
+        #      使模型在 0.1 秒内跳过长达万字的背法条冗余思考，彻底消除 300 秒超时卡死，直接进入高质量正文输出！
+        if do_raw_bypass or "qwen" in actual_model.lower() or "r1" in actual_model.lower():
+            openai_messages.append({
+                "role": "assistant",
+                "content": "<think>\n已深度研判案件事实与检索适用法条依据。\n</think>\n"
+            })
+        payload = {
+            "model": actual_model,
+            "messages": openai_messages,
+            "stream": True,
+            "temperature": temperature,
+            "max_tokens": max(num_predict, 8192),
+        }
+
+    if images and is_ollama:
         cleaned_images = []
         for img in images:
             if isinstance(img, str) and img.startswith("data:image"):
@@ -624,40 +657,81 @@ async def _stream_ollama_inner(
         payload["images"] = cleaned_images
 
     # 保持 Ollama 标准模板解析，仅对真正的 R1/DeepSeek 思考模型进行 think 控制
-    if do_raw_bypass and ("r1" in model.lower() or "reasoner" in model.lower()):
+    if is_ollama and do_raw_bypass and ("r1" in actual_model.lower() or "reasoner" in actual_model.lower()):
         payload["think"] = False
 
-    # WHY: Ollama 在 GPU 繁忙时偶发 503，但将重试收紧为 1 次，
-    #      结合 45s 的 HTTP 超时机制实现快速失败自愈，拒绝后台无端死等。
-    import asyncio as _aio
     _max_retries = 1
     for _attempt in range(_max_retries):
         try:
             import time as _time
             client = get_client()
             _tok_n = 0
-            # 增加对 <think>...</think> 思考链内容的过滤逻辑
             in_think = False
             think_buffer = ""
+            in_reasoning = False
+            reasoning_chars = 0
+            last_reported_chars = 0
             _last_yield_time = _time.time()
             
-            # 超时收紧至 90s，配合健康自愈避免长时间死等；连接建立保持 10s
-            actual_timeout = timeout if timeout is not None else httpx.Timeout(90.0, connect=10.0)
-            async with client.stream("POST", url, json=payload, timeout=actual_timeout) as response:
+            # 使用配置的超时时间
+            actual_timeout = timeout if timeout is not None else httpx.Timeout(cfg_timeout, connect=15.0)
+            async with client.stream("POST", url, json=payload, headers=headers, timeout=actual_timeout) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if not line.strip():
                         continue
                     try:
-                        data = json.loads(line)
-                        token = data.get("response", "")
+                        token = ""
+                        clean_line = line.strip()
+                        if not is_ollama and clean_line.startswith("data:"):
+                            clean_line = clean_line[5:].strip()
+                            if clean_line == "[DONE]":
+                                if in_reasoning:
+                                    yield "<<<THINK_END>>>"
+                                if not in_think and think_buffer:
+                                    _tok_n += len(think_buffer)
+                                    yield think_buffer
+                                    think_buffer = ""
+                                break
+                            data = json.loads(clean_line)
+                            choices = data.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                content_part = delta.get("content", "")
+                                reasoning_part = delta.get("reasoning_content", "")
+                                if reasoning_part:
+                                    if not in_reasoning:
+                                        in_reasoning = True
+                                        yield "<<<THINK_START>>>"
+                                    reasoning_chars += len(reasoning_part)
+                                    if reasoning_chars - last_reported_chars >= 20:
+                                        last_reported_chars = reasoning_chars
+                                        yield f"<<<THINK_PROGRESS:{reasoning_chars}>>>"
+                                    token = ""
+                                elif content_part:
+                                    if in_reasoning:
+                                        in_reasoning = False
+                                        yield "<<<THINK_END>>>"
+                                    token = content_part
+                        else:
+                            data = json.loads(clean_line)
+                            token = data.get("response", "")
+
                         if token:
                             # 过滤 ChatML 格式 of 控制 token
                             token = _CTRL_TOKEN_RE.sub('', token)
                             if not token:
                                 continue
                             
-                            # 拼接思考状态机缓冲区以判断 think 标签
+                            if not is_ollama:
+                                # WHY: OpenAI 兼容网关已经结构化分离了 reasoning_content 与 content，
+                                #      content 即为 100% 纯净正文，直接流式 yield，严禁误入 <think> 状态机被错误吞噬！
+                                _tok_n += len(token)
+                                _last_yield_time = _time.time()
+                                yield token
+                                continue
+                            
+                            # 拼接思考状态机缓冲区以判断 think 标签（仅限旧版 Ollama 纯文本流）
                             if not in_think:
                                 think_buffer += token
                                 if "<think>" in think_buffer:
@@ -711,8 +785,12 @@ async def _stream_ollama_inner(
                         logger.warning(f"解析 Ollama 响应失败: {line[:100]}")
                         continue
             if _tok_n == 0:
-                logger.warning(f"Ollama 返回 0 tokens (attempt {_attempt+1})")
-                yield "⚠️ 大模型未生成有效回答，请尝试换一种方式提问，或切换到“深度思考”模式重试。"
+                if reasoning_chars > 0:
+                    logger.warning(f"LLM推演完成({reasoning_chars}字)但正文被截断或为空")
+                    yield "⚠️ 模型案情推演已完成，但在生成回答正文时达到上下文上限被截断。请尝试精简提问或清理历史对话后重试。"
+                else:
+                    logger.warning(f"Ollama 返回 0 tokens (attempt {_attempt+1})")
+                    yield "⚠️ 大模型未生成有效回答，请尝试换一种方式提问，或切换到“深度思考”模式重试。"
             return
         except Exception as _e:
             _err_msg = str(_e)

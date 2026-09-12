@@ -4,13 +4,22 @@
 # WHY: 解决 MacBook Pro 合盖休眠唤醒后 Docker VirtioFS 挂载句柄断开导致脱机的问题。
 # ==============================================================================
 
+# 确保在 macOS cron、launchd 及无头环境下正确寻址 docker 等系统命令
+export PATH="/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 LOG_FILE="/tmp/storage_watchdog.log"
 HOST_BASE_DIR="/Volumes/macData"
-DEBOUNCE_SECS=60
+DEBOUNCE_SECS=30
 
 log_msg() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
+    local MSG="$1"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $MSG" >> "$LOG_FILE"
 }
+
+# 日志轮转保护（超过 2MB 时保留最后 1000 行）
+if [ -f "$LOG_FILE" ] && [ "$(wc -c < "$LOG_FILE" 2>/dev/null || echo 0)" -gt 2097152 ]; then
+    tail -n 1000 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE"
+fi
 
 # 1. 检查宿主机外置磁盘挂载基准目录是否存在
 if [ ! -d "$HOST_BASE_DIR" ]; then
@@ -35,8 +44,15 @@ for TARGET in "${CONTAINER_TARGETS[@]}"; do
 
     # 如果宿主机路径存在，但容器内部路径无法访问，则判定为 VirtioFS 挂载断裂
     if [ -d "$HOST_PATH" ]; then
-        # 探测容器内目录
+        # 首次探测容器内目录
         if ! docker exec "$CONTAINER_NAME" test -d "$CONTAINER_PATH" >/dev/null 2>&1; then
+            # 短暂休眠 1.5 秒进行二次复验，排除休眠刚唤醒时的瞬态未就绪
+            sleep 1.5
+            if docker exec "$CONTAINER_NAME" test -d "$CONTAINER_PATH" >/dev/null 2>&1; then
+                log_msg "ℹ️ 容器 [${CONTAINER_NAME}] 二次探测成功恢复，属瞬态挂载抖动，已自动平滑吸收。"
+                continue
+            fi
+
             LOCK_FILE="/tmp/.storage_watchdog_${CONTAINER_NAME}.lock"
             NOW=$(date +%s)
             LAST_RESTART=0
@@ -46,7 +62,7 @@ for TARGET in "${CONTAINER_TARGETS[@]}"; do
 
             DIFF=$((NOW - LAST_RESTART))
             if [ "$DIFF" -ge "$DEBOUNCE_SECS" ]; then
-                log_msg "🚨 检测到容器 [${CONTAINER_NAME}] 外部存储挂载断裂 (VirtioFS失效)！宿主机在线，立即执行自愈重启..."
+                log_msg "🚨 检测到容器 [${CONTAINER_NAME}] 外部存储挂载断裂 (VirtioFS 失效)！宿主机在线，立即执行自愈重启..."
                 echo "$NOW" > "$LOCK_FILE"
                 
                 # 执行热重启恢复挂载通道

@@ -11,6 +11,7 @@ import shutil
 import os
 from pathlib import Path
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
@@ -2055,3 +2056,82 @@ async def get_watchdog_status(
         return {"running": False, "error": str(e)}
 
 
+class SaveProvidersRequest(BaseModel):
+    active_provider: str
+    providers: Dict[str, Any]
+
+class SaveVisionConfigRequest(BaseModel):
+    mode: str = "standalone"  # "same_as_main" | "standalone"
+    active_provider: str = "通用 兼容 Gateway"
+    providers: Dict[str, Any] = {}
+    provider: str = "通用 兼容 Gateway"
+    baseURL: str = ""
+    apiKey: str = ""
+    model: str = ""
+    timeoutSeconds: int = 300
+
+class TestConnectionRequest(BaseModel):
+    baseURL: str
+    apiKey: str = ""
+    model: str
+    is_vision: bool = False
+
+SaveProvidersRequest.model_rebuild()
+SaveVisionConfigRequest.model_rebuild()
+TestConnectionRequest.model_rebuild()
+
+@router.get("/llm/providers")
+async def get_llm_providers(admin: dict = Depends(require_admin)):
+    """获取所有大模型服务商配置及视觉模型配置"""
+    from core.llm_config import get_llm_providers_data, get_vision_llm_data
+    return {
+        "llm": get_llm_providers_data(),
+        "vision": get_vision_llm_data(),
+    }
+
+@router.post("/llm/providers")
+async def save_llm_providers(req: SaveProvidersRequest, admin: dict = Depends(require_admin)):
+    """保存主力大模型多服务商配置"""
+    from core.llm_config import save_llm_providers_data
+    save_llm_providers_data(req.active_provider, req.providers)
+    return {"success": True, "message": "主力大模型配置已成功保存并生效"}
+
+@router.post("/llm/vision-config")
+async def save_vision_config(req: SaveVisionConfigRequest, admin: dict = Depends(require_admin)):
+    """保存多模态视觉识别大模型独立配置"""
+    from core.llm_config import save_vision_llm_data
+    save_vision_llm_data(req.model_dump())
+    return {"success": True, "message": "视觉识别多模态大模型配置已成功保存并生效"}
+
+@router.post("/llm/test-connection")
+async def test_gateway_connection(req: TestConnectionRequest, admin: dict = Depends(require_admin)):
+    """测试大模型或视觉模型 Gateway 连通性"""
+    from core.llm_config import test_llm_connection
+    success, msg, latency = await test_llm_connection(
+        base_url=req.baseURL,
+        api_key=req.apiKey,
+        model=req.model,
+        is_vision=req.is_vision
+    )
+    return {
+        "success": success,
+        "message": msg,
+        "latency_ms": round(latency * 1000, 1),
+    }
+
+class FetchModelsRequest(BaseModel):
+    baseURL: str
+    apiKey: str = ""
+
+FetchModelsRequest.model_rebuild()
+
+@router.post("/llm/remote-models")
+async def get_remote_models(req: FetchModelsRequest, admin: dict = Depends(require_admin)):
+    """从远端 API 服务端点获取可用模型列表"""
+    from core.llm_config import fetch_remote_models
+    success, models, msg = await fetch_remote_models(base_url=req.baseURL, api_key=req.apiKey)
+    return {
+        "success": success,
+        "models": models,
+        "message": msg,
+    }

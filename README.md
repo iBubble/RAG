@@ -1,7 +1,7 @@
 # 智能体通用知识库 RAG (AgentRAG)
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-iBubble/RAG-181717?logo=github)](https://github.com/iBubble/RAG)
-![Version](https://img.shields.io/badge/Version-4.6.2-blue)
+![Version](https://img.shields.io/badge/Version-4.6.5-blue)
 ![Go](https://img.shields.io/badge/Go-1.18+-00ADD8?logo=go&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128+-009688?logo=fastapi&logoColor=white)
@@ -339,6 +339,24 @@ Eino 有向图每个 Agent 节点在进行状态流转时，通过 SSE 实时向
 
 ---
 
+## 🏛️ 十二、 智能助手法条溯源与双向互锁悬浮交互架构 (V4.6.5)
+
+为使执法办案与法务人员在与智能体对话时能够秒级回溯依据法条权威原文，系统构建了**全链路法条嗅探高亮、双向互锁卡片交互与弹窗溯源体系**：
+*   **AST 与正则双模法条智能嗅探**：在 `MarkdownBlock.tsx` 中自适应解析 marked AST 解析后的斜体标记及正文裸露法条（如 `《商标法》第六十条`），无缝转换为带 `⚖️` 图标的专属交互徽章并注入法条元数据。
+*   **双向双锁生命周期防抖模型 (Dual-Lock Architecture)**：
+    - 引入 `isOverCitationRef`（法条悬浮锁）与 `isOverCardRef`（卡片悬浮锁），由统一协调器 `scheduleCitationClose` 执行 200ms 延迟闭环裁决；
+    - 废除传统外凸式悬空透明桥梁，卡片容器外框与法条文字实现 **0 像素精确物理贴合**，容器内置 8px 透明 padding，鼠标从法条滑向提示框完全零断层，彻底根除“滑入立即消失、移开反倒不灭”的误杀缺陷。
+*   **全章节条文展开模态弹窗 (Citation Modal)**：悬浮卡片展示法条权威摘要，支持一键点击「详情 ↗」展开完整章节条文弹窗，支持全屏预览与一键全文复制。
+
+---
+
+## 🧠 十三、 推理大模型与视觉多模态多服务商管理系统 (V4.6.4)
+
+针对政务私有化内网与外部商业大模型（OpenAI / DeepSeek / Ollama）混合编排的复杂场景，系统重构了模型供给中心：
+*   **服务商动态嗅探与下拉选取**：支持自动请求 `/models` 或 `/api/tags` 动态嗅探当前服务商端点下全部可用模型列表，并支持一键切换手动自定义输入。
+*   **视觉识别大模型独立解耦**：在大模型卡片下方设立完全独立的视觉识别（Vision LLM）专属配置，支持“与主力同用”或“独立远程第三方端点与密钥”，支持图像证据深度分析。
+
+---
 
 ## 📁 项目目录结构
 

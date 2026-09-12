@@ -1,10 +1,19 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+
+export interface CitationInfo {
+  raw: string;
+  text: string;
+  law: string;
+  section: string;
+}
 
 interface MarkdownBlockProps {
   content: string;
   isStreaming?: boolean;
+  onCitationHover?: (info: CitationInfo | null, rect?: DOMRect) => void;
+  onCitationClick?: (info: CitationInfo) => void;
 }
 
 let _styleInjected = false;
@@ -43,6 +52,42 @@ const STYLE_CSS = `
 .md-render table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
 .md-render th,.md-render td { border: 1px solid #E5E7EB; padding: 5px 8px; text-align: left; }
 .md-render th { background: #F3F4F6; font-weight: 600; }
+
+/* 🏛️ 法条与公共文档斜体高亮交互样式 */
+.legal-citation {
+  display: inline-flex !important;
+  align-items: baseline !important;
+  font-style: italic !important;
+  font-weight: 600 !important;
+  color: #4f46e5 !important;
+  background-color: rgba(99, 102, 241, 0.08) !important;
+  border-bottom: 1.5px dashed #6366f1 !important;
+  padding: 0 5px !important;
+  margin: 0 2px !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  text-indent: 0 !important;
+  transition: all 0.2s ease !important;
+  user-select: text !important;
+}
+.legal-citation:hover {
+  background-color: rgba(99, 102, 241, 0.18) !important;
+  color: #312e81 !important;
+  border-bottom-style: solid !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 2px 5px rgba(99, 102, 241, 0.15) !important;
+}
+
+[data-mode="dark"] .legal-citation {
+  color: #a5b4fc !important;
+  background-color: rgba(99, 102, 241, 0.2) !important;
+  border-bottom-color: #818cf8 !important;
+}
+[data-mode="dark"] .legal-citation:hover {
+  color: #e0e7ff !important;
+  background-color: rgba(99, 102, 241, 0.35) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+}
 
 [data-mode="dark"] .md-render h1,
 [data-mode="dark"] .md-render h2,
@@ -97,6 +142,12 @@ function normalizeMarkdown(text: string): string {
     return '[' + p1.replace(/[\r\n]+/g, '').replace(/\s+/g, '') + ']';
   });
 
+  // 3. 规范化星号包围的法条引用：消除 * 与 《 之间，以及条文与结束 * 之间的意外空格
+  // 例如：* 《中华人民共和国商标法》第六十条* -> *《中华人民共和国商标法》第六十条*
+  cleaned = cleaned.replace(/\*\s*(《[^》\n\r]+》[^\n\*]*?)\s*\*/g, '*$1*');
+  // 4. 将连续两个相邻的斜体法条合并（如 *《法条》* *第X条* -> *《法条》第X条*）
+  cleaned = cleaned.replace(/\*(《[^》\n\r]+》)\*\s*\*(第[^\n\*]+?)\*/g, '*$1$2*');
+
   return cleaned
     .replace(/^[ 　]{1,4}(?=[^#\-\*\+\d\s])/gm, '')
     .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
@@ -108,18 +159,103 @@ function normalizeMarkdown(text: string): string {
     .replace(/(\d+)\.([^\s\d])/g, '$1. $2');
 }
 
-export default function MarkdownBlock({ content, isStreaming }: MarkdownBlockProps) {
+function enhanceCitationsInHtml(html: string): string {
+  if (!html) return html;
+
+  // 1. 优先处理已经被 marked 解析为 <em> 的法条：<em>《法规名》具体章节条目</em>，兼容吞并紧随其后被截断的条文
+  html = html.replace(/<em>\s*(《([^》]+)》([^<]*?))\s*<\/em>(\s*(?:第?[0-9一二三四五六七八九十百千万]+[条章节款项目录]+(?:第[（(]?[0-9一二三四五六七八九十]+[）)]?款)?(?:第[（(]?[0-9一二三四五六七八九十]+[）)]?项)?))?/g, (_match, _fullText, lawName, sectionPart, overflowSec) => {
+    const cleanLaw = (lawName || '').trim();
+    const cleanSec = ((sectionPart || '') + (overflowSec || '')).trim();
+    const citationText = `《${cleanLaw}》${cleanSec}`;
+    return `<span class="legal-citation" data-citation="${citationText}" data-law="${cleanLaw}" data-section="${cleanSec}" title="点击查看【${citationText}】条文全文">⚖️ <em>${citationText}</em></span>`;
+  });
+
+  // 2. 全局法条智能嗅探：处理未被 marked 解析为 <em> 的裸法条或带残余星号的法条
+  // 将 HTML 按标签和文本进行分片，仅对文本部分进行法条匹配替换，避免破坏已有的 HTML 标签与属性
+  const segments = html.split(/(<[^>]+>)/g);
+  // 法规条文匹配正则：匹配形如 * 《商标法》第六十条* 或 《食品安全法》第一百二十四条第一款 等
+  const LEGAL_REGEX = /(?:\*\s*)?《([^》\r\n]+)》(?:\s*(第[0-9一二三四五六七八九十百千万]+[条章节款项目录]+(?:之[一二三四五六七八九十]+)?(?:\s*第[0-9一二三四五六七八九十百千万]+[条章节款项目录]+)*(?:第[（(]?[0-9一二三四五六七八九十]+[）)]?款)?(?:第[（(]?[0-9一二三四五六七八九十]+[）)]?项)?))?(?:\s*\*+)?/g;
+
+  for (let i = 0; i < segments.length; i++) {
+    // 偶数索引是普通文本内容，奇数索引是 HTML 标签（如 <p>, <span> 等）
+    if (i % 2 === 0 && segments[i]) {
+      segments[i] = segments[i].replace(LEGAL_REGEX, (_m, lawName, secName) => {
+        const cleanLaw = (lawName || '').trim();
+        const cleanSec = (secName || '').trim();
+        const citationText = `《${cleanLaw}》${cleanSec}`;
+        return `<span class="legal-citation" data-citation="${citationText}" data-law="${cleanLaw}" data-section="${cleanSec}" title="点击查看【${citationText}】条文全文">⚖️ <em>${citationText}</em></span>`;
+      });
+    }
+  }
+
+  return segments.join('');
+}
+
+export default function MarkdownBlock({
+  content,
+  isStreaming,
+  onCitationHover,
+  onCitationClick,
+}: MarkdownBlockProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     injectStyle();
   }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleMouseOver = (e: MouseEvent) => {
+      const citationEl = (e.target as HTMLElement).closest('.legal-citation') as HTMLElement | null;
+      if (citationEl) {
+        const citation = citationEl.getAttribute('data-citation') || citationEl.innerText;
+        const law = citationEl.getAttribute('data-law') || '';
+        const section = citationEl.getAttribute('data-section') || '';
+        const rect = citationEl.getBoundingClientRect();
+        onCitationHover?.({ raw: citationEl.innerText, text: citation, law, section }, rect);
+      }
+    };
+
+    const handleMouseOut = (e: MouseEvent) => {
+      const citationEl = (e.target as HTMLElement).closest('.legal-citation') as HTMLElement | null;
+      if (!citationEl) return;
+      const related = e.relatedTarget as HTMLElement | null;
+      // 若鼠标是移向该法条元素内部的子元素（如 <em>、文本等），不触发关闭
+      if (related && citationEl.contains(related)) {
+        return;
+      }
+      // 只要鼠标移出了当前法条，通知准备关闭浮窗
+      onCitationHover?.(null);
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement).closest('.legal-citation') as HTMLElement;
+      if (!target) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const citation = target.getAttribute('data-citation') || target.innerText;
+      const law = target.getAttribute('data-law') || '';
+      const section = target.getAttribute('data-section') || '';
+      onCitationClick?.({ raw: target.innerText, text: citation, law, section });
+    };
+
+    el.addEventListener('mouseover', handleMouseOver);
+    el.addEventListener('mouseout', handleMouseOut);
+    el.addEventListener('click', handleClick);
+
+    return () => {
+      el.removeEventListener('mouseover', handleMouseOver);
+      el.removeEventListener('mouseout', handleMouseOut);
+      el.removeEventListener('click', handleClick);
+    };
+  }, [onCitationHover, onCitationClick]);
 
   if (!content) {
     return <div className="whitespace-pre-wrap" />;
   }
 
-  // 🌟 终极安全与性能优化：流式传输期间（生成中），直接以纯文本格式（保留换行）安全渲染。
-  //    这能绝对避免由于模型输出的一半 HTML 标签未闭合或代码格式破损传入 dangerouslySetInnerHTML 
-  //    从而导致浏览器内核为修正 DOM 树结构发生严重死循环或崩溃（STATUS_BREAKPOINT / OOM Error 5）。
   if (isStreaming) {
     return (
       <div className="whitespace-pre-wrap break-words leading-relaxed text-gray-700 dark:text-stone-300 font-sans">
@@ -132,13 +268,16 @@ export default function MarkdownBlock({ content, isStreaming }: MarkdownBlockPro
     marked.setOptions({ breaks: true, gfm: true });
     const normalized = normalizeMarkdown(content);
     const rawHtml = marked.parse(normalized) as string;
-    const cleanHtml = DOMPurify.sanitize(rawHtml);
+    const sanitizedHtml = DOMPurify.sanitize(rawHtml, {
+      ADD_ATTR: ['data-citation', 'data-law', 'data-section', 'target'],
+    });
+    const enhancedHtml = enhanceCitationsInHtml(sanitizedHtml);
 
     return (
       <>
         <div className="debug-raw-content" style={{ display: 'none' }}>{content}</div>
         <div className="debug-normalized-content" style={{ display: 'none' }}>{normalized}</div>
-        <div className="md-render" dangerouslySetInnerHTML={{ __html: cleanHtml }} />
+        <div ref={containerRef} className="md-render" dangerouslySetInnerHTML={{ __html: enhancedHtml }} />
       </>
     );
   } catch (err) {
@@ -148,6 +287,6 @@ export default function MarkdownBlock({ content, isStreaming }: MarkdownBlockPro
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/\n/g, '<br/>');
-    return <div className="md-render" dangerouslySetInnerHTML={{ __html: escaped }} />;
+    return <div ref={containerRef} className="md-render" dangerouslySetInnerHTML={{ __html: escaped }} />;
   }
 }

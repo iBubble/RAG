@@ -11,7 +11,8 @@ import LinvisSettings from './LinvisSettings';
 import RagasEvaluation from './RagasEvaluation';
 // AgentSettings 已移除 — 旧 Agent 配置已被 Go Eino 替代
 import AITemplateManagement from './AITemplateManagement';
-import { Users, FolderKanban, ScrollText, Settings, ArrowLeft, ShieldCheck, ActivitySquare, Activity, FileSpreadsheet, LineChart } from 'lucide-react';
+import LLMProviderSettings from './LLMProviderSettings';
+import { Users, FolderKanban, ScrollText, Settings, ArrowLeft, ShieldCheck, ActivitySquare, Activity, FileSpreadsheet, LineChart, Bot } from 'lucide-react';
 
 const navItems = [
   { path: '/admin', label: '用户管理', icon: Users, end: true },
@@ -22,7 +23,7 @@ const navItems = [
   { path: '/admin/service-status', label: '系统状态', icon: Activity },
   { path: '/admin/ragas-eval', label: '质量评测', icon: LineChart },
   { path: '/admin/linvis', label: '可视化看板', icon: FolderKanban },
-  // { path: '/admin/agents', label: '多Agent协同', icon: Sparkles }, // 已移除，Go Eino 替代
+  { path: '/admin/llm-provider', label: '引擎API配置', icon: Bot },
   { path: '/admin/settings', label: '系统设置', icon: Settings },
 ];
 
@@ -89,6 +90,7 @@ export default function AdminLayout() {
           <Route path="learning-progress" element={<LearningProgress />} />
           <Route path="service-status" element={<ServiceStatus />} />
           <Route path="settings" element={<SystemSettings />} />
+          <Route path="llm-provider" element={<LLMProviderSettings />} />
           <Route path="linvis" element={<LinvisSettings />} />
           <Route path="ragas-eval" element={<RagasEvaluation />} />
           {/* agents 路由已移除 — 旧 Agent 配置已被 Go Eino 替代 */}

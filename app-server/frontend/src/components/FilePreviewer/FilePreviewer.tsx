@@ -16,16 +16,21 @@ import { Eye, FileText, Download, X, Loader2 } from 'lucide-react';
 import DocxViewer from './DocxViewer';
 import ExcelViewer from './ExcelViewer';
 import CadViewer from './CadViewer';
+import ImageViewer from './ImageViewer';
+import PdfViewer from './PdfViewer';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
-// 浏览器原生可以在 iframe 中直接渲染的格式
-const IFRAME_PREVIEWABLE = ['.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.caj'];
+// 常见图片格式：使用专用 ImageViewer，默认自适应居中完整显示，支持滚轮缩放、拖拽平移与旋转
+const IMAGE_FORMATS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp'];
+
+// PDF 与 CAJ 格式：使用专用 PdfViewer，默认自适应视口宽度完整显示，支持放大缩小工具栏
+const PDF_FORMATS = ['.pdf', '.caj'];
 
 // 浏览器原生可直接播放的音视频格式
 const VIDEO_FORMATS = ['.mp4', '.webm', '.ogg', '.mov'];
 const AUDIO_FORMATS = ['.mp3', '.wav', '.m4a'];
-const BLOB_PREVIEWABLE = [...IFRAME_PREVIEWABLE, ...VIDEO_FORMATS, ...AUDIO_FORMATS];
+const BLOB_PREVIEWABLE = [...IMAGE_FORMATS, ...PDF_FORMATS, ...VIDEO_FORMATS, ...AUDIO_FORMATS];
 
 // 前端原生富文本渲染（下载 blob → 前端解析）
 const RICH_PREVIEW = ['.docx', '.xlsx', '.xls', '.dxf', '.dwg'];
@@ -178,7 +183,8 @@ export default function FilePreviewer() {
     );
   }
 
-  const canPreviewInIframe = !isWebSource && IFRAME_PREVIEWABLE.includes(ext);
+  const isImage = !isWebSource && IMAGE_FORMATS.includes(ext);
+  const isPdf = !isWebSource && PDF_FORMATS.includes(ext);
   const isVideo = !isWebSource && VIDEO_FORMATS.includes(ext);
   const isAudio = !isWebSource && AUDIO_FORMATS.includes(ext);
   const canRichPreview = !isWebSource && RICH_PREVIEW.includes(ext);
@@ -270,18 +276,25 @@ export default function FilePreviewer() {
           </div>
         )}
 
-        {/* ─── iframe 原生渲染（PDF / 图片）─── */}
-        {canPreviewInIframe && blobUrl && (
-          <iframe
-            src={blobUrl}
-            className="w-full h-full border-0"
-            title={`预览: ${activePreviewFile.filename}`}
-          />
+        {/* ─── 专业图片预览：自适应完整显示 + 放大/缩小/旋转/平移工具栏 ─── */}
+        {isImage && blobUrl && (
+          <ImageViewer url={blobUrl} filename={activePreviewFile.filename} />
         )}
-        {canPreviewInIframe && !blobUrl && !error && (
+        {isImage && !blobUrl && !error && (
           <div className="flex items-center justify-center h-full gap-3 text-gray-400">
             <Loader2 className="w-6 h-6 animate-spin" />
-            <span className="text-sm">正在加载文件...</span>
+            <span className="text-sm">正在加载图片...</span>
+          </div>
+        )}
+
+        {/* ─── 专业 PDF 预览：自适应视口宽度完整显示 + 放大/缩小/重置工具栏 ─── */}
+        {isPdf && blobUrl && (
+          <PdfViewer url={blobUrl} filename={activePreviewFile.filename} />
+        )}
+        {isPdf && !blobUrl && !error && (
+          <div className="flex items-center justify-center h-full gap-3 text-gray-400">
+            <Loader2 className="w-6 h-6 animate-spin" />
+            <span className="text-sm">正在加载 PDF 文件...</span>
           </div>
         )}
 
@@ -406,7 +419,7 @@ export default function FilePreviewer() {
         )}
 
         {/* ─── 完全不支持的格式 ─── */}
-        {!isWebSource && !canPreviewInIframe && !canRichPreview && !canExtractText && !isVideo && !isAudio && (
+        {!isWebSource && !isImage && !isPdf && !canRichPreview && !canExtractText && !isVideo && !isAudio && (
           <div className="flex flex-col items-center justify-center h-full text-gray-400">
             <FileText className="w-20 h-20 text-gray-200 mb-4" />
             <p className="text-base font-medium text-gray-500">

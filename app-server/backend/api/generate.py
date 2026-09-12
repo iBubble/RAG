@@ -22,7 +22,7 @@ from core.llm_engine import (
 )
 from core.think_filter import filter_think_stream
 from core.vector_store import query_by_file_ids
-from core.auth_deps import get_current_user
+from core.auth_deps import get_current_user, get_optional_user
 from core.project_access import require_project_access
 from core.config import settings
 from core.graph_rag import graph_engine
@@ -412,6 +412,7 @@ async def _sse_generator(
     data_analysis: dict = None,
     project_id: str | None = None,
     image: str | None = None,
+    citations: list = None,
 ):
     if project_id:
         from core.llm_engine import current_project_id
@@ -436,6 +437,8 @@ async def _sse_generator(
         yield f"data: {json.dumps({'slots': slots}, ensure_ascii=False)}\n\n"
     if sources:
         yield f"data: {json.dumps({'sources': sources}, ensure_ascii=False)}\n\n"
+    if citations:
+        yield f"data: {json.dumps({'citations': citations}, ensure_ascii=False)}\n\n"
     # WHY: DuckDB 分析结果通过独立 SSE 事件推送，前端 DataTable 组件直接渲染，
     #      不依赖 LLM 在回答中回显表格。
     if data_analysis:
@@ -475,6 +478,13 @@ async def _sse_generator(
 
                 if item == "<<<THINK_START>>>":
                     yield f"data: {json.dumps({'think_active': True}, ensure_ascii=False)}\n\n"
+                    continue
+                elif isinstance(item, str) and item.startswith("<<<THINK_PROGRESS:"):
+                    try:
+                        prog_chars = int(item.split(":")[1].rstrip(">"))
+                        yield f"data: {json.dumps({'think_progress': prog_chars}, ensure_ascii=False)}\n\n"
+                    except Exception:
+                        pass
                     continue
                 elif item == "<<<THINK_END>>>":
                     yield f"data: {json.dumps({'think_end': True}, ensure_ascii=False)}\n\n"
@@ -2103,6 +2113,7 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
     # - general 模式：不查询知识库，直接基于基础模型能力回答
     # - 其他模式：若有 file_ids 则执行检索
     source_files = []
+    citations_list: list = []
     context = "（知识库服务正常，当前对话模式未关联相关资料）"
     da_meta = None
     
@@ -2300,14 +2311,20 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
                             _fname = _d['metadata'].get('filename', '未知')
                             if any(k in _fname for k in ["保密", "医疗器械", "网络交易", "音像制品"]):
                                 continue
+                            _raw_content = _d.get('content', '').strip()
                             if _fname not in _seen and len(_pub_sources) < 2:
                                 _pub_sources.append(_fname)
                                 _seen.add(_fname)
                                 _pub_context_parts.append(
                                     f"---【参考法规】---\n"
                                     f"【来源】: {_fname}\n"
-                                    f"【内容】:\n{_d['content'][:500]}"
+                                    f"【内容】:\n{_raw_content[:500]}"
                                 )
+                            citations_list.append({
+                                "title": _fname.rsplit(".", 1)[0],
+                                "doc": _fname,
+                                "content": _raw_content,
+                            })
                         if _pub_context_parts:
                             _pub_ctx = "\n\n".join(_pub_context_parts)
                             if retrieval.context:
@@ -2403,6 +2420,25 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
     )
     sys_prompt += _FORMAT_RULES
 
+    # ── 公共文档及法条引用斜体标注规范（核心诉求）──
+    _CITATION_RULES = (
+        "\n\n⚖️ **公共文档与法条引用规范（强制严格执行）**：\n"
+        "当你在回答中引用任何公共文档、法律法规、国家标准、行业规范及其具体章、节、条、款、项时，"
+        "**必须统一使用 Markdown 斜体语法 `*...*` 进行精准标注**！\n"
+        "标准格式示例：`*《中华人民共和国食品安全法》第一百二十四条第一款*`、`*《中华人民共和国行政处罚法》第二十八条*`。\n"
+        "要求：必须完整包含《》书名号以及明确的条款序号，严禁漏加斜体星号 `*`，系统前端将自动据此提供鼠标悬浮释义与点击条文弹窗。"
+    )
+    sys_prompt += _CITATION_RULES
+
+    # ── 紧凑研判指引：避免长达数分钟的无休止发散思考 ──
+    _REASONING_RULES = (
+        "\n\n⚡ **时效与研判约束**：\n"
+        "请在必要时快速梳理核心事实与适用法条，"
+        "**重点在回答正文中详尽输出案件定性、处置流程步骤、法条依据与办案指引**，"
+        "避免冗长分散的逻辑内耗，快速给出一目了然的专业解答。"
+    )
+    sys_prompt += _REASONING_RULES
+
     # 简单问题修正：双重保险——Prompt 文字约束 + qwen3 /no_think 模型级指令
     if is_simple:
         sys_prompt += "\n\n【响应约束】当前为简单问候或基础信息查询。请在 1 句话内快速回答，严禁输出 <think> 思考过程。"
@@ -2414,36 +2450,20 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
     prompt += f"## 用户问题\n{req.message}"
 
     # WHY: 所有 chat 模式都必须追加 /no_think 指令。
-    #      根因：qwen3.6 默认先生成长篇 <think> 推理链，然后才输出正式回答。
-    #      当 RAG context 包含大量结构化数据时，模型在 <think> 阶段就耗尽了
-    #      num_predict 的全部 token 预算 → 正式回答部分为 0 个 token → 用户看到空白回复。
-    #      /no_think 在 _stream_ollama_inner 中触发 raw bypass，注入 <think>\n</think>\n
-    #      前缀强制跳过推演。deep/expert 模式的 think_mode="format" 不受影响，
-    #      因为 think 前缀已被提前关闭，模型不会再生成 <think> 标签。
     prompt += "\n\n/no_think"
     
-    # 4. 决定是否在 SSE 侧物理过滤思考链
-    # - fast 模式或 simple 问题：强制开启 filter (物理清除 <think> 标签)
-    # - deep/expert 模式：保留 raw 思考链给前端渲染
-    # 4. 决定思考模式
-    # WHY: 意图策略中的 think_mode 可覆盖默认值。
-    #      data_lookup 用 filter 跳过推演加速；summary/risk 用 raw 保留深度推理。
-    #      但 chat_mode 和 is_simple 的显式设置优先级更高。
-    think_mode = strategy.get("think_mode", "raw")
-    if req.chat_mode in ("stateless", "fast") or is_simple:
-        think_mode = "filter"
-    elif req.chat_mode == "general":
-        think_mode = "filter"
+    # 4. 彻底物理过滤思考链：智能助手对话严格去除 thinking 内容
+    think_mode = "filter"
 
     # 5. 动态调整 token 预算
     # WHY: 简单问题用极小预算截断推演；
-    #      其他问题用意图策略中的 num_ctx（data_lookup 用 16K 更快）。
+    #      复杂案情问答提供充分的 8192 预算与 16K 上下文，防止长推理耗尽生成额度。
     if is_simple:
         chat_num_predict = 256
         chat_num_ctx = 4096
     else:
-        chat_num_predict = 4096
-        chat_num_ctx = 8192
+        chat_num_predict = 8192
+        chat_num_ctx = 16384
 
     # ── 包装 SSE 生成器，流结束后写入 L2 缓存 ──
     async def _sse_with_cache():
@@ -2473,6 +2493,7 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
                 data_analysis=da_meta if (use_rag or req.force_data_analysis) else None,
                 project_id=req.project_id,
                 image=req.image,
+                citations=citations_list,
             ):
                 yield event
                 # ── 续期 chat 与 auditor 活跃状态（每 10 秒续期一次，防止生成长文本时超时） ──
@@ -2499,7 +2520,8 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
         # 流结束后写入 L2 缓存
         if _answer_parts:
             _full_answer = "".join(_answer_parts)
-            if _full_answer.strip():
+            # 严禁将大模型未生成有效回答或系统错误等临时报错存入长期回答缓存
+            if _full_answer.strip() and not _full_answer.strip().startswith(("⚠️", "❌")) and "未生成有效回答" not in _full_answer:
                 from core.chat_cache import set_answer_cache
                 set_answer_cache(
                     req.project_id, req.message, req.chat_mode,
@@ -2516,25 +2538,50 @@ async def chat(req: ChatRequest, user: dict = Depends(get_current_user)):
 @router.get("/llm/status")
 async def llm_status():
     """查询 Ollama 服务状态与模型列表，附带全系统巡检健康度状态。"""
-    from core.watchdog import SYSTEM_READ_ONLY
+    import core.watchdog as wd
+    # 即时重试自愈：若当前处于只读但探测已可访问，立即退出保护模式
+    if wd.SYSTEM_READ_ONLY and wd.test_storage_accessible():
+        wd.SYSTEM_READ_ONLY = False
+
     from core.vector_store import _get_client
     from core.graph_rag import graph_engine
     from core.redis_client import get_redis
 
+    from core.llm_config import get_active_llm_config, get_active_vision_config
+    active_llm = get_active_llm_config()
+    active_vision = get_active_vision_config()
+
     status_data = await get_ollama_status()
-    is_raid_active = not SYSTEM_READ_ONLY
+    is_raid_active = not wd.SYSTEM_READ_ONLY
     status_data["raid_status"] = "online" if is_raid_active else "offline"
+    status_data["active_llm"] = active_llm
+    status_data["active_vision"] = active_vision
 
     # 全链路巡检逻辑 (方案 2)
     health_status = "green"
     health_details = ["所有服务运行正常"]
     errors = []
 
-    # 1. 检查 Ollama 连通性
-    ollama_ok = status_data.get("status") == "online"
-    if not ollama_ok:
+    # 1. 检查当前生效的 AI 推理引擎连通性
+    is_ollama = "11434" in active_llm.get("baseURL", "") or "/api/" in active_llm.get("baseURL", "")
+    if is_ollama:
+        ai_engine_ok = status_data.get("status") == "online"
+    else:
+        # 对外部 Gateway 进行快速 2s 探针探测
+        try:
+            from core.llm_config import test_llm_connection
+            ok, _, _ = await test_llm_connection(
+                base_url=active_llm.get("baseURL", ""),
+                api_key=active_llm.get("apiKey", ""),
+                model=active_llm.get("model", ""),
+            )
+            ai_engine_ok = ok
+        except Exception:
+            ai_engine_ok = False
+
+    if not ai_engine_ok:
         health_status = "red"
-        errors.append("AI推理引擎(Ollama)离线")
+        errors.append(f"AI推理引擎({active_llm.get('provider')})无法连通")
 
     # 2. 检查存储阵列
     if not is_raid_active:
@@ -2564,7 +2611,7 @@ async def llm_status():
         health_status = "red"
         errors.append("图数据库(Neo4j)连接失败")
 
-    # 5. 检查 Celery 队列积压 (仅在没有 red 严重故障时判定 yellow)
+    # 5. 检查 Celery 队列积压
     slow_q_len = 0
     fast_q_len = 0
     try:
@@ -2587,14 +2634,15 @@ async def llm_status():
         "metrics": {
             "slow_queue": slow_q_len,
             "fast_queue": fast_q_len,
-            "ollama": "online" if ollama_ok else "offline",
+            "ollama": "online" if ai_engine_ok else "offline",
             "qdrant": "online" if qdrant_ok else "offline",
             "neo4j": "online" if neo4j_ok else "offline",
-            "raid": "online" if is_raid_active else "offline"
+            "raid": "online" if is_raid_active else "offline",
+            "active_llm": active_llm,
+            "active_vision": active_vision,
         }
     }
 
-    logger.info(f"OLLAMA STATUS WITH HEALTH: {status_data}")
     return status_data
 
 
@@ -2613,6 +2661,102 @@ async def switch_model(req: SwitchModelRequest, user: dict = Depends(get_current
     if result["status"] == "error":
         raise HTTPException(status_code=500, detail=result.get("message", "切换失败"))
     return result
+
+
+@router.get("/legal/lookup")
+async def lookup_legal_provision(
+    law: str = "",
+    section: str = "",
+    user: dict = Depends(get_optional_user),
+):
+    """轻量查询法律法规及具体章节条目的原文内容（用于前端法条弹窗与悬浮真实摘要）。"""
+    import re, glob, os
+    keyword = f"{law} {section}".strip()
+    if not keyword:
+        return {"found": False, "title": law, "section": section, "content": "", "excerpt": ""}
+
+    clean_law = re.sub(r"[《》]", "", law).strip()
+    clean_sec = section.strip()
+
+    # 1. 优先在标准法规库（560篇国家与市监标准法规规章）中精准匹配
+    data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "legal_docs")
+    if os.path.exists(data_dir):
+        try:
+            files = glob.glob(f"{data_dir}/**/*.md", recursive=True)
+            matched_file = None
+            for f in files:
+                fname = os.path.basename(f).replace(".md", "")
+                if clean_law in fname or fname in clean_law:
+                    matched_file = f
+                    break
+            if not matched_file:
+                for f in files:
+                    fname = os.path.basename(f).replace(".md", "")
+                    key_chars = "".join([c for c in clean_law if c not in "中华人民共和国"])
+                    if key_chars and key_chars in fname:
+                        matched_file = f
+                        break
+            if matched_file:
+                with open(matched_file, "r", encoding="utf-8") as fp:
+                    full_text = fp.read()
+                if clean_sec:
+                    pattern = rf"({re.escape(clean_sec)}\s*[\u3000\s\S]*?)(?=\n\s*第[0-9一二三四五六七八九十百千万]+条|\Z)"
+                    m = re.search(pattern, full_text)
+                    if m:
+                        matched_text = m.group(1).strip()
+                        lines = [line.strip() for line in matched_text.splitlines() if line.strip()]
+                        excerpt = " ".join(lines)[:140] + ("..." if len(" ".join(lines)) > 140 else "")
+                        return {"found": True, "title": law, "section": section, "content": matched_text, "excerpt": excerpt}
+                else:
+                    lines = [line.strip() for line in full_text.splitlines() if line.strip()]
+                    excerpt = " ".join(lines)[:140] + ("..." if len(" ".join(lines)) > 140 else "")
+                    return {"found": True, "title": law, "section": section, "content": full_text[:1000], "excerpt": excerpt}
+        except Exception as err:
+            logger.warning(f"Standard legal docs lookup failed: {err}")
+
+    # 2. 其次在公共法规切片和文档全文索引 doc_chunks_fts 中查找
+    from core.database import get_db
+    try:
+        with get_db() as conn:
+            rows = []
+            if clean_sec and clean_law:
+                rows = conn.execute(
+                    "SELECT document, filename FROM doc_chunks_fts WHERE (filename LIKE ? OR document LIKE ?) AND document LIKE ? LIMIT 5",
+                    (f"%{clean_law}%", f"%{clean_law}%", f"%{clean_sec}%"),
+                ).fetchall()
+            if not rows and clean_sec:
+                rows = conn.execute(
+                    "SELECT document, filename FROM doc_chunks_fts WHERE document LIKE ? LIMIT 5",
+                    (f"%{clean_sec}%",),
+                ).fetchall()
+            if not rows and clean_law:
+                rows = conn.execute(
+                    "SELECT document, filename FROM doc_chunks_fts WHERE filename LIKE ? OR document LIKE ? LIMIT 5",
+                    (f"%{clean_law}%", f"%{clean_law}%"),
+                ).fetchall()
+
+            for r in rows:
+                doc = r["document"] if isinstance(r, dict) else r[0]
+                if clean_sec in doc and (clean_law in doc or not clean_law):
+                    lines = [line.strip() for line in doc.splitlines() if line.strip()]
+                    excerpt = " ".join(lines)[:140] + ("..." if len(" ".join(lines)) > 140 else "")
+                    return {"found": True, "title": law, "section": section, "content": doc, "excerpt": excerpt}
+            if rows:
+                first_doc = rows[0]["document"] if isinstance(rows[0], dict) else rows[0][0]
+                lines = [line.strip() for line in first_doc.splitlines() if line.strip()]
+                excerpt = " ".join(lines)[:140] + ("..." if len(" ".join(lines)) > 140 else "")
+                return {"found": True, "title": law, "section": section, "content": first_doc, "excerpt": excerpt}
+    except Exception as e:
+        logger.warning(f"lookup_legal_provision failed: {e}")
+
+    default_summary = f"《{clean_law}》{clean_sec}：涉及相关行为定性、责任追究与行政处理规范。点击详情可查看完整条文。"
+    return {
+        "found": False,
+        "title": law or "法律条文",
+        "section": section,
+        "content": f"已在知识库中完成检索。若需核验【{keyword}】的权威效力，建议查阅司法行政公开的完整版条文。",
+        "excerpt": default_summary,
+    }
 
 
 # ────────────────────────────────────────────────────────
