@@ -41,7 +41,7 @@ def _get_status_file(project_id: str, file_id: str) -> Path:
     return status_dir / f"{file_id}.json"
 
 
-def update_file_status(project_id: str, file_id: str, status: str, chunks: int | None = None, error_message: str = "", filename: str = ""):
+def update_file_status(project_id: str, file_id: str, status: str, chunks: int | None = None, error_message: str = "", filename: str = "", **extra):
     """
     将文件的解析状态更新到本地 json 文件中。
     status 等级: 
@@ -57,6 +57,7 @@ def update_file_status(project_id: str, file_id: str, status: str, chunks: int |
         
         existing_chunks = 0
         existing_filename = ""
+        existing_data = {}
         if status_file.exists():
             try:
                 with open(status_file, "r", encoding="utf-8") as sf:
@@ -70,12 +71,14 @@ def update_file_status(project_id: str, file_id: str, status: str, chunks: int |
         final_filename = filename or existing_filename
         
         data = {
+            **existing_data,
             "file_id": file_id,
             "filename": final_filename,
             "status": status,
             "chunks": final_chunks,
             "error_message": error_message,
-            "updated_at": datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None).isoformat()
+            "updated_at": datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None).isoformat(),
+            **extra,
         }
         
         # 覆写最新的状态

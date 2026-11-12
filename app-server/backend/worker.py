@@ -179,6 +179,10 @@ def process_document(self, file_path: str, file_id: str, filename: str, project_
 
         # ── 队列与分流控制 (D2 升级) ──
         suffix = Path(file_path).suffix.lower()
+        is_img_or_video = suffix in (
+            ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tiff", ".tif",
+            ".mp4", ".mov", ".webm", ".mkv"
+        )
         current_queue = self.request.delivery_info.get('routing_key', '') if self.request.delivery_info else ''
         is_slow_queue = (current_queue == 'slow_queue')
 
@@ -201,6 +205,21 @@ def process_document(self, file_path: str, file_id: str, filename: str, project_
             logger.info(f"历史数据清理完成: 向量={v_count}")
 
         text = extract_text(file_path, is_slow_queue=is_slow_queue)
+        mu_record = None
+        try:
+            from core.database import get_mobile_upload
+            mu_record = get_mobile_upload(file_id, project_id)
+            if mu_record:
+                orig_name = mu_record.get("original_filename") or filename
+                remark = (mu_record.get("remark") or "").strip()
+                if orig_name:
+                    filename = orig_name
+                if remark:
+                    prefix_note = f"[上传资料原始名称：{filename}]\n[现场采集备注说明：{remark}]\n\n"
+                    text = prefix_note + (text or "")
+        except Exception as meta_err:
+            logger.debug(f"读取移动端上传元数据跳过: {meta_err}")
+
         if text and text.strip():
             # ── 自动队列路由：预估 chunks 数量，超阈值时重路由到 slow_queue ──
             estimated = estimate_chunk_count(text, filename)
@@ -262,7 +281,23 @@ def process_document(self, file_path: str, file_id: str, filename: str, project_
                 queue='slow_queue'
             )
 
-
+            # ── 每次上传图片、视频自动触发 RAG 模式规范合规性全项检测 ──
+            if is_img_or_video:
+                try:
+                    from core.rag_compliance import run_rag_compliance_check
+                    media_cat = "video" if suffix in (".mp4", ".mov", ".webm", ".mkv") else "image"
+                    mu_rem = mu_record.get("remark", "") if mu_record else ""
+                    run_rag_compliance_check(
+                        file_path=file_path,
+                        file_id=file_id,
+                        filename=filename,
+                        project_id=project_id,
+                        media_category=media_cat,
+                        extracted_text=text or "",
+                        remark=mu_rem,
+                    )
+                except Exception as rce:
+                    logger.warning(f"RAG 规范合规检测异常 ({filename}): {rce}")
 
             return {"status": "graph_queued", "chunks": chunks}
         elif text is None:
@@ -271,6 +306,22 @@ def process_document(self, file_path: str, file_id: str, filename: str, project_
             return {"status": "unsupported_format", "chunks": 0}
         else:
             logger.warning(f"跳过处理，提取文本为空: {filename}")
+            if is_img_or_video:
+                try:
+                    from core.rag_compliance import run_rag_compliance_check
+                    media_cat = "video" if suffix in (".mp4", ".mov", ".webm", ".mkv") else "image"
+                    mu_rem = mu_record.get("remark", "") if mu_record else ""
+                    run_rag_compliance_check(
+                        file_path=file_path,
+                        file_id=file_id,
+                        filename=filename,
+                        project_id=project_id,
+                        media_category=media_cat,
+                        extracted_text=text or "",
+                        remark=mu_rem,
+                    )
+                except Exception as rce:
+                    logger.warning(f"RAG 规范合规检测异常 ({filename}): {rce}")
             update_file_status(project_id, file_id, "empty_text", chunks=0)
             return {"status": "empty_text", "chunks": 0}
 

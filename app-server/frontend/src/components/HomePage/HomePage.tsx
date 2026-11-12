@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Settings, X, Loader2, LogIn, Trash2, Globe, Lock, Library, Search, AlertTriangle, LayoutGrid, List } from 'lucide-react';
+import { Plus, Settings, X, Loader2, LogIn, Trash2, Globe, Lock, Library, Search, AlertTriangle, LayoutGrid, List, Smartphone } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useProjectStore } from '../../store/projectStore';
 import { SystemStatusIndicator, ThemeSwitcher } from '../../App';
@@ -415,6 +415,15 @@ export default function HomePage() {
             <ThemeSwitcher />
             {/* 智能巡检健康指示灯 */}
             <SystemStatusIndicator />
+            {/* 手机端采集上传入口 */}
+            <button
+              onClick={() => navigate('/mobile')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/20 text-blue-700 hover:from-blue-500/20 hover:to-cyan-500/20 transition-all font-semibold text-xs shadow-sm cursor-pointer"
+              title="打开手机端现场资料上传页"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>手机端上传</span>
+            </button>
             {/* 可视化看板（原齿轮设置按钮） */}
             <button 
               onClick={() => navigate('/linvis')} 

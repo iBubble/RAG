@@ -5,6 +5,9 @@
 vector_db/
 data/
 knowledge_base/
+backend/models/
+backend/data/
+storage/
 
 # 开发调试文件
 debug/

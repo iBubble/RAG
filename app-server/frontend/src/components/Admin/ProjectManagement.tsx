@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
-import { Trash2, Loader2, Globe, Lock } from 'lucide-react';
+import { Trash2, Loader2, Globe, Lock, Eye } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
@@ -15,6 +16,7 @@ interface ProjectItem {
 }
 
 export default function ProjectManagement() {
+  const navigate = useNavigate();
   const { getAuthHeaders } = useAuthStore();
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,9 +99,21 @@ export default function ProjectManagement() {
                   </td>
                   <td className="px-4 py-3 text-gray-400 text-xs">{new Date(p.createdAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3 text-right">
-                    <button onClick={(e) => { e.stopPropagation(); deleteProject(p.id, p.name); }} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg" title="删除项目">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="inline-flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/admin/materials?project_id=${encodeURIComponent(p.id)}`);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg cursor-pointer"
+                        title="按项目查看上传的图片、视频等资料及分析详情"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> 查看资料
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); deleteProject(p.id, p.name); }} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg" title="删除项目">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

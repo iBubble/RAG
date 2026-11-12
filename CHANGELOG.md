@@ -2,6 +2,41 @@
  
 All notable changes to this project will be documented in this file.
 
+## [4.7.0] - 2026-11-12
+
+### Added
+- **移动端食品生产企业日常监督检查完整工作台 (`/m2` & `/mobile2`)**：
+  - 基于国家市场监管总局《食品生产企业日常监督检查要点表》（`docs/食品生产企业检查要点表.docx`）全量建模，覆盖 14 个大类、79 个检查要点（含 29 项重点项目 `*` 与 50 项一般项目）；
+  - 支持手机原生相机直接取证（`capture="environment"`）与相册上传，多图实时预览与安全流式回显；
+  - 内置预置 AI 智能评价引擎（单项智能预置与全表批量一键填充），提供合规等级（符合/基本符合/不符合）、现场问题描述与整改处置建议；
+  - 动态合规看板与《表1-1 食品生产企业日常监督检查结果记录表》报告全屏预览，支持一键复制纯文本汇报稿。
+- **手机端多模态资料采集与按项目资料库管理 API (`/api/mobile`)**：
+  - `POST /api/mobile/upload`：专为移动端巡检设计的文件上传接口，支持按项目物理归档图片/视频/音频/文档，自动打标 `upload_source="mobile"`、检验人名与现场备注，自动投递后台异步多模态解析（OCR 识别、Whisper 语音转写、RAG 向量切片与图谱分析）；
+  - `GET /api/mobile/projects/{project_id}/materials`：后台管理员可按项目集中查阅现场所有多模态资料、处理状态、向量与图谱抽取详情；
+  - `GET /api/mobile/demo-inspect-media/{filename}`：安全流式读取 Demo 现场照片；
+  - `GET /api/mobile/download-project-archive`：专属工程归档下载服务，支持 `kind=code`（42MB 纯源码）与 `kind=full`（4.5GB 全量法规库包）。
+- **管理后台“现场多模态资料库”管理面板 (`MaterialManagement.tsx`)**：
+  - 管理后台新增现场资料库专属标签页，支持按项目、类型与状态筛选，提供现场快照画廊与 RAG 分析预览。
+
+## [4.6.6] - 2026-09-14
+
+### Fixed
+- **核心推理大模型上下文（Context Length）预算自适应防爆与智能滑动裁剪**：
+  - **根除 400 Bad Request 导致的服务不可用**：针对物理私有化部署的大模型（如 `qwen38-27b-q4`，物理上下文 `n_ctx = 2048`），彻底重构 `core/llm_engine.py`。废除旧代码写死 `max_tokens: 8192` 的缺陷，引入 `truncate_prompt_for_ctx` 算法，在用户多轮追问累积历史与案卷参考资料时，智能保留系统角色设定与最新提问，自适应动态精简参考资料切片；
+  - **动态输出配额自适应收敛**：针对 2048 上下文模型将 `safe_max_tokens` 动态约束在安全区间（$\le 768$ tokens），保证总输入与输出 Token 严格受控于 2048 以内，彻底消除第二轮追问时抛出的“❌ AI 服务暂时不可用”假死现象。
+- **跨平台 Linux 容器 MPS 显存同步兼容性修复**：
+  - 在 `core/vector_store.py` 中重构设备同步代码，增加 `torch.backends.mps.is_available()` 运行时探测前置核验，彻底根除在 Linux x86 容器环境中误调用 macOS 专用 `torch.mps.synchronize()` 抛出的 `Cannot execute deviceSynchronize() without MPS backend` 导致向量检索失败并降级的核心缺陷。
+- **网络与代理隔离白名单补齐**：
+  - 在 `docker-compose.yml` 的 `NO_PROXY` 环境变量中补齐 `40dd.shop,192.168.2.3`，防止模型推理与内部服务间通信被 SOCKS/HTTP 代理拦截。
+
+### Changed
+- **多系统共享 GPU 槽位（Slots）对等平衡隔离**：
+  - 在 `ecosystem.config.js` 中将 PM2 守护的 `GPU_MAX_SLOTS` 由 4 调整为 2，与同服务器部署的法制系统（LAW，2 槽位）对等平分底层的 4 个物理 slots，彻底根除了跨容器 Redis 信号量互不感知导致的槽位超占与长达 30 秒的死锁排队问题。
+
+### Added
+- **双系统极限并发自动化压测体系**：
+  - 沉淀 `scratch/test_concurrent_rag.py` 自动化多线程压测工具，在同一毫秒向 LAW（项目 `2c81146fbda1`）与 SC（项目 `f2834786bb54`）发起双向问答，实测 SC 首字时延 1.79s、LAW 首字时延 2.81s，双端同时流式吐字超过 1100~1300 字，100% 成功无报错。
+
 ## [4.6.5] - 2026-09-12
 
 ### Fixed
@@ -211,8 +246,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **优化智能填表与已保存文档的切换联动交互**：
-  - 点击右侧历史归档列表中由智能填表（AI表格）保存的无大纲文档（通常以 `二级子表名称_时间` 命名）时，不再弹出一只读预览模态框（[SavedDocumentsList.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/SavedResults/SavedDocumentsList.tsx)）。
-  - 通过 `CustomEvent` 事件派发机制通知 [AITablePanel.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/AITable/AITablePanel.tsx) 接管，并自动将系统当前活动的 Tab 切换至 **「AI表格」**。
+  - 点击右侧历史归档列表中由智能填表（AI表格）保存的无大纲文档（通常以 `二级子表名称_时间` 命名）时，不再弹出一只读预览模态框（[SavedDocumentsList.tsx](file:///root/www/sc/app-server/frontend/src/components/SavedResults/SavedDocumentsList.tsx)）。
+  - 通过 `CustomEvent` 事件派发机制通知 [AITablePanel.tsx](file:///root/www/sc/app-server/frontend/src/components/AITable/AITablePanel.tsx) 接管，并自动将系统当前活动的 Tab 切换至 **「AI表格」**。
   - 接管后，系统基于解析后的标题前缀反查并联动修改一级类别和二级子表的下拉选择状态，并将保存的历史 HTML 内容无缝还原加载至 Tiptap 编辑器画板中。
   - 为防止因模板数据（categories）尚未完成异步加载所导致的反查失效，特别在组件内引入了结合 `useRef` 与 `useState` 的待处理缓存器（`pendingLoadDoc`），实现异步时序与竞态下的完美联动。
 
@@ -224,27 +259,27 @@ All notable changes to this project will be documented in this file.
   - 重塑多阶段工作流，将特化法律文书（起诉状、答辩状、合同审查、意见书、收案评估）转化为通用的文书起草、文档审阅、可行性方案、项目评估等企业顾问工作流。
   - 重命名并泛化系统默认 Agent 角色名（如“小貔 (Pixiu)” -> “智能体 (Agent)”，“法律服务专家” -> “文档审查专家”）。
 - **LOGO 与品牌形象重新设计**：
-  - 生成并物理覆盖了科技美学的新版 Logo 及 Favicon 文件（包含 [logo.png](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/public/logo.png)、[favicon.png](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/public/favicon.png)）。
+  - 生成并物理覆盖了科技美学的新版 Logo 及 Favicon 文件（包含 [logo.png](file:///root/www/sc/app-server/frontend/public/logo.png)、[favicon.png](file:///root/www/sc/app-server/frontend/public/favicon.png)）。
 
 ### Fixed
 - **彻底修复智能填表时关键信息遗漏（如电话、事实依据留空）及生成废话解释文字的 Bug**：
-  - 全文无损提取：将智能填表接口（[generate.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/api/generate.py)）中案件背景材料的处理从原本极易因语义距离远而漏检的 RAG 向量检索，改为直接从 Qdrant 倒查用户选定文档的全部 chunks 并按 `chunk_index` 升序拼装出原汁原味的无损全文。100% 确保投诉人姓名、电话及关键事实案情等敏感数据完整输入大模型。
+  - 全文无损提取：将智能填表接口（[generate.py](file:///root/www/sc/app-server/backend/api/generate.py)）中案件背景材料的处理从原本极易因语义距离远而漏检的 RAG 向量检索，改为直接从 Qdrant 倒查用户选定文档的全部 chunks 并按 `chunk_index` 升序拼装出原汁原味的无损全文。100% 确保投诉人姓名、电话及关键事实案情等敏感数据完整输入大模型。
   - Prompt 强规约与后置清洗：在填表 Prompt 中新增硬性限制，严禁大模型输出分析、思考、说明和任何关于“为什么留空”的自然语言废话。同时，在后端对 LLM 输出文本进行重构清洗，提取第一个 HTML 标签（如 `<h1>`、`<table>`）到最后一个闭合标签之间的内容，强力剔除首尾的多余杂质解释字句，保障前端表单渲染洁净无暇。
 - **解决大批量文件上传时连接拥塞与上传极慢的 Bug**：
-  - 并发上传池：重构 [FileUploader.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/FileUploader/FileUploader.tsx) 中的文件上传为限制最多 3 个并发上传的控制池（`CONCURRENT_UPLOADS = 3`），极大加快了 284 个等大批量小文件的上传效率。
+  - 并发上传池：重构 [FileUploader.tsx](file:///root/www/sc/app-server/frontend/src/components/FileUploader/FileUploader.tsx) 中的文件上传为限制最多 3 个并发上传的控制池（`CONCURRENT_UPLOADS = 3`），极大加快了 284 个等大批量小文件的上传效率。
   - 轮询并发限制：在同一个文件内重构并移除了针对每个文件独立启动的轮询定时器，改用全局组件级单一的 `setInterval` 并发限制轮询（最大并发数限制为 3），彻底释放浏览器的 TCP 并发连接管道，完美消除了大批量上传因连接被打满引发超时失败的问题。
 - **解决文件上传完成后列表变空且刷新加载缓慢的体验 Bug**：
-  - 前端实时刷新：在 [TreeView.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/TreeView/TreeView.tsx) 中将 `refreshCounter` 加入 `useEffect` 依赖，当上传弹窗关闭时立刻触发本地文件列表重新获取，实现无感实时刷新，消除了列表滞后变空的现象。
-  - 后端扫描性能水合缓存：在 [files.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/api/files.py) 的 `/list` 接口中，针对未落地 `.job_states` 文件状态的历史文件，在第一次从 Qdrant 反查完 `get_chunk_count` 状态后立即回写保存到本地 `.job_states` 状态文件。下次刷新直接走本地 IO 读取，免除了上百次 Qdrant 串行 RPC 查询，将项目列表的刷新速度从超时 15 秒缩短至 10 毫秒以内。
+  - 前端实时刷新：在 [TreeView.tsx](file:///root/www/sc/app-server/frontend/src/components/TreeView/TreeView.tsx) 中将 `refreshCounter` 加入 `useEffect` 依赖，当上传弹窗关闭时立刻触发本地文件列表重新获取，实现无感实时刷新，消除了列表滞后变空的现象。
+  - 后端扫描性能水合缓存：在 [files.py](file:///root/www/sc/app-server/backend/api/files.py) 的 `/list` 接口中，针对未落地 `.job_states` 文件状态的历史文件，在第一次从 Qdrant 反查完 `get_chunk_count` 状态后立即回写保存到本地 `.job_states` 状态文件。下次刷新直接走本地 IO 读取，免除了上百次 Qdrant 串行 RPC 查询，将项目列表的刷新速度从超时 15 秒缩短至 10 毫秒以内。
 - **解决拖拽文件夹上传时丢失目录树形结构的缺陷**：
-  - 拖拽相对路径提取：在 [FileUploader.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/FileUploader/FileUploader.tsx) 的 `handleDrop` 中利用 HTML5 FileSystemEntry API 对拖入的实体进行递归扫描（`webkitGetAsEntry()`），并流式读取所有子文件，手动计算其正确的相对路径 `customRelativeDir` 进行注入。
+  - 拖拽相对路径提取：在 [FileUploader.tsx](file:///root/www/sc/app-server/frontend/src/components/FileUploader/FileUploader.tsx) 的 `handleDrop` 中利用 HTML5 FileSystemEntry API 对拖入的实体进行递归扫描（`webkitGetAsEntry()`），并流式读取所有子文件，手动计算其正确的相对路径 `customRelativeDir` 进行注入。
   - 树状持久化：支持前端在拖拽上传文件夹时将相对路径传递到后端，后端将文件保存在子目录中，使得左侧文档树能够完美展现子文件夹的树形层级结构，杜绝了文件被平铺堆积在项目根目录的情况。
 
 ## [3.5.2] - 2026-06-11
 
 ### Changed
 - **智能助手模式精炼与默认行为优化**：
-  - 缩减智能助手（[AgentChat.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/AgentChat/AgentChat.tsx)）的模式选项，仅保留“快速”和“协同”两种模式，移除“独立”、“深度”、“专家”、“通用”模式.
+  - 缩减智能助手（[AgentChat.tsx](file:///root/www/sc/app-server/frontend/src/components/AgentChat/AgentChat.tsx)）的模式选项，仅保留“快速”和“协同”两种模式，移除“独立”、“深度”、“专家”、“通用”模式.
   - 将智能助手的默认初始化模式由“独立”模式变更为“快速”模式（`fast`），若启用协同聊天配置则自适应调整为“协同”模式（`smart`）。
 
 ### Fixed
@@ -254,7 +289,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - **新增“案件管理”工作流 Tab 模块**：
-  - 新建一等 Tab 页面 [CaseManagement.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/CaseManagement/CaseManagement.tsx)，整合了办案流程。
+  - 新建一等 Tab 页面 [CaseManagement.tsx](file:///root/www/sc/app-server/frontend/src/components/CaseManagement/CaseManagement.tsx)，整合了办案流程。
   - 左侧提供 AI 自动提炼并可直接编辑的案件概览（内容展示与编辑文本框的高度已整体调高 50% 以优化长文本的录入与阅读体验）、以及五大标准流程阶段（收案评估、诉前准备、立案庭前、一审开庭、结案执行），阶段进度状态支持“进行中/已完成/待启动”下拉切换，直接与 Project Metadata 持久化同步。
   - 右侧为阶段目标及 AI 智能工具箱（支持证据清单梳理、起诉大纲编写、沙盘模拟对抗等），文书流式生成后可一键“保存为案件文档”归档至本案素材库中。
 - **定制文档增加自定义指令输入框并优化布局**：
@@ -270,7 +305,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **解决自动保存关闭下依然产生冗余归档文档的 Bug**：
-  - 在 [DocumentStudio.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/DocumentStudio/DocumentStudio.tsx) 中重构了 `performSave` 逻辑。当自动保存开关（`autoSaveEnabled`）为关闭状态且属于程序自动触发保存（`isAuto === true`）时，仅将当前的标题与大纲状态静默同步至后端主草稿模板（`/template`）以防内容丢失，不再向历史归档文档接口（`/documents`）发送数据，彻底杜绝了右侧列表无故产生带有黄色“自动保存”角标的临时多余历史文件的现象。
+  - 在 [DocumentStudio.tsx](file:///root/www/sc/app-server/frontend/src/components/DocumentStudio/DocumentStudio.tsx) 中重构了 `performSave` 逻辑。当自动保存开关（`autoSaveEnabled`）为关闭状态且属于程序自动触发保存（`isAuto === true`）时，仅将当前的标题与大纲状态静默同步至后端主草稿模板（`/template`）以防内容丢失，不再向历史归档文档接口（`/documents`）发送数据，彻底杜绝了右侧列表无故产生带有黄色“自动保存”角标的临时多余历史文件的现象。
   - 物理清理了由于旧逻辑漏洞产生的包含“民事起诉状”在内的多余历史归档数据。
 
 ## [3.5.0] - 2026-06-09
@@ -278,10 +313,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - **前端多模态文件列表图标动态适配**：
-  - 在 [TreeView.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/TreeView/TreeView.tsx) 的文件列表和 [FileUploader.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/FileUploader/FileUploader.tsx) 的排队列表中添加了依据文件后缀的自适应图标渲染机制。
+  - 在 [TreeView.tsx](file:///root/www/sc/app-server/frontend/src/components/TreeView/TreeView.tsx) 的文件列表和 [FileUploader.tsx](file:///root/www/sc/app-server/frontend/src/components/FileUploader/FileUploader.tsx) 的排队列表中添加了依据文件后缀的自适应图标渲染机制。
   - 自动将音频文件（`.mp3`, `.wav`, `.m4a`）映射为 `Volume2` 图标，视频文件（`.mp4`, `.mov`, `.webm`, `.ogg`）映射为 `Video` 图标，改善一律使用文本图标所带来的体验不连贯问题。
 - **拓展视频预览支持**：
-  - 在 [FilePreviewer.tsx](file:///Users/gemini/Projects/Own/RAG/app-server/frontend/src/components/FilePreviewer/FilePreviewer.tsx) 的 `VIDEO_FORMATS` 中添加对 `.mov` 视频格式的直接预览支持，使得案发现场监控录像、行车记录仪等 `.mov` 文件可以直接通过前端原生播放器预览与播放。
+  - 在 [FilePreviewer.tsx](file:///root/www/sc/app-server/frontend/src/components/FilePreviewer/FilePreviewer.tsx) 的 `VIDEO_FORMATS` 中添加对 `.mov` 视频格式的直接预览支持，使得案发现场监控录像、行车记录仪等 `.mov` 文件可以直接通过前端原生播放器预览与播放。
 
 ### Changed
 - **系统重构与底座奠基收官**：
@@ -293,7 +328,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **解决多文件/跨项目任务干扰导致图谱社区摘要永久卡死（烂尾）的 Bug**：
-  - **退避条件精细化**：优化了 [community_summarizer.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/community_summarizer.py) 中的自调度退避逻辑，不再单一依赖全局 `slow_queue` 队列长度，而是结合项目自身的提取完成状态进行智能判定。即便当前有其他项目的图谱任务正在排队，若本项目所有文件均已提取完毕，则绝不让出算力中断，而是持续自我调度接力，直到把当前项目的所有社区摘要生成完毕，从根本上消除了任务在中途退出后由于没有新触发源导致永久卡在中间进度的顽疾。
+  - **退避条件精细化**：优化了 [community_summarizer.py](file:///root/www/sc/app-server/backend/core/community_summarizer.py) 中的自调度退避逻辑，不再单一依赖全局 `slow_queue` 队列长度，而是结合项目自身的提取完成状态进行智能判定。即便当前有其他项目的图谱任务正在排队，若本项目所有文件均已提取完毕，则绝不让出算力中断，而是持续自我调度接力，直到把当前项目的所有社区摘要生成完毕，从根本上消除了任务在中途退出后由于没有新触发源导致永久卡在中间进度的顽疾。
   - **后台服务重启与触发**：在 PM2 容器内重启慢队列服务 `shengyao-celery-slow` 以应用最新逻辑，并手动拉起恢复了受影响卡死项目（“国内法律”与“国内行政法规”）的进度生成。
 
 ## [3.4.1] - 2026-06-08

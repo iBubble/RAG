@@ -147,10 +147,16 @@ export default function LearningProgress() {
   const handleAutoJudgmentLearn = async (projectId: string, projectName: string) => {
     setLearningProjectId(projectId);
     try {
-      const res = await fetch(`${API_BASE}/api/projects/${projectId}/auto-judgment-learn`, {
+      let res = await fetch(`${API_BASE}/api/admin/projects/${projectId}/auto-judgment-learn`, {
         method: 'POST',
         headers: { ...getAuthHeaders() }
       });
+      if (!res.ok && res.status === 404) {
+        res = await fetch(`${API_BASE}/api/projects/${projectId}/auto-judgment-learn`, {
+          method: 'POST',
+          headers: { ...getAuthHeaders() }
+        });
+      }
       const data = await res.json();
       if (data.success) {
         await fetchProgress();
@@ -164,6 +170,7 @@ export default function LearningProgress() {
       setLearningProjectId(null);
     }
   };
+
 
 
 
@@ -361,7 +368,7 @@ export default function LearningProgress() {
       if (!res.ok) throw new Error('触发自愈排查失败');
       const data = await res.json();
       const r = data.report || {};
-      alert(`✅ 自愈巡检完成（耗时 ${r.duration || 0} 秒）！\n已扫描项目: ${r.total_projects || 0} 个\n修复向量任务: ${r.vectors_repaired || 0} 个\n修复图谱任务: ${r.graphs_repaired || 0} 个\n补齐社区摘要: ${r.summaries_triggered || 0} 个`);
+      alert(`✅ 自愈巡检完成（耗时 ${r.duration || 0} 秒）！\n已扫描项目: ${r.total_projects || 0} 个\n修复向量任务: ${r.vectors_repaired || 0} 个\n修复图谱任务: ${r.graphs_repaired || 0} 个\n补齐社区摘要: ${r.summaries_triggered || 0} 个\n补齐研判公文: ${r.auto_judgments_repaired || 0} 个`);
       await fetchData();
     } catch (err: any) {
       alert(`❌ 自愈排查失败: ${err.message}`);

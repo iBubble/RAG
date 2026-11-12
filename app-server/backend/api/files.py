@@ -212,8 +212,9 @@ async def upload_files(
             ".txt", ".md", ".csv", ".log", ".json", ".xml", ".html", ".htm",
             ".pdf", ".doc", ".docx", ".xlsx", ".xls", ".pptx", ".caj",
             ".dwg", ".dxf", ".shp", ".dbf", ".gdb", ".mdb",
-            ".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp",
-            ".mp3", ".wav", ".mp4", ".mov"
+            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".webp",
+            ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac",
+            ".mp4", ".mov", ".webm", ".mkv"
         }
 
         # 防御机制：PyMuPDF 底层 C 引擎对大文件免疫 OOM，阈值放宽至 1.5GB
@@ -428,6 +429,20 @@ async def list_files(project_id: str = "default", user: dict = Depends(get_curre
         file_list = []
         dir_list = []
 
+    # WHY: 关联移动端上传元数据表，将磁盘上的随机 UUID 文件名还原为可读原始文件名用于展示
+    try:
+        from core.database import get_mobile_uploads_by_project
+        mu_map = get_mobile_uploads_by_project(project_id)
+        if mu_map:
+            for item in file_list:
+                mu = mu_map.get(item.get("id", ""))
+                if mu and mu.get("original_filename"):
+                    item["filename"] = mu["original_filename"]
+                    item["upload_source"] = mu.get("upload_source", "mobile")
+                    item["remark"] = mu.get("remark", "")
+    except Exception as mu_err:
+        logger.debug(f"关联 mobile_uploads 元数据跳过: {mu_err}")
+
     # WHY: 追加网络/粘贴来源，使其与本地文件统一出现在文件树中
     from api.web_ingest import _read_web_sources
     web_sources = _read_web_sources(project_id)
@@ -483,6 +498,11 @@ async def delete_file(file_path: str, project_id: str = "default", user: dict = 
         target.unlink()
         removed_chunks = delete_by_file_id(file_id)
         delete_tables(file_id, project_id)
+        try:
+            from core.database import delete_mobile_upload
+            delete_mobile_upload(file_id, project_id)
+        except Exception:
+            pass
 
     logger.info(f"已删除: {file_path}，清理 {removed_chunks} 个向量切片")
 

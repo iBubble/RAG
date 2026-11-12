@@ -12,11 +12,12 @@ services:
     environment:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - REDIS_URL=redis://:${REDIS_PASSWORD}@genrag-redis:6379/0
+      - QDRANT_URL=http://genrag-database:6333
       # 第一阶段：保留挂载映射到旧的 ChromaDB
       - CHROMA_DB_PATH=/app/vector_db
-      - NO_PROXY=localhost,127.0.0.1,genrag-redis,genrag-database,genrag-graphdb,host.docker.internal
-      # 宿主机 M4 Max 真实统一内存总量
-      - HOST_MEMORY_GB=48
+      - NO_PROXY=localhost,127.0.0.1,genrag-redis,genrag-database,genrag-graphdb,host.docker.internal,40dd.shop,192.168.2.3
+      # 宿主机真实可用内存
+      - HOST_MEMORY_GB=20
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
       - LANGFUSE_HOST=http://langfuse:3000
@@ -25,10 +26,8 @@ services:
       - /app/frontend/node_modules
       - /app/backend/docx_builder/bin
       - /app/backend/docx_builder/obj
-      # 将本地 macData/RAG_Files 路径挂载，与 LawRAG 隔离
-      - /Volumes/macData/GenRAG_Files:/Volumes/macData/RAG_Files
-      # 挂载宿主机共享的 MinerU 模型权重（只读）
-      - /Volumes/macData/RAG_Files/models:/root/resources/models:ro
+      # 将宿主机 ./storage/GenRAG_Files 路径挂载为容器内 /Volumes/macData/RAG_Files
+      - ./storage/GenRAG_Files:/Volumes/macData/RAG_Files
       # SSH 公钥持久化
       - ./persistent/ssh/authorized_keys:/root/.ssh/authorized_keys
       # Antigravity Remote Server 持久化

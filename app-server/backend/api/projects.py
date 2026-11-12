@@ -1694,4 +1694,17 @@ async def list_project_ref_files(case_id: str, user: dict = Depends(get_current_
     return {"files": project_files}
 
 
+@router.post("/{project_id}/auto-judgment-learn")
+async def trigger_project_auto_judgment_learn(
+    project_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """
+    为指定项目自动完成 3 个 Tab（分拣填报、调查取证、研判裁量）的表单推荐与全量深度填报（支持兼容路由）。
+    """
+    from api.admin import trigger_auto_judgment_learn
+    return await trigger_auto_judgment_learn(project_id=project_id, user=user)
+
+
+
 

@@ -33,7 +33,7 @@ const sseProxyConfig = {
   selfHandleResponse: false,
   configure: (proxy: any) => {
     proxy.on('proxyReq', (proxyReq: any, req: any) => {
-      if (req.url?.includes('/api/files/upload')) {
+      if (req.url?.includes('/api/files/upload') || req.url?.includes('/api/mobile/upload')) {
         proxyReq.socket?.setTimeout(0);
         proxyReq.setTimeout(0);
       }
@@ -73,7 +73,7 @@ export default defineConfig({
   server: {
     port: 2028, // 前端运行端口 2028
     host: '0.0.0.0',
-    allowedHosts: ['rag.syhsgis.com', 'rag1.syhsgis.com', 'lawrag.liukun.com', 'rag.liukun.com'],
+    allowedHosts: true,
     proxy: {
       '/api': sseProxyConfig
     }
@@ -81,7 +81,7 @@ export default defineConfig({
   preview: {
     port: 2028, // 前端预览端口 2028
     host: '0.0.0.0',
-    allowedHosts: ['rag.syhsgis.com', 'rag1.syhsgis.com', 'lawrag.liukun.com', 'rag.liukun.com'],
+    allowedHosts: true,
     proxy: {
       '/api': sseProxyConfig
     }

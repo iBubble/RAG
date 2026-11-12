@@ -31,6 +31,8 @@ from api.web_ingest import router as web_ingest_router
 from api.knowledge import router as knowledge_router
 from api.ai_templates import router as ai_templates_router
 from api.triage_judgment import router as triage_judgment_router
+from api.viewer import router as viewer_router
+from api.mobile import router as mobile_router
 
 
 class Utf8CharsetMiddleware(BaseHTTPMiddleware):
@@ -158,6 +160,8 @@ app.include_router(web_ingest_router)
 app.include_router(knowledge_router)
 app.include_router(ai_templates_router)
 app.include_router(triage_judgment_router)
+app.include_router(viewer_router)
+app.include_router(mobile_router)
 
 
 @app.get("/health")

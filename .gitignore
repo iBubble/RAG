@@ -4,8 +4,10 @@
 .LSOverride
 
 # 数据目录（数据库持久化数据）
-data/
-persistent/
+/data/
+/persistent/
+app-server/data/
+!app-server/frontend/src/data/
 
 # 模型文件（体积过大，不适合Git管理）
 **/models/
@@ -66,3 +68,12 @@ readytodel/
 
 # Scratch 临时调试目录
 **/scratch/
+
+# 构建与运行临时脚本
+build.lock
+launch_build.sh
+run_build.sh.bak
+storage/
+docs/法规原文*
+docs/法规原文/
+app-server/backend/downloads/

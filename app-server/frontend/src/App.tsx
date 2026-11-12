@@ -17,6 +17,8 @@ import RegisterPage from './components/Auth/RegisterPage';
 import AdminLayout from './components/Admin/AdminLayout';
 import ProfilePage from './components/Profile/ProfilePage';
 import Linvis from './components/Linvis/Linvis';
+import MobileUploadPage from './components/Mobile/MobileUploadPage';
+import FoodInspectDemoPage from './components/Mobile/FoodInspectDemoPage';
 import AITablePanel from './components/AITable/AITablePanel';
 import { IntakeSortingPanel } from './components/Triage/IntakeSortingPanel';
 import { InvestigationPanel } from './components/Judgment/CaseJudgmentPanel';
@@ -544,6 +546,10 @@ function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/mobile" element={<MobileUploadPage />} />
+      <Route path="/m" element={<MobileUploadPage />} />
+      <Route path="/m2" element={<FoodInspectDemoPage />} />
+      <Route path="/mobile2" element={<FoodInspectDemoPage />} />
       <Route path="/" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
       <Route path="/linvis" element={<ProtectedRoute><Linvis /></ProtectedRoute>} />
       <Route path="/project/:id" element={<ProtectedRoute><StudioErrorBoundary><StudioLayout /></StudioErrorBoundary></ProtectedRoute>} />

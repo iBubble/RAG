@@ -428,6 +428,44 @@ def extract_pdf_vision(
     return full_text
 
 
+def optimize_image_for_vlm(
+    image_bytes: bytes,
+    max_dim: int = 2048,
+    max_bytes: int = 1500000,
+) -> bytes:
+    """
+    智能安全压缩与规范化待送入 Vision LLM 的图片数据。
+    WHY: 手机实拍或高清扫描图（如 14850x10500、20MB+）直接 base64 会导致 HTTP 413 实体过大，
+         或使远端 Gateway 超时中断。通过双线性降采样与 EXIF 转正，将体积压减到 1.5MB 以内。
+    """
+    if not image_bytes:
+        return b""
+    try:
+        from PIL import Image, ImageOps
+        Image.MAX_IMAGE_PIXELS = None
+
+        with Image.open(io.BytesIO(image_bytes)) as img:
+            img = ImageOps.exif_transpose(img)
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+
+            w, h = img.size
+            if max(w, h) > max_dim:
+                scale = max_dim / max(w, h)
+                new_w, new_h = max(int(w * scale), 1), max(int(h * scale), 1)
+                img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+            for quality in (85, 75, 65):
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=quality, optimize=True)
+                data = buf.getvalue()
+                if len(data) <= max_bytes or quality == 65:
+                    return data
+    except Exception as exc:
+        logger.warning("Vision 图片预处理压缩降级跳过: %s", exc)
+    return image_bytes
+
+
 def extract_image_vision(
     file_path: str,
     model: Optional[str] = None,
@@ -441,6 +479,7 @@ def extract_image_vision(
     """
     from core.config import settings
     from core.llm_config import get_active_vision_config
+    from .ocr_cleaner import is_garbled_text
 
     vision_cfg = get_active_vision_config()
     _model = model or vision_cfg.get("model") or getattr(settings, "VISION_MODEL", "qwen3-vl-32b-awq")
@@ -483,6 +522,9 @@ def extract_image_vision(
         logger.error(f"读取图片失败 ({filename}): {e}")
         return ""
 
+    # 智能预处理降采样，防范 413 Entity Too Large
+    image_bytes = optimize_image_for_vlm(image_bytes)
+
     # === 表格旋转检测（基于图像内容） ===
     # WHY: 单张图片可能是旋转的扫描件，在送入 Vision LLM 前矫正方向。
     try:
@@ -507,6 +549,34 @@ def extract_image_vision(
         temperature=_vision_temp_img,
         api_key=_api_key,
     )
+
+    # 乱码拦截与即时自愈重试
+    if text:
+        garbled, reason = is_garbled_text(text)
+        if garbled:
+            logger.warning(f"⚠️ Vision 提取命中乱码 ({filename}): {reason}，触发防乱码二次重试分析...")
+            retry_prompt = (
+                "请仔细核对并提取该图片中的真实可见文字或图表标题。\n"
+                "严格注意：\n"
+                "1. 仅转写清晰可见的文字与数值；\n"
+                "2. 严禁输出无意义的单个英文字母碎屑或连续符号网格；\n"
+                "3. 若图片为纯场景/无文字，请用一段简练中文客观描述画面主体，禁止输出乱码字符。"
+            )
+            retry_text = _call_vision_llm(
+                image_bytes=image_bytes,
+                prompt=retry_prompt,
+                model=_model,
+                ollama_url=_ollama_url,
+                timeout=_timeout,
+                temperature=0.0,
+                api_key=_api_key,
+            )
+            if retry_text and not is_garbled_text(retry_text)[0]:
+                logger.info(f"✅ Vision 乱码自愈重试成功 ({filename})")
+                text = retry_text
+            else:
+                logger.warning(f"Vision 重试仍判定为乱码，清空以便降级处理 ({filename})")
+                text = ""
 
     # WHY: 单张图片解析后不卸载模型——可能后续还有同批次的其他图片。
     #      模型卸载由 Celery task 结束时统一处理。

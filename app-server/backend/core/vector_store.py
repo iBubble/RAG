@@ -191,10 +191,11 @@ def _compute_sparse_vectors(texts: List[str]) -> List[models.SparseVector]:
 
         # WHY: 每批处理完主动释放中间 tensor 并同步 MPS 队列，防范 Metal Watchdog 超时
         del inputs, out, hidden, sparse_w, token_weights, token_ids_cpu
-        if hasattr(torch, "mps") and hasattr(torch.mps, "synchronize"):
-            torch.mps.synchronize()
-        if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
-            torch.mps.empty_cache()
+        if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            if hasattr(torch, "mps") and hasattr(torch.mps, "synchronize"):
+                torch.mps.synchronize()
+            if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                torch.mps.empty_cache()
 
     return results
 
@@ -737,7 +738,7 @@ def ingest_text(
         )
         dense_vecs.extend([v.tolist() for v in sub_raw])
         del sub_raw
-        if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+        if torch.backends.mps.is_available() and hasattr(torch.mps, "empty_cache"):
             torch.mps.empty_cache()
 
     # ── Sparse 编码 ──

@@ -8,6 +8,7 @@ import json
 import time
 import hashlib
 import logging
+import re
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
@@ -141,11 +142,69 @@ def inspect_and_repair_community_summaries(pid: str) -> bool:
         logger.warning(f"[Watchdog] 检查社区摘要失败 pid={pid}: {e}")
     return False
 
+def inspect_and_repair_auto_judgment(pid: str, is_library: bool) -> int:
+    """排查并自愈自动研判公文缺失或未填报"""
+    if is_library:
+        return 0
+    try:
+        data_root = Path(settings.DATA_DIR)
+        triage_p = data_root / "triage" / f"{pid}.json"
+        inv_p = data_root / "judgment" / f"{pid}.json"
+        adj_p = data_root / "adjudication" / f"{pid}.json"
+        doc_dir = data_root / "documents" / pid
+
+        missing_tab = not (triage_p.exists() and inv_p.exists() and adj_p.exists())
+        
+        saved_titles = set()
+        if doc_dir.exists():
+            for d in doc_dir.glob("*.json"):
+                try:
+                    saved_titles.add(json.loads(d.read_text()).get("title", ""))
+                except Exception:
+                    pass
+
+        needed_forms = []
+        for fp in [triage_p, inv_p, adj_p]:
+            if fp.exists():
+                try:
+                    for f in json.loads(fp.read_text()).get("recommended_forms", []):
+                        fn = f if isinstance(f, str) else f.get("name", "")
+                        if fn:
+                            needed_forms.append(fn)
+                except Exception:
+                    pass
+
+        has_missing_docs = False
+        if not needed_forms:
+            has_missing_docs = True
+        else:
+            for form_name in needed_forms:
+                clean_fn = re.sub(r'^\d+[\.、\s]*', '', form_name)
+                if not any(st.startswith(form_name + "_") or (clean_fn and clean_fn in st) for st in saved_titles):
+                    has_missing_docs = True
+                    break
+
+        if missing_tab or has_missing_docs:
+            logger.info(f"📄 [Watchdog] 发现项目 {pid} 缺失自动研判公文或推荐，自动触发自愈填报...")
+            from scripts.inspect_and_fill_all_forms import auto_fill_project
+            auto_fill_project(pid)
+            return 1
+    except Exception as e:
+        logger.warning(f"[Watchdog] 检查自动研判公文失败 pid={pid}: {e}")
+    return 0
+
 def run_full_inspection_and_repair() -> dict:
     """全局执行一次全面排查与自动修复"""
     t0 = time.time()
     logger.info("🛡️ [Watchdog] 启动后台学习全流程故障扫描与自愈...")
-    results = {"total_projects": 0, "vectors_repaired": 0, "graphs_repaired": 0, "summaries_triggered": 0, "duration": 0.0}
+    results = {
+        "total_projects": 0,
+        "vectors_repaired": 0,
+        "graphs_repaired": 0,
+        "summaries_triggered": 0,
+        "auto_judgments_repaired": 0,
+        "duration": 0.0
+    }
     try:
         conn = _get_db_connection()
         cur = conn.cursor()
@@ -166,13 +225,28 @@ def run_full_inspection_and_repair() -> dict:
         v_rep = inspect_and_repair_vectors(pid, pdir)
         g_rep = inspect_and_repair_graphs(pid, pdir, is_lib)
         s_rep = inspect_and_repair_community_summaries(pid) if not is_lib else False
+        aj_rep = inspect_and_repair_auto_judgment(pid, is_lib)
 
         results["vectors_repaired"] += v_rep
         results["graphs_repaired"] += g_rep
         if s_rep:
             results["summaries_triggered"] += 1
+        results["auto_judgments_repaired"] += aj_rep
 
     results["duration"] = round(time.time() - t0, 2)
-    logger.info(f"✅ [Watchdog] 本轮巡检修复完成: 耗时 {results['duration']}s，修复向量任务 {results['vectors_repaired']} 个，图谱任务 {results['graphs_repaired']} 个，触发摘要 {results['summaries_triggered']} 个")
+    if (
+        results["vectors_repaired"] > 0 or
+        results["graphs_repaired"] > 0 or
+        results["summaries_triggered"] > 0 or
+        results["auto_judgments_repaired"] > 0
+    ):
+        try:
+            import api.admin as adm
+            adm._LEARNING_PROGRESS_CACHE = None
+        except Exception:
+            pass
+
+    logger.info(f"✅ [Watchdog] 本轮巡检修复完成: 耗时 {results['duration']}s，修复向量 {results['vectors_repaired']}，图谱 {results['graphs_repaired']}，触发摘要 {results['summaries_triggered']}，修复研判公文 {results['auto_judgments_repaired']} 个项目")
     return results
+
 

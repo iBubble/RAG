@@ -577,6 +577,35 @@ async def stream_ollama(
             yield token
 
 
+def truncate_prompt_for_ctx(text: str, max_chars: int = 2200) -> str:
+    """智能截断 Prompt 中的参考资料部分，保留系统指令与用户提问，防止突破上游上下文上限。"""
+    if not isinstance(text, str) or len(text) <= max_chars:
+        return text
+    ref_marker = "## 参考资料"
+    q_marker = "## 用户问题"
+    if ref_marker in text and q_marker in text:
+        pre, rest = text.split(ref_marker, 1)
+        ref_content, post = rest.split(q_marker, 1)
+        fixed_len = len(pre) + len(ref_marker) + len(q_marker) + len(post)
+        avail_ref_chars = max(200, max_chars - fixed_len - 80)
+        chunks = ref_content.strip().split("\n\n")
+        kept = []
+        cur = 0
+        for c in chunks:
+            if cur + len(c) > avail_ref_chars:
+                break
+            kept.append(c)
+            cur += len(c) + 2
+        if not kept and chunks:
+            kept.append(chunks[0][:avail_ref_chars])
+        new_ref = "\n\n" + "\n\n".join(kept) + "\n\n...[参考资料已自适应精简以适配模型上下文]\n\n"
+        return pre + ref_marker + new_ref + q_marker + post
+    # 通用截断：保留头部说明与尾部核心问题
+    keep_head = max(200, int(max_chars * 0.45))
+    keep_tail = max(200, max_chars - keep_head - 60)
+    return text[:keep_head] + "\n\n...[内容已自适应精简]...\n\n" + text[-keep_tail:]
+
+
 async def _stream_ollama_inner(
     prompt: str,
     model: str = settings.DEFAULT_LLM_MODEL,
@@ -627,7 +656,24 @@ async def _stream_ollama_inner(
     else:
         # OpenAI-compatible Gateway (如 http://40dd.shop:8001/v1)
         url = normalize_endpoint(base_url, is_openai_chat=True)
-        openai_messages = [{"role": "user", "content": prompt}]
+        
+        # 上下文预算自适应防爆：若为 2048 上下文模型 (如 27b / qwen38)，严格限制 safe_max_tokens 与输入 prompt 长度
+        is_small_ctx = bool(actual_model and ("27b" in actual_model.lower() or "qwen38" in actual_model.lower() or "qwen3.8" in actual_model.lower()))
+        model_n_ctx = 2048 if is_small_ctx else 16384
+        safe_max_tokens = min(num_predict, 768) if is_small_ctx else min(num_predict, 4096)
+        max_prompt_chars = int((model_n_ctx - safe_max_tokens - 64) * 1.35)
+        
+        truncated_prompt = truncate_prompt_for_ctx(prompt, max_prompt_chars)
+        
+        if images:
+            user_content = [{"type": "text", "text": truncated_prompt}]
+            for img in images:
+                img_url = img if isinstance(img, str) and img.startswith("http") else (img if isinstance(img, str) and img.startswith("data:") else f"data:image/jpeg;base64,{img}")
+                user_content.append({"type": "image_url", "image_url": {"url": img_url}})
+            openai_messages = [{"role": "user", "content": user_content}]
+        else:
+            openai_messages = [{"role": "user", "content": truncated_prompt}]
+
         # WHY: 当模型为 reasoning 模型且要求去除 thinking 时，通过预填闭合的 think 标签，
         #      使模型在 0.1 秒内跳过长达万字的背法条冗余思考，彻底消除 300 秒超时卡死，直接进入高质量正文输出！
         if do_raw_bypass or "qwen" in actual_model.lower() or "r1" in actual_model.lower():
@@ -640,7 +686,7 @@ async def _stream_ollama_inner(
             "messages": openai_messages,
             "stream": True,
             "temperature": temperature,
-            "max_tokens": max(num_predict, 8192),
+            "max_tokens": safe_max_tokens,
         }
 
     if images and is_ollama:
@@ -676,6 +722,9 @@ async def _stream_ollama_inner(
             # 使用配置的超时时间
             actual_timeout = timeout if timeout is not None else httpx.Timeout(cfg_timeout, connect=15.0)
             async with client.stream("POST", url, json=payload, headers=headers, timeout=actual_timeout) as response:
+                if response.status_code >= 400:
+                    err_body = await response.aread()
+                    logger.error(f"❌ LLM 服务端返回错误 HTTP {response.status_code}: {err_body.decode('utf-8', errors='ignore')} | Payload: {json.dumps(payload, ensure_ascii=False)[:300]}")
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if not line.strip():

@@ -12,11 +12,13 @@ import RagasEvaluation from './RagasEvaluation';
 // AgentSettings 已移除 — 旧 Agent 配置已被 Go Eino 替代
 import AITemplateManagement from './AITemplateManagement';
 import LLMProviderSettings from './LLMProviderSettings';
-import { Users, FolderKanban, ScrollText, Settings, ArrowLeft, ShieldCheck, ActivitySquare, Activity, FileSpreadsheet, LineChart, Bot } from 'lucide-react';
+import MaterialManagement from './MaterialManagement';
+import { Users, FolderKanban, ScrollText, Settings, ArrowLeft, ShieldCheck, ActivitySquare, Activity, FileSpreadsheet, LineChart, Bot, Layers } from 'lucide-react';
 
 const navItems = [
   { path: '/admin', label: '用户管理', icon: Users, end: true },
   { path: '/admin/projects', label: '项目管理', icon: FolderKanban },
+  { path: '/admin/materials', label: '项目资料库', icon: Layers },
   { path: '/admin/logs', label: '日志管理', icon: ScrollText },
   { path: '/admin/ai-templates', label: 'AI模板管理', icon: FileSpreadsheet },
   { path: '/admin/learning-progress', label: '学习进度', icon: ActivitySquare },
@@ -86,6 +88,7 @@ export default function AdminLayout() {
         <Routes>
           <Route index element={<UserManagement />} />
           <Route path="projects" element={<ProjectManagement />} />
+          <Route path="materials" element={<MaterialManagement />} />
           <Route path="logs" element={<LogManagement />} />
           <Route path="learning-progress" element={<LearningProgress />} />
           <Route path="service-status" element={<ServiceStatus />} />

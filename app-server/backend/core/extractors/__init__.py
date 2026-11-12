@@ -59,6 +59,7 @@ def extract_text(file_path: str, is_slow_queue: bool = False) -> Optional[str]:
         ".jpg": _extract_image,
         ".jpeg": _extract_image,
         ".png": _extract_image,
+        ".gif": _extract_image,
         ".bmp": _extract_image,
         ".tiff": _extract_image,
         ".tif": _extract_image,
@@ -66,8 +67,14 @@ def extract_text(file_path: str, is_slow_queue: bool = False) -> Optional[str]:
         # 音视频识别
         ".mp3": _extract_audio_video,
         ".wav": _extract_audio_video,
+        ".m4a": _extract_audio_video,
+        ".aac": _extract_audio_video,
+        ".ogg": _extract_audio_video,
+        ".flac": _extract_audio_video,
         ".mp4": _extract_audio_video,
         ".mov": _extract_audio_video,
+        ".webm": _extract_audio_video,
+        ".mkv": _extract_audio_video,
     }
 
     extractor = extractors.get(suffix)

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import sqlite3
 import logging
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from contextlib import contextmanager
 from typing import Optional
@@ -154,6 +155,29 @@ CREATE TABLE IF NOT EXISTS audit_traces (
 CREATE INDEX IF NOT EXISTS idx_at_project ON audit_traces(project_id);
 CREATE INDEX IF NOT EXISTS idx_at_session ON audit_traces(session_id);
 CREATE INDEX IF NOT EXISTS idx_at_status ON audit_traces(audit_status);
+
+-- 手机端与多模态资料上传元数据表
+-- WHY: 遵循安全文件上传规范，磁盘文件采用不可预测随机 UUID 命名，
+--      原始文件名、现场备注、媒体分类及来源信息安全存储于数据库中。
+CREATE TABLE IF NOT EXISTS mobile_uploads (
+    file_id           TEXT PRIMARY KEY,
+    storage_uuid      TEXT NOT NULL,
+    project_id        TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    stored_rel_path   TEXT NOT NULL,
+    media_category    TEXT NOT NULL DEFAULT 'document',
+    mime_type         TEXT NOT NULL DEFAULT 'application/octet-stream',
+    file_size         INTEGER NOT NULL DEFAULT 0,
+    sha256_hash       TEXT NOT NULL DEFAULT '',
+    remark            TEXT NOT NULL DEFAULT '',
+    uploader_id       TEXT NOT NULL DEFAULT '',
+    uploader_name     TEXT NOT NULL DEFAULT '',
+    upload_source     TEXT NOT NULL DEFAULT 'mobile',
+    created_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mu_project ON mobile_uploads(project_id);
+CREATE INDEX IF NOT EXISTS idx_mu_source  ON mobile_uploads(upload_source);
+CREATE INDEX IF NOT EXISTS idx_mu_created ON mobile_uploads(created_at);
 """
 
 
@@ -185,6 +209,22 @@ def _init_db():
                 logger.info(f"迁移完成: projects 表新增 {field_name} 字段 ({why})")
     except Exception as e:
         logger.warning(f"projects 表增量迁移检查失败(非致命): {e}")
+
+    # ── 增量迁移：mobile_uploads 表规范检测字段 ──
+    _MU_MIGRATIONS = [
+        ("compliance_status", "TEXT DEFAULT ''", "RAG规范检测状态(compliant/warning/violation/non_standard)"),
+        ("compliance_score", "INTEGER DEFAULT 0", "RAG规范检测得分(0-100)"),
+        ("compliance_report", "TEXT DEFAULT ''", "RAG规范检测详细报告JSON"),
+        ("compliance_checked_at", "TEXT DEFAULT ''", "最后检测时间戳"),
+    ]
+    try:
+        mu_cols = {r[1] for r in conn.execute("PRAGMA table_info(mobile_uploads)").fetchall()}
+        for field_name, field_def, why in _MU_MIGRATIONS:
+            if field_name not in mu_cols:
+                conn.execute(f"ALTER TABLE mobile_uploads ADD COLUMN {field_name} {field_def}")
+                logger.info(f"迁移完成: mobile_uploads 表新增 {field_name} 字段 ({why})")
+    except Exception as e:
+        logger.warning(f"mobile_uploads 表增量迁移检查失败(非致命): {e}")
 
     conn.commit()
     conn.close()
@@ -343,4 +383,153 @@ def get_fts_text_by_file_id(file_id: str) -> Optional[str]:
         except Exception as e:
             logger.warning(f"获取已提取的 FTS 全文失败 ({file_id}): {e}")
     return None
+
+
+def get_fts_chunks_by_file_id(file_id: str) -> list[dict]:
+    """
+    根据 file_id 查询知识库中已切分的全部文本片段（使用参数化查询防止 SQL 注入）。
+    """
+    sql = (
+        "SELECT id, file_id, project_id, filename, chunk_index, document "
+        "FROM doc_chunks_fts WHERE file_id = ? ORDER BY CAST(chunk_index AS INTEGER)"
+    )
+    with get_db() as conn:
+        try:
+            rows = conn.execute(sql, (file_id,)).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.warning(f"获取已提取的 FTS 切片列表失败 ({file_id}): {e}")
+            return []
+
+
+def get_fts_summary_map(
+    project_id: Optional[str] = None,
+    include_preview: bool = True,
+) -> tuple[dict[str, int], dict[str, str]]:
+    """
+    单次聚合查询获取知识库中各 file_id 的切片数与首段预览摘要，避免 FTS5 虚拟表 N+1 全表扫描。
+    """
+    counts: dict[str, int] = {}
+    previews: dict[str, str] = {}
+    with get_db() as conn:
+        try:
+            if project_id is not None:
+                if include_preview:
+                    rows = conn.execute(
+                        "SELECT file_id, COUNT(*) AS cnt, SUBSTR(document, 1, 200) AS sample "
+                        "FROM doc_chunks_fts WHERE project_id = ? GROUP BY file_id",
+                        (project_id,),
+                    ).fetchall()
+                    for r in rows:
+                        fid = r["file_id"]
+                        if fid:
+                            counts[fid] = int(r["cnt"] or 0)
+                            previews[fid] = (r["sample"] or "").strip()[:180]
+                else:
+                    rows = conn.execute(
+                        "SELECT file_id, COUNT(*) AS cnt FROM doc_chunks_fts WHERE project_id = ? GROUP BY file_id",
+                        (project_id,),
+                    ).fetchall()
+                    for r in rows:
+                        fid = r["file_id"]
+                        if fid:
+                            counts[fid] = int(r["cnt"] or 0)
+            else:
+                rows = conn.execute(
+                    "SELECT file_id, COUNT(*) AS cnt FROM doc_chunks_fts GROUP BY file_id"
+                ).fetchall()
+                for r in rows:
+                    fid = r["file_id"]
+                    if fid:
+                        counts[fid] = int(r["cnt"] or 0)
+        except Exception as e:
+            logger.warning(f"批量聚合查询 FTS 统计失败: {e}")
+    return counts, previews
+
+
+def upsert_mobile_upload(record: dict) -> None:
+    """保存或更新上传资料元数据（全参数化绑定）。"""
+    # TODO(security): SQLite 本地嵌入式数据库无独立账号与网络端口；生产环境若迁移至独立关系型数据库需启用最小权限账号与 mTLS。
+    with get_db() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO mobile_uploads (
+                   file_id, storage_uuid, project_id, original_filename,
+                   stored_rel_path, media_category, mime_type, file_size,
+                   sha256_hash, remark, uploader_id, uploader_name,
+                   upload_source, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                record["file_id"],
+                record["storage_uuid"],
+                record["project_id"],
+                record["original_filename"],
+                record["stored_rel_path"],
+                record.get("media_category", "document"),
+                record.get("mime_type", "application/octet-stream"),
+                int(record.get("file_size", 0)),
+                record.get("sha256_hash", ""),
+                record.get("remark", ""),
+                record.get("uploader_id", ""),
+                record.get("uploader_name", ""),
+                record.get("upload_source", "mobile"),
+                record["created_at"],
+            ),
+        )
+
+
+def get_mobile_upload(file_id: str, project_id: Optional[str] = None) -> Optional[dict]:
+    """按 file_id（及可选 project_id 归属）获取单条上传资料记录。"""
+    with get_db() as conn:
+        if project_id is not None:
+            row = conn.execute(
+                "SELECT * FROM mobile_uploads WHERE file_id = ? AND project_id = ?",
+                (file_id, project_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM mobile_uploads WHERE file_id = ?",
+                (file_id,),
+            ).fetchone()
+        return dict_from_row(row)
+
+
+def get_mobile_uploads_by_project(project_id: str) -> dict[str, dict]:
+    """获取指定项目下所有上传元数据，返回 {file_id: record} 字典。"""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM mobile_uploads WHERE project_id = ? ORDER BY created_at DESC",
+            (project_id,),
+        ).fetchall()
+        return {r["file_id"]: dict(r) for r in rows}
+
+
+def delete_mobile_upload(file_id: str, project_id: str) -> None:
+    """按 file_id 与 project_id 删除元数据记录。"""
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM mobile_uploads WHERE file_id = ? AND project_id = ?",
+            (file_id, project_id),
+        )
+
+
+def update_mobile_upload_compliance(
+    file_id: str,
+    project_id: str,
+    compliance_status: str,
+    compliance_score: int,
+    compliance_report: str,
+) -> None:
+    """持久化记录资料的 RAG 规范检测研判结果。"""
+    now_iso = datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None).isoformat()
+    with get_db() as conn:
+        conn.execute(
+            """UPDATE mobile_uploads
+               SET compliance_status = ?,
+                   compliance_score = ?,
+                   compliance_report = ?,
+                   compliance_checked_at = ?
+               WHERE file_id = ? AND project_id = ?""",
+            (compliance_status, int(compliance_score), compliance_report, now_iso, file_id, project_id),
+        )
+
 

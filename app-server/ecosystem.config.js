@@ -56,7 +56,7 @@ module.exports = {
         PYTHONPATH: '.',
         JWT_SECRET: JWT_SECRET_VAL,
         ADMIN_INIT_PASSWORD: ADMIN_INIT_PASSWORD_VAL,
-        GPU_MAX_SLOTS: '4',
+        GPU_MAX_SLOTS: '2',
         PYTHONFAULTHANDLER: '1',
         OMP_NUM_THREADS: '1',
         OPENBLAS_NUM_THREADS: '1',

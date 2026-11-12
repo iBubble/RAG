@@ -440,7 +440,7 @@ export default function TreeView({ projectId, onFileClick, canWrite = true }: Tr
         current = current.children[part];
       }
       const fileName = parts[parts.length - 1];
-      current.children[fileName] = { name: fileName, isFolder: false, file, children: {} };
+      current.children[fileName] = { name: file.filename || fileName, isFolder: false, file, children: {} };
     });
 
     // 2. 将项目所有已知目录结构（包含新建空目录、选定上传的空目录）注入树中

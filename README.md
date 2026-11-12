@@ -1,11 +1,12 @@
 # 智能体通用知识库 RAG (AgentRAG)
 
 [![GitHub Repo](https://img.shields.io/badge/GitHub-iBubble/RAG-181717?logo=github)](https://github.com/iBubble/RAG)
-![Version](https://img.shields.io/badge/Version-4.6.5-blue)
+![Version](https://img.shields.io/badge/Version-4.7.0-blue)
 ![Go](https://img.shields.io/badge/Go-1.18+-00ADD8?logo=go&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.128+-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC?logo=tailwindcss&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-OrbStack-2496ED?logo=docker&logoColor=white)
 
 **智能体通用知识库 RAG (AgentRAG)** 是一套专为**法律合规审查、政务公文流转、研发机构与企业管理部门**量身定制的私有化多模态 RAG (Retrieval-Augmented Generation，检索增强生成) 知识库与智能智能体协同编排系统。
@@ -74,7 +75,7 @@
 
 ## 📜 一、 法律与专业文档专属语义分块（Chunking）策略
 
-针对法律条文（编/章/节/条/款/项）、行政裁决书、合同协议及工程标准等结构严密且语义高度敏感的文本，传统固定字符长度（如固定 512 字符）的暴力切片极易把核心要件切断，导致 LLM 获取残缺上下文产生严重法律幻觉。系统在 [vector_store.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/vector_store.py) 中实现了全流程**语义感知分块与上下文增强管道**：
+针对法律条文（编/章/节/条/款/项）、行政裁决书、合同协议及工程标准等结构严密且语义高度敏感的文本，传统固定字符长度（如固定 512 字符）的暴力切片极易把核心要件切断，导致 LLM 获取残缺上下文产生严重法律幻觉。系统在 [vector_store.py](file:///root/www/sc/app-server/backend/core/vector_store.py) 中实现了全流程**语义感知分块与上下文增强管道**：
 
 ### 1.1 章节与法条层级感知分块 (Hierarchical Regex Splitting)
 *   **层级正则捕获引擎**：内置专用正则规则 `_HEADING_RE`：
@@ -116,7 +117,7 @@
 
 ## 🔍 二、 多路召回与过滤方案（Hybrid Search）
 
-单一检索模式在司法合规场景中存在明显缺陷：稠密向量擅长“法义理解”却难以精确命中具体的法规条号；关键字匹配擅长精确查找却无法理解语义同义表达。系统在 [retrieval_pipeline.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/retrieval_pipeline.py) 与 [vector_store.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/vector_store.py) 中构建了**六路异构并行召回与自适应融合过滤管道**：
+单一检索模式在司法合规场景中存在明显缺陷：稠密向量擅长“法义理解”却难以精确命中具体的法规条号；关键字匹配擅长精确查找却无法理解语义同义表达。系统在 [retrieval_pipeline.py](file:///root/www/sc/app-server/backend/core/retrieval_pipeline.py) 与 [vector_store.py](file:///root/www/sc/app-server/backend/core/vector_store.py) 中构建了**六路异构并行召回与自适应融合过滤管道**：
 
 ```
                               ┌─────────────────────────┐
@@ -150,7 +151,7 @@
 2. **SQLite FTS5 全文检索路**：基于 SQLite FTS5 倒排索引，对查询中的数字、案由名称、主体身份进行确定性关键词检索，弥补向量模型对长尾专有名词的漏召回。
 3. **Neo4j 实体路径扩散路**：利用 `graph_engine.hybrid_search` 执行图谱子图挖掘，追踪实体间的跨文档关联路径（如：企业统一社会信用代码 $\rightarrow$ 处罚记录 $\rightarrow$ 关联法定代表人）。
 4. **Neo4j 结构化子图 QA 路**：针对确定性案件事实（如“当事人主体资质”、“许可证编号”），通过预定义 Cypher 模板拉取事实三元组，提供 100% 确定性事实依据。
-5. **AI 表格独立检索路**：在 [table_registry.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/table_registry.py) 中利用独立表格摘要向量索引，直接捞取结构完好的原始 Markdown 表格，注入 Prompt。
+5. **AI 表格独立检索路**：在 [table_registry.py](file:///root/www/sc/app-server/backend/core/table_registry.py) 中利用独立表格摘要向量索引，直接捞取结构完好的原始 Markdown 表格，注入 Prompt。
 6. **DuckDB 内存 SQL 分析路**：当用户查询包含全量统计诉求（如“计算所有案件罚没金额总和”）时，系统自动生成内存 SQL，交由 DuckDB 在内存中执行全量扫描，输出精准数值分析结果。
 
 ### 2.2 RRF 倒数排名融合算法 (Reciprocal Rank Fusion)
@@ -159,7 +160,7 @@ $$\text{RRF\_Score}(d) = \sum_{m \in \text{Models}} \frac{1}{k + \text{Rank}_m(d
 - **异构打分归一**：彻底消除 Dense 余弦相似度分值与 BM25/FTS5 词频统计分值量纲不一致的问题，确保高置信度召回项稳定排在前列。
 
 ### 2.3 多级索引预筛选 (Hierarchical Pre-filtering) 与作用域隔离
-*   **文档摘要层粗筛**：针对大中型案件库（文件数 $> 20$ 篇）场景，系统在 [vector_store.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/vector_store.py#L1019) 中先检索 `chunk_type == "doc_summary"` 的全局文档摘要，锁定相关度最高的前 8~12 份文件。
+*   **文档摘要层粗筛**：针对大中型案件库（文件数 $> 20$ 篇）场景，系统在 [vector_store.py](file:///root/www/sc/app-server/backend/core/vector_store.py#L1019) 中先检索 `chunk_type == "doc_summary"` 的全局文档摘要，锁定相关度最高的前 8~12 份文件。
 *   **Payload 物理过滤**：将筛选后的 `file_id` 集合与当前 `project_id` 构造为 Qdrant `FieldCondition` 过滤条件，强制排除 `doc_summary`，彻底杜绝海量卷宗下的跨案件串联与噪声污染。
 
 ### 2.4 上下文双向滑动窗口膨胀 (Context Expansion)
@@ -170,7 +171,7 @@ $$\text{RRF\_Score}(d) = \sum_{m \in \text{Models}} \frac{1}{k + \text{Rank}_m(d
 
 ## 🎯 三、 高性能重排方案（Reranking）与精炼
 
-初筛召回后的候选切片虽然覆盖面广，但仍存在部分弱相关或顺序颠倒的片段。系统在 [reranker.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/reranker.py) 与 [vector_store.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/vector_store.py) 中打造了**低显存、高精度的两阶段深度重排与去重体系**：
+初筛召回后的候选切片虽然覆盖面广，但仍存在部分弱相关或顺序颠倒的片段。系统在 [reranker.py](file:///root/www/sc/app-server/backend/core/reranker.py) 与 [vector_store.py](file:///root/www/sc/app-server/backend/core/vector_store.py) 中打造了**低显存、高精度的两阶段深度重排与去重体系**：
 
 ### 3.1 高保真法律特征加权极速精排器 (Fast Reranker, 0.55ms)
 *   **传统 LLM 重排痛点彻底拔除**：经深度评测，在本地统一内存架构下调用 27B 大模型对 15 篇候选片段进行排序耗时达 31.42s，导致 10s 守护线程超时频发，且后台孤儿推理任务会击穿 GPU 单槽位并发。
@@ -208,7 +209,7 @@ $$\text{RRF\_Score}(d) = \sum_{m \in \text{Models}} \frac{1}{k + \text{Rank}_m(d
 企业级与司法政务级 RAG 系统对**高并发吞吐、状态可恢复性、确定性约束及长效稳定性**有极高要求。系统在工程落地层面实现了以下核心技术突破：
 
 ### 4.1 Go Eino Multi-Agent 协同网络与智能旁路裁剪
-*   **有向无环图 (DAG) 编排**：在 [eino_graph.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/eino_graph.go) 中采用字节跳动开源的 Eino 框架，构建四阶段协作链路：
+*   **有向无环图 (DAG) 编排**：在 [eino_graph.go](file:///root/www/sc/app-server/nexus-gateway/eino_graph.go) 中采用字节跳动开源的 Eino 框架，构建四阶段协作链路：
     $$\text{Planner (公文秘书)} \longrightarrow \text{Worker (定量数据校验)} \longrightarrow \text{Checker (合规审查员)} \longrightarrow \text{Auditor (公文终审员)}$$
 *   **非法律问候旁路短路加速 (Direct Route)**：`Planner` 决策层自动识别简单事实提取或日常问候。若无需重度法理推演，直接旁路跳过 `Checker` 与 `Auditor` 节点，串行 LLM 计算层级减半，消除重复的 Prefill 耗时，响应提速 50% 以上。
 *   **多模态视觉零拷贝物理隔离**：大体积图片数据在 DAG 文本节点（Planner/Checker）流转时被显式清空 Context，仅在 Worker 视觉节点中加载，实现零拷贝数据安全隔离，彻底防范网络与显存 OOM。
@@ -216,15 +217,15 @@ $$\text{RRF\_Score}(d) = \sum_{m \in \text{Models}} \frac{1}{k + \text{Rank}_m(d
 ### 4.2 审查中断与人工介入恢复机制 (Interrupt & Resume)
 *   **红线警报自动中断**：当终审节点 Auditor 判定文书存在严重合规风险（如程序违法或大额顶格处罚风险）时，Eino 流自动触发 `Interrupt` 中断。
 *   **Redis 状态快照冻结**：将当前执行上下文与有向图状态打包序列化至 Redis `eino:frozen_state:{project_id}`（TTL 24 小时），前端控制台亮起琥珀色告警。
-*   **人工审批一键唤醒**：法务主管/行政负责人审阅修改后，通过 [chat_handler.go](file:///Users/gemini/Projects/Own/RAG/app-server/nexus-gateway/chat_handler.go) 发起 `Resume`，系统从 Redis 恢复状态继续完成剩余节点推流。
+*   **人工审批一键唤醒**：法务主管/行政负责人审阅修改后，通过 [chat_handler.go](file:///root/www/sc/app-server/nexus-gateway/chat_handler.go) 发起 `Resume`，系统从 Redis 恢复状态继续完成剩余节点推流。
 
 ### 4.3 Qwen 3.8 27B 硬件加速与 6.85 倍推理优化
 *   **Metal Flash-Attention 2 硬件级内核**：通过环境变量 `OLLAMA_FLASH_ATTENTION=1` 与 `OLLAMA_NUM_PARALLEL=1` 强行激活 Apple Silicon GPU 硬件计算内核，Attention 矩阵算力寻址开销减少 40% 以上。
-*   **RAG 动态上下文瘦身**：在 [retrieval_pipeline.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/retrieval_pipeline.py#L855) 中将 27B 稠密模型的上下文截断上限优化为 10,000 字符最高相关度切片，减少 60% Prefill 预处理算力开销。
-*   **动态 KV Cache 窗口分配**：在 [generate.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/api/generate.py#L1804) 中根据实际 Prompt 长度自适应分配 `num_ctx`，使 27B 模型在长文档合规分析场景下的总响应时间由 **263.8 秒大幅缩短至 38.5 秒（实现 6.85 倍提速）**。
+*   **RAG 动态上下文瘦身**：在 [retrieval_pipeline.py](file:///root/www/sc/app-server/backend/core/retrieval_pipeline.py#L855) 中将 27B 稠密模型的上下文截断上限优化为 10,000 字符最高相关度切片，减少 60% Prefill 预处理算力开销。
+*   **动态 KV Cache 窗口分配**：在 [generate.py](file:///root/www/sc/app-server/backend/api/generate.py#L1804) 中根据实际 Prompt 长度自适应分配 `num_ctx`，使 27B 模型在长文档合规分析场景下的总响应时间由 **263.8 秒大幅缩短至 38.5 秒（实现 6.85 倍提速）**。
 
 ### 4.4 向量级 L2 Redis 语义缓存网络 (0.37s 极速命中)
-*   **高维语义相似度命中**：在 [semantic_cache.py](file:///Users/gemini/Projects/Own/RAG/app-server/backend/core/semantic_cache.py) 中，对用户的提问进行 BGE-M3 稠密向量转换并归一化，通过 `np.dot` 与 Redis Hash 历史提问向量计算余弦相似度。
+*   **高维语义相似度命中**：在 [semantic_cache.py](file:///root/www/sc/app-server/backend/core/semantic_cache.py) 中，对用户的提问进行 BGE-M3 稠密向量转换并归一化，通过 `np.dot` 与 Redis Hash 历史提问向量计算余弦相似度。
 *   **毫秒级直出**：若相似度 $> 0.96$，直接返回历史校验文书，响应时间从大模型推理的 2 分多钟骤降至 **0.37 秒**，配置 1 小时滑动 TTL 自动释放空闲哈希。
 
 ### 4.5 Celery 快慢队列物理隔离与防 OOM 调度
@@ -358,12 +359,96 @@ Eino 有向图每个 Agent 节点在进行状态流转时，通过 SSE 实时向
 
 ---
 
+## ⚡ 十四、 多系统共享大模型算力并发防争抢与上下文自适应防爆架构 (V4.6.6)
+
+针对同一台物理服务器部署多套业务系统（如综合行政执法系统 `SC` 与法制审查系统 `LAW`）共享底层集中式大模型集群（如 `qwen38-27b-q4`，物理上下文 `n_ctx = 2048`，并发槽位 `slots = 4`）时引发的上下文溢出 400 报错、多轮追问超时及 GPU 槽位互踢等关键痛点，系统构建了**全链路算力对等隔离与上下文预算自适应防爆体系**：
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│             同一宿主机底层推理算力集群 (40dd.shop:8001 / Slots = 4)                │
+│    总物理槽位上限: 4 | 单槽物理上下文: n_ctx = 2048 tokens | 协议: OpenAI / SSE    │
+└────────────────────────┬───────────────────────────────────┬─────────────────────┘
+                         │                                   │
+              对等槽位隔离 (Slots = 2)             对等槽位隔离 (Slots = 2)
+                         │                                   │
+         ┌───────────────▼──────────────┐    ┌───────────────▼──────────────┐
+         │     综合行政执法系统 (SC)      │    │       法制审查系统 (LAW)       │
+         │  - 动态预算裁剪 truncate_ctx  │    │  - 动态预算裁剪 truncate_ctx  │
+         │  - safe_max_tokens: ≤ 768    │    │  - safe_max_tokens: ≤ 768    │
+         │  - GPU_MAX_SLOTS: 2 (防超占) │    │  - GPU_MAX_SLOTS: 2 (防超占) │
+         └──────────────────────────────┘    └──────────────────────────────┘
+```
+
+### 14.1 上下文预算自适应防爆算法 (`truncate_prompt_for_ctx`)
+*   **痛点根因**：物理私有化部署的大模型通常配置有限的上下文窗口（如 2048 tokens）。当用户进行第二轮或多轮追问时，系统 Prompt 中累加了第一轮问答历史、系统角色规范提示词及案卷参考资料。若请求盲目携带高额的 `max_tokens: 8192`，总 Token 需求瞬间突破 2048，导致底层推理网关抛出 `HTTP 400 Bad Request` 并降级为“AI 服务暂时不可用”。
+*   **自适应分块滑动裁剪机制**：在 [llm_engine.py](file:///root/www/sc/app-server/backend/core/llm_engine.py) 中引入上下文自适应裁剪算法：
+    ```python
+    def truncate_prompt_for_ctx(text: str, max_chars: int = 2200) -> str:
+        """智能截断 Prompt 中的参考资料部分，保留系统指令与用户提问，防止突破上游上下文上限。"""
+        # 严格保留头部系统角色设定 (pre) 与尾部用户最新提问 (post)，仅对中间参考资料切片实施自适应按需裁剪
+    ```
+*   **动态输出配额自适应收敛**：根据模型类型动态辨识上下文极限，针对 2048 上下文模型将 `safe_max_tokens` 自适应控制在安全区间（$\le 768$ tokens），确保 $\text{Prompt Tokens} + \text{Max Output Tokens} < 2048$，彻底杜绝了 400 Bad Request 上下文越界崩溃。
+
+### 14.2 多系统共享 GPU 槽位（Slots）对等平衡隔离
+*   **对等槽位分配**：将各系统的 `GPU_MAX_SLOTS` 由原先单边 4 槽位全面收敛并平衡锁定为 `2`（LAW 分配 2 槽位，SC 分配 2 槽位），两系统并发需求总和严格 $\le 4$；
+*   **消除排队互踢与长耗时等待**：彻底解决跨容器 Redis 信号量无法互通导致的底层槽位争抢与长达近 30 秒的死锁排队问题，保障多业务并行场景下首字极速响应。
+
+### 14.3 Linux 容器跨平台兼容性自愈 (MPS 解除)
+*   **环境探测防御**：在 [vector_store.py](file:///root/www/sc/app-server/backend/core/vector_store.py) 中重构设备显存同步逻辑，增加 `torch.backends.mps.is_available()` 运行时前置核验，彻底根除在 Linux x86 容器内误执行 Apple Silicon MPS 队列同步导致的 `Cannot execute deviceSynchronize() without MPS backend` 向量检索失败异常。
+
+### 14.4 双系统同毫秒极限并发压测验证
+在同一物理服务器上，通过自动化多线程脚本在同一毫秒向 `LAW`（项目 `2c81146fbda1`，首轮案卷分析）与 `SC`（项目 `f2834786bb54`，含历史上下文追问“后续处理步骤”）同时发起双向 RAG 问答压测：
+*   **SC 系统实测**：首字时延 **1.79 秒**，总耗时 101.03 秒，完整生成 **1,367 字** 专业行政执法步骤，HTTP 200，无任何错误；
+*   **LAW 系统实测**：首字时延 **2.81 秒**，总耗时 89.92 秒，完整生成 **1,159 字** 侵权事实与法律依据分析，HTTP 200，无任何错误；
+*   **验证结论**：两套独立 RAG 系统在同时调用同一个大模型时，**全部 100% 成功流式返回**，彻底杜绝了“一个正常、另一个报错”的隐患。
+
+---
+
+## 📱 食品生产企业监督检查与移动端多模态资料采集体系 (/m2 与 /api/mobile)
+
+针对食品安全监管与现场执法“拍照取证、对照核查、即时评定、生成文书”的高频实务需求，系统深度拓展了专用于移动端的监督检查工作台与全链路资料采集接口：
+
+### 1. 移动端食品安全日常监督检查应用 (`/m2` & `/mobile2`)
+* **访问入口**：`https://sc.ynmj.cn/m2`（或局域网 `http://192.168.2.53:2028/m2`）
+* **标准依据**：严格遵循国家市场监管总局《食品生产企业日常监督检查要点表》（`docs/食品生产企业检查要点表.docx`），系统级结构化建模，覆盖全部 **14 个大类、79 个核查项目**（含 29 项重点项目 `*` 与 50 项一般项目）。
+* **现场拍照与多模态取证**：
+  - 针对每个检查要项提供原生相机拍照与图库选择入口（`capture="environment"`）；
+  - 支持多图现场实时预览、大图查看与一键删除，图片通过受控安全流存入项目专属资料库。
+* **智能预置评价体系（现场极速模拟与演示）**：
+  - **单项一键评价**：针对特定检查项点击“预置 AI 智能评价”，根据内置监管知识库自动填入合规等级（符合/基本符合/不符合）、现场问题描述及整改处置建议；
+  - **全表一键智能填充**：支持在检查顶部一键批量生成全套示范评价，极大提高现场演示与验收效率。
+* **实时合规统计与《表1-1 检查结果记录表》一键导出**：
+  - **顶部动态看板**：实时追踪“已核查 / 重点项缺陷 / 一般项缺陷”，并依据监管规则自动判定总评结论（符合要求 / 基本符合要求 / 不符合要求）；
+  - **全屏报告预览**：随时调出国家标准格式《表1-1 食品生产企业日常监督检查结果记录表》，完整呈现企业信息、检查人员、要点缺陷明细，支持一键复制纯文本汇报稿。
+* **双模态操作体验**：支持“14 大类分步向导（大类分步推进）”与“全量清单平铺（含全部/重点项/缺陷项快捷筛选）”双视图无缝切换，完全适配 iOS / Android 单手触控。
+
+### 2. 手机端多模态采集与后台资料库管理 API (`/api/mobile`)
+* **手机端按项目上传接口 (`POST /api/mobile/upload`)**：
+  - 专为手机端/巡检端设计的免鉴权或令牌混合上传通道；
+  - 自动按 `project_id` 物理归档，支持图片（jpg/png/webp）、视频（mp4/mov）、音频（m4a/mp3/wav）与文档；
+  - 自动打上标签 `upload_source="mobile"`、检验人名与现场备注，自动投递后台异步多模态解析（OCR 识别、Whisper 语音转写、RAG 向量切片与图谱分析）。
+* **后台按项目资料库查询 (`GET /api/mobile/projects/{project_id}/materials`)**：
+  - 支持后台管理员按项目集中调阅所有现场采集资料，展示解析进度（等待处理/正在处理/分析完成/失败）、提取摘要预览与图谱实体关联情况。
+* **现场照片安全流式回显 (`GET /api/mobile/demo-inspect-media/{filename}`)**：
+  - 严格防范路径穿越（Safe Path Resolution），提供安全的图片回显服务，包含 `X-Content-Type-Options: nosniff` 安全标头。
+* **工程归档一键极速下载 (`GET /api/mobile/download-project-archive`)**：
+  - 支持 `kind=code`（纯源码与配置包 ~42MB，秒级下载）与 `kind=full`（含 4.8GB 法规全文库包）。
+
+### 3. 后台管理系统“现场多模态资料库”面板 (`MaterialManagement.tsx`)
+* 在 `/admin` 管理后台中新增专属“现场资料库”标签页；
+* 支持按所属项目筛选、按图片/视频/音频/文档类型筛选、查看原图预览画廊、查看 AI 分析分块数（Chunks）及合规得分。
+
+---
+
 ## 📁 项目目录结构
 
 ```
 ├── README.md                       # 本系统产品与核心技术架构全景手册
 ├── 需求文档.md                      # 业务需求与功能规范文档
 ├── 技术决策记录.md                  # 关键技术架构选型决策 (ADR)
+├── docs
+│   ├── 食品生产企业检查要点表.docx    # 14大类79项监督检查国家标准底表
+│   └── ...                         # 政策法规、知识呈报与测试案卷
 ├── scripts
 │   ├── storage_watchdog.sh         # 宿主机外部存储 VirtioFS 挂载断裂秒级自愈守护
 │   └── ollama_watchdog.sh          # 宿主机 Metal 推理引擎死锁与显存自愈守护
@@ -376,19 +461,29 @@ Eino 有向图每个 Agent 节点在进行状态流转时，通过 SSE 实时向
 │   │   ├── chat_handler.go         # L2 语义缓存拦截与 Eino 图调度
 │   │   └── eino_graph.go           # 核心对话流有向图 Eino 编排
 │   ├── backend                     # Python FastAPI 算法微服务源码 (Port 8004)
-│   │   ├── scripts_destroy_project.py # 知识库全链路物理与向量索引彻底销毁工具
+│   │   ├── api
+│   │   │   ├── mobile.py           # 移动端资料采集与项目资料库管理路由
+│   │   │   ├── files.py            # 文件上传、管理与解析路由
+│   │   │   ├── projects.py         # 知识库项目生命周期管理
+│   │   │   └── viewer.py           # 原生文档流式预览路由
 │   │   ├── core                    # 核心 RAG 算法模块
 │   │   │   ├── vector_store.py     # 语义分块、Qdrant 混合检索与 RRF 融合
 │   │   │   ├── retrieval_pipeline.py # 六路异构并行检索管线
 │   │   │   ├── reranker.py         # GPU 常驻大模型极速精排器
 │   │   │   ├── graph_rag.py        # Neo4j 知识图谱引擎
 │   │   │   ├── table_registry.py   # AI 表格注册与精确直插引擎
+│   │   │   ├── rag_compliance.py   # 智能合规研判与要件核查
 │   │   │   └── watchdog_engine.py  # 全系统后台卡顿自动探测与自愈引擎
 │   │   ├── scripts                 # 自动化脚本与守护进程
-│   │   │   ├── daemon_watchdog.py  # 60秒常驻自愈巡检看门狗脚本
-│   │   │   └── complete_auto_judgment.py # 自动研判学习全量补齐工具
 │   │   └── worker.py               # Celery 快慢任务队列调度
 │   ├── frontend                    # React 19 + TypeScript + Vite 前端工程
+│   │   └── src
+│   │       ├── assets
+│   │       │   └── food_check_points.json # 14大类79项检查要点元数据定义
+│   │       ├── components
+│   │       │   ├── Mobile          # /m2 食品生产监管移动端核心组件库
+│   │       │   ├── Admin           # 管理后台 (含现场多模态资料库)
+│   │       │   └── ...
 │   └── Records                     # 项目滚动开发状态微状态日志目录
 ```
 
@@ -405,6 +500,9 @@ Eino 有向图每个 Agent 节点在进行状态流转时，通过 SSE 实时向
    - 定期对本地 Ollama 推理引擎执行探活心跳，若捕获到 503 拒绝服务或 Metal 显存死锁，自动清空死锁进程并完成毫秒级无损冷拉起。
 3. **知识库未就绪前置就绪度守卫与算力熔断保护 (Readiness Guard)**：
    - 在 `/api/chat` 入口处实现毫秒级前置判定，当材料尚处于多模态文字提取或切片阶段时实施刚性拦截（实测 37.7ms 极速返回，0 Token 开销），杜绝 27B 大模型显存高负荷空转与“乱码/证据缺失”无效回答；配合检索零召回短路机制，全面保护本地硬件算力。
+4. **跨平台 Linux 容器与多系统算力并发防锁死保障**：
+   - 全面隔离 macOS MPS 显存同步指令与 Linux x86 容器运行时环境，增加运行时硬件加速探针防御，彻底杜绝 `deviceSynchronize` 导致的检索异常中断；
+   - 在 Docker Compose 与 PM2 环境中注入代理白名单与对等槽位限流配置（`GPU_MAX_SLOTS: 2`），确保跨业务系统高并发调用集中式大模型集群时零冲突、零排队。
 
 ---
 
