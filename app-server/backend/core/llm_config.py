@@ -197,7 +197,40 @@ async def test_llm_connection(base_url: str, api_key: str, model: str, is_vision
                     return True, f"Ollama 连通正常，共检测到 {len(r.json().get('models', []))} 个本地模型", elapsed
                 return False, f"Ollama 响应异常 (HTTP {r.status_code})", elapsed
             else:
-                # OpenAI 兼容 Gateway 探活：优先以极轻量的 /models 端点进行毫秒级嗅探（零占用 GPU 排队）
+                # OpenAI 兼容 Gateway 探活：
+                # 1. 优先对目标模型发送 1-token 极简推理请求，验证真实的端到端算力可用性（防范网关在线但模型节点503/400的假连通）
+                target_model = (model or "").strip()
+                if target_model:
+                    chat_url = normalize_endpoint(base_url, is_openai_chat=True)
+                    test_prompt = "Hi"
+                    payload = {
+                        "model": target_model,
+                        "messages": [{"role": "user", "content": test_prompt}],
+                        "max_tokens": 1,
+                        "stream": False,
+                    }
+                    try:
+                        r = await client.post(chat_url, json=payload, headers=headers)
+                        elapsed = time.time() - start_time
+                        if r.status_code == 200:
+                            return True, f"Gateway 连通正常，模型「{target_model}」响应成功", elapsed
+                        else:
+                            err_detail = ""
+                            try:
+                                err_json = r.json()
+                                if isinstance(err_json, dict) and "error" in err_json:
+                                    err_detail = err_json["error"].get("message", "")
+                            except Exception:
+                                pass
+                            if not err_detail:
+                                err_detail = r.text[:120]
+                            return False, f"模型「{target_model}」推理异常 (HTTP {r.status_code}: {err_detail})", elapsed
+                    except httpx.TimeoutException:
+                        return False, f"模型「{target_model}」推理超时 (10秒未响应)", time.time() - start_time
+                    except Exception as e:
+                        return False, f"模型「{target_model}」请求失败: {str(e)}", time.time() - start_time
+
+                # 2. 若未指定模型名称，则仅嗅探 /models 端点验证网关路由健康度
                 clean_url = base_url.strip().rstrip("/")
                 for suffix in ["/chat/completions", "/completions"]:
                     if clean_url.endswith(suffix):
@@ -209,25 +242,10 @@ async def test_llm_connection(base_url: str, api_key: str, model: str, is_vision
                     elapsed = time.time() - start_time
                     if r_models.status_code == 200:
                         return True, "Gateway 连通正常 (API端点响应健康)", elapsed
-                except Exception:
-                    pass
-
-                # 若 /models 接口受限，平滑降级为发送 1 token 极简探测
-                chat_url = normalize_endpoint(base_url, is_openai_chat=True)
-                test_prompt = "Hi"
-                payload = {
-                    "model": model,
-                    "messages": [{"role": "user", "content": test_prompt}],
-                    "max_tokens": 1,
-                    "stream": False,
-                }
-                r = await client.post(chat_url, json=payload, headers=headers)
-                elapsed = time.time() - start_time
-                if r.status_code == 200:
-                    return True, "Gateway 连通正常，模型响应成功", elapsed
-                else:
-                    err_msg = r.text[:120]
-                    return False, f"HTTP {r.status_code}: {err_msg}", elapsed
+                    else:
+                        return False, f"HTTP {r_models.status_code}: {r_models.text[:120]}", elapsed
+                except Exception as e:
+                    return False, f"Gateway 端点访问失败: {str(e)}", time.time() - start_time
     except httpx.TimeoutException:
         return False, "连接超时 (10秒未响应)", time.time() - start_time
     except Exception as e:

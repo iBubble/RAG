@@ -868,11 +868,23 @@ async def _stream_ollama_inner(
 
             _sc = getattr(getattr(_e, "response", None), "status_code", 0)
             if _sc == 503 and _attempt < _max_retries - 1:
-                logger.warning(f"Ollama 503 (attempt {_attempt+1}), retrying...")
+                logger.warning(f"Ollama/Gateway 503 (attempt {_attempt+1}), retrying...")
                 await _aio.sleep(1 + _attempt)
                 continue
-            logger.exception("Ollama 调用失败")
-            yield "❌ AI 服务暂时不可用，请稍后重试。"
+            logger.exception("Ollama/Gateway 调用失败")
+            
+            err_msg_detail = ""
+            if _resp_text:
+                try:
+                    _parsed = json.loads(_resp_text)
+                    if isinstance(_parsed, dict) and "error" in _parsed:
+                        err_msg_detail = _parsed["error"].get("message", "")
+                except Exception:
+                    pass
+            if err_msg_detail:
+                yield f"❌ AI 模型服务异常 (HTTP {_sc}): {err_msg_detail}。请在后台管理检查大模型服务商配置或稍后重试。"
+            else:
+                yield "❌ AI 服务暂时不可用，请稍后重试。"
             return
 
 
